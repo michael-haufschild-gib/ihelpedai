@@ -76,8 +76,11 @@ function ModeSwitcher({
     >
       <div className="flex bg-[var(--bg-active)] rounded p-0.5 gap-0.5">
         <button
+          type="button"
           data-testid="color-gradient-mode-solid"
           onClick={() => onModeChange('solid')}
+          aria-pressed={mode === 'solid'}
+          aria-label="Solid color"
           className={`p-1.5 rounded-sm transition-all ${
             mode === 'solid' ? 'bg-[var(--bg-hover)] shadow-sm' : 'hover:bg-[var(--bg-hover)]/50'
           }`}
@@ -86,8 +89,11 @@ function ModeSwitcher({
           <SolidIcon active={mode === 'solid'} />
         </button>
         <button
+          type="button"
           data-testid="color-gradient-mode-gradient"
           onClick={() => onModeChange('gradient')}
+          aria-pressed={mode === 'gradient'}
+          aria-label="Linear gradient"
           className={`p-1.5 rounded-sm transition-all ${
             mode === 'gradient' ? 'bg-[var(--bg-hover)] shadow-sm' : 'hover:bg-[var(--bg-hover)]/50'
           }`}

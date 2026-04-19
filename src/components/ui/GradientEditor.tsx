@@ -9,8 +9,9 @@
  */
 
 import React, { useCallback, useRef, useState, useMemo } from 'react'
-import { ColorPickerPanel } from './ColorPickerPanel'
+import { GradientStopColorPanel } from './GradientStopColorPanel'
 import { toCssGradientString, nextStopId } from '@/lib/colors/gradientUtils'
+import { interpolateColorAtPosition } from '@/lib/colors/gradientInterpolation'
 import { sx } from '@/lib/sx'
 import type { GradientStop, LinearGradientValue } from '@/types/gradient'
 
@@ -108,21 +109,21 @@ function GradientPreviewBar({
   )
 }
 
-function GradientMarker({
-  stop,
-  index,
-  isSelected,
-  barRef,
-  onSelect,
-  onPositionChange,
-}: {
-  stop: GradientStop
-  index: number
-  isSelected: boolean
-  barRef: React.RefObject<HTMLDivElement | null>
-  onSelect: () => void
+function getKeyboardDelta(key: string, shift: boolean, alt: boolean): number | 'home' | 'end' | null {
+  if (key === 'Home') return 'home'
+  if (key === 'End') return 'end'
+  const step = shift ? 10 : alt ? 0.1 : 1
+  if (key === 'ArrowLeft' || key === 'ArrowDown') return -step
+  if (key === 'ArrowRight' || key === 'ArrowUp') return step
+  return null
+}
+
+function useMarkerHandlers(
+  stopPosition: number,
+  barRef: React.RefObject<HTMLDivElement | null>,
+  onSelect: () => void,
   onPositionChange: (position: number) => void
-}) {
+) {
   const [isDragging, setIsDragging] = useState(false)
   const startXRef = useRef(0)
   const startPosRef = useRef(0)
@@ -134,10 +135,10 @@ function GradientMarker({
       onSelect()
       setIsDragging(true)
       startXRef.current = e.clientX
-      startPosRef.current = stop.position
+      startPosRef.current = stopPosition
       e.currentTarget.setPointerCapture(e.pointerId)
     },
-    [onSelect, stop.position]
+    [onSelect, stopPosition]
   )
 
   const handlePointerMove = useCallback(
@@ -159,11 +160,62 @@ function GradientMarker({
     }
   }, [])
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onSelect()
+        return
+      }
+      const action = getKeyboardDelta(e.key, e.shiftKey, e.altKey)
+      if (action === null) return
+      e.preventDefault()
+      onSelect()
+      if (action === 'home') onPositionChange(0)
+      else if (action === 'end') onPositionChange(100)
+      else {
+        const next = Math.max(0, Math.min(100, stopPosition + action))
+        onPositionChange(Math.round(next * 10) / 10)
+      }
+    },
+    [onSelect, onPositionChange, stopPosition]
+  )
+
+  return { handlePointerDown, handlePointerMove, handlePointerUp, handleKeyDown }
+}
+
+function GradientMarker({
+  stop,
+  index,
+  isSelected,
+  barRef,
+  onSelect,
+  onPositionChange,
+}: {
+  stop: GradientStop
+  index: number
+  isSelected: boolean
+  barRef: React.RefObject<HTMLDivElement | null>
+  onSelect: () => void
+  onPositionChange: (position: number) => void
+}) {
+  const { handlePointerDown, handlePointerMove, handlePointerUp, handleKeyDown } =
+    useMarkerHandlers(stop.position, barRef, onSelect, onPositionChange)
+  const rounded = Math.round(stop.position)
+
   return (
     <div
       data-gradient-marker
       data-testid={`gradient-marker-${String(index)}`}
-      className={`absolute top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing touch-none flex items-center justify-center ${isSelected ? 'z-20' : 'z-10'}`}
+      role="slider"
+      tabIndex={0}
+      aria-label={`Gradient stop ${index + 1}`}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={rounded}
+      aria-valuetext={`${String(rounded)}%`}
+      aria-orientation="horizontal"
+      className={`absolute top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing touch-none flex items-center justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:rounded-full ${isSelected ? 'z-20' : 'z-10'}`}
       style={sx({
         left: `calc(${String(stop.position)}% - ${String(MARKER_HIT_SIZE / 2)}px)`,
         width: `${String(MARKER_HIT_SIZE)}px`,
@@ -173,6 +225,7 @@ function GradientMarker({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onKeyDown={handleKeyDown}
     >
       <div
         className={`rounded-full border-2 shadow-md transition-transform ${
@@ -256,6 +309,7 @@ function StopList({
           {/* Delete */}
           {stops.length > MIN_STOPS && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation()
                 onRemoveStop(i)
@@ -308,48 +362,6 @@ function AngleControl({ angle, onChange }: { angle: number; onChange: (angle: nu
       </div>
     </div>
   )
-}
-
-// ── Color interpolation helper ──────────────────────────────────────────
-
-function interpolateColorAtPosition(sortedStops: GradientStop[], position: number): string {
-  if (sortedStops.length === 0) return '#ffffff'
-  if (sortedStops.length === 1 || position <= sortedStops[0]!.position) {
-    return sortedStops[0]!.color
-  }
-  if (position >= sortedStops[sortedStops.length - 1]!.position) {
-    return sortedStops[sortedStops.length - 1]!.color
-  }
-
-  for (let i = 0; i < sortedStops.length - 1; i++) {
-    const a = sortedStops[i]!
-    const b = sortedStops[i + 1]!
-    if (position >= a.position && position <= b.position) {
-      const range = b.position - a.position
-      if (range === 0) return a.color
-      const t = (position - a.position) / range
-      return lerpHex(a.color, b.color, t)
-    }
-  }
-  return sortedStops[0]!.color
-}
-
-function parseHexChannel(hex: string, offset: number): number {
-  const parsed = parseInt(hex.slice(offset, offset + 2), 16)
-  return Number.isNaN(parsed) ? 0 : parsed
-}
-
-function lerpHex(hex1: string, hex2: string, t: number): string {
-  const r1 = parseHexChannel(hex1, 1)
-  const g1 = parseHexChannel(hex1, 3)
-  const b1 = parseHexChannel(hex1, 5)
-  const r2 = parseHexChannel(hex2, 1)
-  const g2 = parseHexChannel(hex2, 3)
-  const b2 = parseHexChannel(hex2, 5)
-  const r = Math.round(r1 + (r2 - r1) * t)
-  const g = Math.round(g1 + (g2 - g1) * t)
-  const b = Math.round(b1 + (b2 - b1) * t)
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
 }
 
 // ── State hook ──────────────────────────────────────────────────────────
@@ -477,7 +489,7 @@ export const GradientEditor: React.FC<GradientEditorProps> = ({ value, onChange 
         )}
       </div>
       {state.editingStopColor && state.selectedStop != null && (
-        <StopColorPanel
+        <GradientStopColorPanel
           index={state.selectedIndex}
           color={state.selectedStop.color}
           onChange={state.handleStopColorChange}
@@ -497,6 +509,7 @@ function AddStopButton({
 }) {
   return (
     <button
+      type="button"
       onClick={() => {
         const sorted = value.stops.slice().sort((a, b) => a.position - b.position)
         const pos =
@@ -513,38 +526,3 @@ function AddStopButton({
   )
 }
 
-function StopColorPanel({
-  index,
-  color,
-  onChange,
-  onClose,
-}: {
-  index: number
-  color: string
-  onChange: (c: string) => void
-  onClose: () => void
-}) {
-  return (
-    <div className="border-l border-border-subtle">
-      <div className="flex items-center justify-between px-3 pt-2">
-        <span className="text-xs text-text-tertiary font-medium">Stop {index + 1}</span>
-        <button
-          onClick={onClose}
-          data-testid="gradient-stop-color-close"
-          className="text-text-tertiary hover:text-text-primary text-xs p-0.5 transition-colors"
-          aria-label="Close stop color editor"
-        >
-          ×
-        </button>
-      </div>
-      <ColorPickerPanel
-        value={color}
-        onChange={onChange}
-        disableAlpha
-        showHeader={false}
-        showPalette={false}
-        width={220}
-      />
-    </div>
-  )
-}
