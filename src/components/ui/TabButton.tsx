@@ -51,7 +51,7 @@ export const TabButton: React.FC<TabButtonProps> = ({
     {isActive && variant !== 'pills' && (
       <m.div
         layoutId={`activeTab-${instanceId}`}
-        className="absolute bottom-[-1px] inset-inline-0 h-[2px] bg-accent shadow-[0_0_8px_var(--theme-accent)]"
+        className="absolute -bottom-px inset-inline-0 h-0.5 bg-accent shadow-accent-sm"
         transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
       />
     )}

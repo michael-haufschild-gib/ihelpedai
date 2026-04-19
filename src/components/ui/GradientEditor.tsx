@@ -259,7 +259,7 @@ function StopList({
   onStopPositionChange: (index: number, position: number) => void
 }) {
   return (
-    <div className="flex flex-col gap-1 max-h-[120px] overflow-y-auto">
+    <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
       {stops.map((stop, i) => (
         <div
           key={stop.key}
@@ -341,7 +341,7 @@ function AngleControl({ angle, onChange }: { angle: number; onChange: (angle: nu
         value={angle}
         onChange={(e) => onChange(parseInt(e.target.value, 10))}
         data-testid="gradient-angle-slider"
-        className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer"
+        className="flex-1 h-1.5 accent-[var(--theme-accent)] cursor-pointer"
         aria-label="Gradient angle"
       />
       <div className="flex items-center gap-0.5">
@@ -467,7 +467,7 @@ export const GradientEditor: React.FC<GradientEditorProps> = ({ value, onChange 
 
   return (
     <div className="flex gap-0">
-      <div className="flex flex-col gap-3 p-3 w-[240px] select-none text-text-primary">
+      <div className="flex flex-col gap-3 p-3 w-60 select-none text-text-primary">
         <GradientPreviewBar
           gradient={value}
           stops={state.stopsWithKeys}

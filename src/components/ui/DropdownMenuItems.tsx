@@ -57,7 +57,7 @@ const PortaledSubmenu: React.FC<{
       animate={{ scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.12 }}
-      className="glass-panel min-w-[180px] max-w-[280px] rounded-lg py-1 shadow-xl border border-border-default"
+      className="glass-panel min-w-44 max-w-72 rounded-lg py-1 shadow-xl border border-border-default"
       style={sx({
         position: 'fixed' as const,
         top: 0,

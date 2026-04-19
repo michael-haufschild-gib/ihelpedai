@@ -71,7 +71,7 @@ export function Button({
     onClick?.(e)
   }
 
-  const glowClass = glow ? 'shadow-[0_0_15px_var(--theme-accent)]' : ''
+  const glowClass = glow ? 'shadow-accent-lg' : ''
 
   return (
     <m.button
@@ -90,7 +90,7 @@ export function Button({
       {...props}
     >
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-inherit backdrop-blur-[1px] z-20 rounded-[inherit]">
+        <div className="absolute inset-0 flex items-center justify-center bg-inherit backdrop-blur-xs z-20 rounded-[inherit]">
           <LoadingSpinner size={size === 'sm' ? 12 : 16} />
         </div>
       )}
