@@ -6,7 +6,7 @@
  * gradient mode shows the gradient editor with inline stop color editing.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useId, useState, useEffect, useCallback, useRef } from 'react'
 import { Popover } from './Popover'
 import { ColorPickerPanel } from './ColorPickerPanel'
 import { GradientEditor } from './GradientEditor'
@@ -42,6 +42,7 @@ function SolidIcon({ active }: { active: boolean }) {
 }
 
 function GradientIcon({ active }: { active: boolean }) {
+  const gradientId = useId()
   return (
     <svg
       width={14}
@@ -50,12 +51,12 @@ function GradientIcon({ active }: { active: boolean }) {
       className={`transition-colors ${active ? 'text-text-primary' : 'text-text-tertiary'}`}
     >
       <defs>
-        <linearGradient id="grad-icon-lg" x1="0" y1="0" x2="1" y2="0">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="currentColor" stopOpacity={0.2} />
           <stop offset="100%" stopColor="currentColor" stopOpacity={1} />
         </linearGradient>
       </defs>
-      <rect x={1} y={1} width={12} height={12} rx={2} fill="url(#grad-icon-lg)" />
+      <rect x={1} y={1} width={12} height={12} rx={2} fill={`url(#${gradientId})`} />
     </svg>
   )
 }

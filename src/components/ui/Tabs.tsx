@@ -154,8 +154,14 @@ export const Tabs: React.FC<TabsProps> = ({
     [value, onChange, ensureMounted]
   )
 
-  // If a parent-controlled value flips to a tab we haven't mounted yet, mount it now.
-  if (!mountedTabs.has(value)) ensureMounted(value)
+  // Always include the current value synchronously so an externally-controlled
+  // value change (parent drives `value` without calling handleTabChange) still
+  // renders the target panel on the same frame. If the user clicks back to a
+  // previously-mounted tab, mountedTabs keeps its DOM alive; externally-driven
+  // transient flips don't persist, which is the acceptable tradeoff here.
+  const visibleMounted = mountedTabs.has(value)
+    ? mountedTabs
+    : new Set<string>([...mountedTabs, value])
 
   return (
     <div className={`flex flex-col ${className}`} data-testid={testId}>
@@ -173,7 +179,7 @@ export const Tabs: React.FC<TabsProps> = ({
       </div>
       <div className={`flex-1 min-h-0 relative overflow-y-auto scrollbar-none ${contentClassName}`}>
         {tabs.map((tab) =>
-          mountedTabs.has(tab.id) ? (
+          visibleMounted.has(tab.id) ? (
             <div
               key={tab.id}
               id={`${instanceId}-panel-${tab.id}`}

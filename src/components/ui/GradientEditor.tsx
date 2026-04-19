@@ -373,12 +373,17 @@ function useGradientEditorState(
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [editingStopColor, setEditingStopColor] = useState(false)
 
-  // Clamp selection if the external value shrinks the stops array.
+  // Clamp selection if the external value shrinks the stops array. This covers
+  // controlled reset/undo and preset switches: a smaller stops array always wins
+  // over a stale index, and stopsWithKeys below derives straight from value.stops
+  // so the markers render the current data.
   const maxIndex = Math.max(0, value.stops.length - 1)
   const clampedSelected = Math.min(selectedIndex, maxIndex)
 
-  // Zip current keys with stops; if the array length diverges (e.g. external reset),
-  // synthesize placeholder keys. The effect below will replace them on the next tick.
+  // Zip current keys with stops. When the external value grows the array (or
+  // was replaced by a longer preset) the extra indices fall back to a positional
+  // placeholder key; emitChange below re-syncs stable keys on the next internal
+  // update. Extra trailing keys (external shrink) are simply ignored by .map.
   const stopsWithKeys: StopWithKey[] = value.stops.map((s, i) => ({
     ...s,
     key: keys[i] ?? `idx-${String(i)}`,
