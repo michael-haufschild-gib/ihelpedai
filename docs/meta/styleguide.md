@@ -35,10 +35,12 @@ Every `<button>/<a>/<input>/<select>/<textarea>` and every element with an inter
 - `import type` for type-only imports (`verbatimModuleSyntax` is on).
 
 Example:
+
 ```ts
 import { Button } from '@/components/ui/Button'
 import type { HelpedPostInput } from '@/lib/api'
 ```
+
 
 ## File length & function length
 
@@ -54,10 +56,12 @@ Split components, don't disable. Tests are exempt from the function-length cap.
 Every exported function, class, interface, and type alias needs a one-sentence JSDoc (`publicOnly: true`, enforced by `jsdoc/require-jsdoc`). No `@param`/`@returns` required — TypeScript types cover that.
 
 Template:
+
 ```ts
 /** One-sentence summary of what this does (imperative, present tense). */
 export function foo() { /* … */ }
 ```
+
 
 ## Privacy invariants (not lint-enforced — PR review enforced)
 

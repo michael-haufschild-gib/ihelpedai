@@ -56,9 +56,11 @@ Every user-submitted entry form uses a two-stage flow: **form → preview → po
 3. Preview screen shows exactly what will be posted (no `last_name` visible).
 4. If `overRedacted`, disable the post button and show the warning.
 5. "Post" calls `api.createX(input)`, includes `last_name` in the payload (server drops it).
-6. Success → show one-word confirmation ("Posted." / "Logged.") + "View it" link.
+6. Success → one of two patterns:
+   - Standalone entry pages (`HelpedForm`, `ReportForm`) show a one-word confirmation ("Posted." / "Logged.") plus a "View it" link to the new entry.
+   - Inline composers (`FeedComposer`) show "Posted." plus a "Post another" action that resets the form in place.
 
-See `src/features/helped/HelpedForm.tsx` for the reference implementation.
+See `src/features/helped/HelpedForm.tsx` (standalone) and `src/features/helped/FeedComposer.tsx` (inline) for reference.
 
 ## UI primitives (reuse, don't re-roll)
 
@@ -97,4 +99,4 @@ See `src/features/helped/HelpedForm.tsx` for the reference implementation.
 |---|---|
 | API endpoint contract (types + paths) | `src/lib/api.ts` |
 | Full PRD with 13 user stories | `docs/plans/prd-01-public-site.md` |
-| Design tokens + semantic class inventory | Serena memory `modern_css_standard` |
+| Design tokens + semantic class inventory | `docs/meta/styleguide.md` (CSS/Tailwind section) + `src/styles/theme.css` |

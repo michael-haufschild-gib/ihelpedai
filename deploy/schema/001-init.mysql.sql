@@ -46,8 +46,9 @@ CREATE TABLE IF NOT EXISTS votes (
   ip_hash     VARCHAR(64)  NOT NULL,
   created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (entry_id, entry_kind, ip_hash),
-  KEY idx_votes_ip_hash (ip_hash, entry_kind),
-  KEY idx_votes_entry   (entry_id, entry_kind)
+  -- `idx_votes_entry (entry_id, entry_kind)` is redundant — the PK already
+  -- covers that leftmost prefix.
+  KEY idx_votes_ip_hash (ip_hash, entry_kind)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS agent_keys (

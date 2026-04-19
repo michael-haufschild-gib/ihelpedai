@@ -60,13 +60,16 @@ function canPreview(s: FormState): boolean {
 }
 
 function toInput(s: FormState): ReportInput {
+  const hasReporter = s.reporter_first_name.trim() !== ''
   const base: ReportInput = {
-    reporter: {
-      first_name: s.reporter_first_name,
-      last_name: s.reporter_last_name,
-      city: s.reporter_city,
-      country: s.reporter_country,
-    },
+    reporter: hasReporter
+      ? {
+          first_name: s.reporter_first_name,
+          last_name: s.reporter_last_name,
+          city: s.reporter_city,
+          country: s.reporter_country,
+        }
+      : { first_name: '', last_name: '', city: '', country: '' },
     reported_first_name: s.reported_first_name,
     reported_last_name: s.reported_last_name,
     reported_city: s.reported_city,
@@ -233,23 +236,25 @@ function buildDraftReport(state: FormState, sanitizedText: string): Parameters<t
   }
 }
 
+type SanitizeResult = { clean: string; overRedacted: boolean }
+
 /** Preview panel: shows the draft card, disclaimer, Post/Edit controls, and errors. */
 function PreviewPanel({
   state,
   submitting,
   error,
-  overRedacted,
+  sanitized,
   onPost,
   onEdit,
 }: {
   state: FormState
   submitting: boolean
   error: string | null
-  overRedacted: boolean
+  sanitized: SanitizeResult
   onPost: () => void
   onEdit: () => void
 }) {
-  const sanitized = useMemo(() => sanitize(state.what_they_did), [state.what_they_did])
+  const overRedacted = sanitized.overRedacted
   const report = buildDraftReport(state, sanitized.clean)
   return (
     <div data-testid="rf-preview" className="flex flex-col gap-4">
@@ -339,7 +344,7 @@ export function ReportForm({ onSuccess }: ReportFormProps) {
         state={state}
         submitting={submitting}
         error={error}
-        overRedacted={sanitizedPreview.overRedacted}
+        sanitized={sanitizedPreview}
         onPost={() => {
           void handlePost()
         }}

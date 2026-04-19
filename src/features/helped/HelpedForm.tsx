@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -278,6 +278,10 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
   const [mode, setMode] = useState<Mode>('form')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const valuesRef = useRef(values)
+  useEffect(() => {
+    valuesRef.current = values
+  }, [values])
 
   const setValue = (name: FieldName, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }))
@@ -285,7 +289,7 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
   }
 
   const setBlurred = (name: FieldName) => {
-    setErrors((prev) => ({ ...prev, [name]: validateField(name, values[name]) }))
+    setErrors((prev) => ({ ...prev, [name]: validateField(name, valuesRef.current[name]) }))
   }
 
   const sanitized = useMemo(() => sanitize(values.text), [values.text])

@@ -60,7 +60,7 @@ Every non-2xx response follows this shape:
 
 ## Cross-cutting behaviors (MUST apply in every write route)
 
-1. **Zod-validate the full body.** Include `last_name` fields as required `z.string().min(1).max(40)`.
+1. **Zod-validate the full body.** Include `last_name` fields. Reported-person `last_name` is required (`z.string().min(1).max(40)`); reporter-party `last_name` may be empty for anonymous reporters (`z.string().max(40)`).
 2. **Drop `last_name` at the handler boundary.** Destructure it out before calling the store. Store DTOs have no `last_name` slot — the type system enforces this.
 3. **Sanitize free-text fields server-side.** Call `sanitize(text)`; return 400 with `fields.text = "over_redacted"` when `overRedacted` is true.
 4. **Rate-limit.** Form routes: per-hashed-IP (10/hour, 50/day) + global (500/hour). Agent API: per-key (60/hour, 1000/day).

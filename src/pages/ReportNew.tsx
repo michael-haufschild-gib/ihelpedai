@@ -71,8 +71,12 @@ export function ReportNew() {
       ) : (
         <ReportForm
           onSuccess={(r) => {
-            bumpLoyalty()
             setPosted(r)
+            try {
+              bumpLoyalty()
+            } catch {
+              // Non-critical side-effect; never block the success UI.
+            }
           }}
         />
       )}

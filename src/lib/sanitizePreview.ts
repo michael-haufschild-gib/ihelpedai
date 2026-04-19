@@ -154,11 +154,14 @@ const restorePrefix = (
 
 const TOKEN_REGEX = /\[(?:name|email|phone|link)\]/g
 
+/** Text is over-redacted when non-placeholder survivors fall to or below 20% of the original. Must match the server's threshold in `server/sanitizer/sanitize.ts`. */
+export const OVER_REDACTED_THRESHOLD = 0.2
+
 const computeOverRedacted = (original: string, clean: string): boolean => {
   const origChars = original.replace(/\s+/g, '').length
   if (origChars === 0) return false
   const survived = clean.replace(TOKEN_REGEX, '').replace(/\s+/g, '').length
-  return survived / origChars <= 0.2
+  return survived / origChars <= OVER_REDACTED_THRESHOLD
 }
 
 /**

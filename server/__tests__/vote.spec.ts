@@ -62,7 +62,7 @@ async function createReport(ip: string): Promise<string> {
       action_date: '2025-06-01',
     },
   })
-  expect(res.statusCode).toBeLessThan(300)
+  expect(res.statusCode).toBe(201)
   return (res.json() as { slug: string }).slug
 }
 

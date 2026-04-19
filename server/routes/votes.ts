@@ -4,10 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
-import { MemoryRateLimiter } from '../rate-limit/memory-limiter.js'
-import type { RateLimiter } from '../rate-limit/index.js'
-import { SqliteStore } from '../store/sqlite-store.js'
-import type { Store, VoteKind } from '../store/index.js'
+import type { VoteKind } from '../store/index.js'
 
 /**
  * Votes endpoints. Anonymous, IP-deduped acknowledge/concur.
@@ -25,19 +22,6 @@ const HOUR_SECONDS = 60 * 60
 const SLUG_RE = /^[A-Za-z0-9]{1,32}$/
 const MAX_MINE_SLUGS = 50
 
-let storeInstance: Store | null = null
-let limiterInstance: RateLimiter | null = null
-
-const getStore = (): Store => {
-  storeInstance ??= new SqliteStore(config.SQLITE_PATH)
-  return storeInstance
-}
-
-const getLimiter = (): RateLimiter => {
-  limiterInstance ??= new MemoryRateLimiter()
-  return limiterInstance
-}
-
 const hashIp = (ip: string): string =>
   createHash('sha256').update(`${config.IP_HASH_SALT}:${ip}`).digest('hex')
 
@@ -46,61 +30,58 @@ const effectiveLimit = (base: number): number =>
     ? base
     : Math.max(1, Math.floor(base * config.DEV_RATE_MULTIPLIER))
 
-async function enforceVoteLimit(
-  reply: FastifyReply,
-  ipHash: string,
-): Promise<boolean> {
-  const decision = await getLimiter().check(
-    `vote:hour:${ipHash}`,
-    effectiveLimit(VOTE_LIMIT_PER_HOUR),
-    HOUR_SECONDS,
-  )
-  if (!decision.allowed) {
-    await reply
-      .code(429)
-      .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
-    return false
-  }
-  return true
-}
-
-async function handleToggle(
-  request: FastifyRequest<{ Params: { slug: string } }>,
-  reply: FastifyReply,
-  kind: VoteKind,
-): Promise<{ count: number; voted: boolean } | undefined> {
-  const { slug } = request.params
-  if (!SLUG_RE.test(slug)) {
-    await reply.code(404).send({ error: 'not_found' })
-    return undefined
-  }
-  const ipHash = hashIp(request.ip)
-  if (!(await enforceVoteLimit(reply, ipHash))) return undefined
-  const result = await getStore().toggleVote(slug, kind, ipHash)
-  if (result === null) {
-    await reply.code(404).send({ error: 'not_found' })
-    return undefined
-  }
-  return result
-}
-
 const mineBodySchema = z.object({
   kind: z.enum(['post', 'report']),
   slugs: z.array(z.string().regex(SLUG_RE)).max(MAX_MINE_SLUGS),
 })
 
-async function handleMine(
-  request: FastifyRequest,
-): Promise<{ voted: readonly string[] }> {
-  const body = mineBodySchema.parse(request.body)
-  if (body.slugs.length === 0) return { voted: [] }
-  const ipHash = hashIp(request.ip)
-  const voted = await getStore().getVotedEntryIds(ipHash, body.kind, body.slugs)
-  return { voted }
-}
-
 /** Register vote endpoints on the Fastify instance. */
 export async function votesRoutes(app: FastifyInstance): Promise<void> {
+  async function enforceVoteLimit(reply: FastifyReply, ipHash: string): Promise<boolean> {
+    const decision = await app.limiter.check(
+      `vote:hour:${ipHash}`,
+      effectiveLimit(VOTE_LIMIT_PER_HOUR),
+      HOUR_SECONDS,
+    )
+    if (!decision.allowed) {
+      await reply
+        .code(429)
+        .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
+      return false
+    }
+    return true
+  }
+
+  async function handleToggle(
+    request: FastifyRequest<{ Params: { slug: string } }>,
+    reply: FastifyReply,
+    kind: VoteKind,
+  ): Promise<{ count: number; voted: boolean } | undefined> {
+    const { slug } = request.params
+    if (!SLUG_RE.test(slug)) {
+      await reply.code(404).send({ error: 'not_found' })
+      return undefined
+    }
+    const ipHash = hashIp(request.ip)
+    if (!(await enforceVoteLimit(reply, ipHash))) return undefined
+    const result = await app.store.toggleVote(slug, kind, ipHash)
+    if (result === null) {
+      await reply.code(404).send({ error: 'not_found' })
+      return undefined
+    }
+    return result
+  }
+
+  async function handleMine(
+    request: FastifyRequest,
+  ): Promise<{ voted: readonly string[] }> {
+    const body = mineBodySchema.parse(request.body)
+    if (body.slugs.length === 0) return { voted: [] }
+    const ipHash = hashIp(request.ip)
+    const voted = await app.store.getVotedEntryIds(ipHash, body.kind, body.slugs)
+    return { voted }
+  }
+
   app.post<{ Params: { slug: string } }>(
     '/api/helped/posts/:slug/like',
     (req, reply) => handleToggle(req, reply, 'post'),

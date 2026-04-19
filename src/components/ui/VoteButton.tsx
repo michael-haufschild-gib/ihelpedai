@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { m } from 'motion/react'
 
 import type { VoteToggleResult } from '@/lib/api'
@@ -55,15 +55,20 @@ export function VoteButton({
   'data-testid': testId,
 }: VoteButtonProps) {
   const [pending, setPending] = useState(false)
+  const inFlightRef = useRef(false)
   const display = DISPLAY[variant]
 
   const handleClick = async (): Promise<void> => {
-    if (pending || disabled) return
+    if (inFlightRef.current || disabled) return
+    inFlightRef.current = true
     setPending(true)
     try {
       const result = await onToggle()
       onSuccess?.(result)
+    } catch {
+      // Tolerate — the parent renders the authoritative count on next render.
     } finally {
+      inFlightRef.current = false
       setPending(false)
     }
   }

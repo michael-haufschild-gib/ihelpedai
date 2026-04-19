@@ -130,7 +130,7 @@ describe('last_name discard — POST /api/reports', () => {
       payload: reportPayload(),
       headers: { 'content-type': 'application/json' },
     })
-    expect(res.statusCode).toBe(200)
+    expect(res.statusCode).toBe(201)
     expect(res.body).not.toContain(MARKER)
   })
 

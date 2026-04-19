@@ -136,6 +136,5 @@ If you change the sanitizer, update both files together and keep both specs gree
 
 | Topic | Source |
 |---|---|
-| Full test style detail (ESLint test-file rules) | Serena memory `testing_detailed_patterns` |
 | PRD-driven acceptance criteria → tests | `docs/plans/prd-01-public-site.md` |
 | Rate-limit multiplier + dev affordances | `docs/plans/local-dev.md` |

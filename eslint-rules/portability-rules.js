@@ -255,13 +255,20 @@ const portabilityRules = {
           }
           if (name === 'input') {
             const typeAttr = getAttr(node, 'type')
-            if (
-              typeAttr &&
-              typeAttr.value &&
-              typeAttr.value.type === 'Literal' &&
-              typeAttr.value.value === 'hidden'
-            ) {
-              return
+            if (typeAttr && typeAttr.value) {
+              const valueNode = typeAttr.value
+              let rawType = null
+              if (valueNode.type === 'Literal') {
+                rawType = valueNode.value
+              } else if (
+                valueNode.type === 'JSXExpressionContainer' &&
+                valueNode.expression.type === 'Literal'
+              ) {
+                rawType = valueNode.expression.value
+              }
+              if (typeof rawType === 'string' && rawType.toLowerCase() === 'hidden') {
+                return
+              }
             }
             context.report({ node, messageId: 'rawInput' })
             return

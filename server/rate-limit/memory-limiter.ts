@@ -23,6 +23,14 @@ export class MemoryRateLimiter implements RateLimiter {
   }
 
   async check(bucket: string, limit: number, windowSeconds: number): Promise<RateLimitDecision> {
+    if (
+      !Number.isFinite(limit) ||
+      limit < 1 ||
+      !Number.isFinite(windowSeconds) ||
+      windowSeconds <= 0
+    ) {
+      return { allowed: false, retryAfter: 1 }
+    }
     const now = Date.now()
     const existing = this.store.get(bucket)
     if (existing === undefined || existing.expiresAt <= now) {

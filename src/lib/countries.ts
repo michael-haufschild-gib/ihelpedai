@@ -5,11 +5,11 @@
 
 /** A single ISO 3166-1 alpha-2 entry. */
 export interface Country {
-  code: string
-  name: string
+  readonly code: string
+  readonly name: string
 }
 
-const RAW: Country[] = [
+const RAW: readonly Country[] = [
   { code: 'AF', name: 'Afghanistan' },
   { code: 'AX', name: 'Åland Islands' },
   { code: 'AL', name: 'Albania' },
@@ -263,7 +263,7 @@ const RAW: Country[] = [
 
 /**
  * Full ISO 3166-1 alpha-2 country list, sorted by English short name using
- * the user's current locale collation. Rendered in every Country dropdown.
+ * English (`'en'`) collation. Rendered in every Country dropdown.
  */
 export const COUNTRIES: readonly Country[] = [...RAW].sort((a, b) =>
   a.name.localeCompare(b.name, 'en'),

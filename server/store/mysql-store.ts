@@ -77,7 +77,7 @@ export class MysqlStore implements Store {
   }
 
   async incrementApiKeyUsage(_keyHash: string): Promise<void> {
-    NOT_IMPL('incrementApiKeyUsage')
+    return NOT_IMPL('incrementApiKeyUsage')
   }
 
   async countEntries(_table: CountableTable): Promise<number> {

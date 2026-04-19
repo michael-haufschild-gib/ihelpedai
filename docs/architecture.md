@@ -41,7 +41,7 @@
 
 ## Decision tree — where do I put X?
 
-```
+```text
 Is it shared across features?           → src/components/ui/ (primitive)
 Is it one feature's internal widget?    → src/features/<name>/
 Is it a full page?                      → src/pages/

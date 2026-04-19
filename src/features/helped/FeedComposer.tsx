@@ -350,40 +350,6 @@ type ComposerCallbacks = {
   post: () => void
 }
 
-/** Derives the user-action callbacks for a given composer state + parent hook. */
-function buildComposerCallbacks(
-  state: ComposerState,
-  onPosted: (() => void) | undefined,
-): ComposerCallbacks {
-  const submit = () => {
-    state.setSubmitting(true)
-    state.setSubmitError(null)
-    createHelpedPost(state.values)
-      .then(() => {
-        bumpLoyalty()
-        state.setSubmitting(false)
-        state.setMode('posted')
-        state.reset()
-        onPosted?.()
-      })
-      .catch((err: unknown) => {
-        state.setSubmitting(false)
-        if (err instanceof ApiError) state.setSubmitError(formatApiError(err))
-        else state.setSubmitError('Something went wrong. Try again.')
-      })
-  }
-  return {
-    open: () => state.setMode('editing'),
-    cancel: () => {
-      state.setMode('closed')
-      state.reset()
-    },
-    preview: () => state.setMode('previewing'),
-    edit: () => state.setMode('editing'),
-    post: submit,
-  }
-}
-
 type BodyProps = {
   state: ComposerState
   fields: FieldsProps
@@ -466,8 +432,45 @@ function ComposerBody({ state, fields, sanitized, cb }: BodyProps) {
 export function FeedComposer({ onPosted }: FeedComposerProps) {
   const state = useComposerState()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const inFlightRef = useRef(false)
   const sanitized = useMemo(() => sanitize(state.values.text), [state.values.text])
-  const cb = buildComposerCallbacks(state, onPosted)
+
+  const submit = (): void => {
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    state.setSubmitting(true)
+    state.setSubmitError(null)
+    createHelpedPost(state.values)
+      .then(() => {
+        try {
+          bumpLoyalty()
+        } catch {
+          // Non-critical client-side side effect; keep success UI intact.
+        }
+        inFlightRef.current = false
+        state.setSubmitting(false)
+        state.setMode('posted')
+        state.reset()
+        onPosted?.()
+      })
+      .catch((err: unknown) => {
+        inFlightRef.current = false
+        state.setSubmitting(false)
+        if (err instanceof ApiError) state.setSubmitError(formatApiError(err))
+        else state.setSubmitError('Something went wrong. Try again.')
+      })
+  }
+
+  const cb: ComposerCallbacks = {
+    open: () => state.setMode('editing'),
+    cancel: () => {
+      state.setMode('closed')
+      state.reset()
+    },
+    preview: () => state.setMode('previewing'),
+    edit: () => state.setMode('editing'),
+    post: submit,
+  }
   useEffect(() => {
     if (state.mode !== 'editing') return
     const t = window.setTimeout(() => textareaRef.current?.focus(), 80)

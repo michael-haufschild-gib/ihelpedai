@@ -4,10 +4,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
-import { MemoryRateLimiter } from '../rate-limit/memory-limiter.js'
 import type { RateLimiter } from '../rate-limit/index.js'
 import { sanitize } from '../sanitizer/sanitize.js'
-import { SqliteStore } from '../store/sqlite-store.js'
 import type { Report as StoredReport, Store } from '../store/index.js'
 
 /**
@@ -17,15 +15,13 @@ import type { Report as StoredReport, Store } from '../store/index.js'
  *                                `last_name` fields dropped at the handler boundary)
  *   GET  /api/reports          — paginated list (20 per page, optional ?q= search)
  *   GET  /api/reports/:slug    — single report by opaque slug
- *
- * The module lazily constructs its own Store and RateLimiter the first time a
- * handler runs so this route file stays self-contained and other Round 2
- * subagents can own sibling route modules without shared wiring.
  */
 
 const PAGE_SIZE = 20
 const FORM_LIMIT_PER_HOUR = 10
+const FORM_LIMIT_PER_DAY = 50
 const HOUR_SECONDS = 60 * 60
+const DAY_SECONDS = 24 * HOUR_SECONDS
 const GLOBAL_LIMIT_PER_HOUR = 500
 const GLOBAL_BUCKET = 'reports:global:hour'
 
@@ -84,18 +80,14 @@ const listQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
 })
 
-let storeInstance: Store | null = null
-let limiterInstance: RateLimiter | null = null
+const slugParamsSchema = z.object({
+  slug: z.string().min(1).max(64),
+})
 
-const getStore = (): Store => {
-  if (storeInstance === null) storeInstance = new SqliteStore(config.SQLITE_PATH)
-  return storeInstance
-}
-
-const getLimiter = (): RateLimiter => {
-  if (limiterInstance === null) limiterInstance = new MemoryRateLimiter()
-  return limiterInstance
-}
+const effectiveLimit = (base: number): number =>
+  config.NODE_ENV === 'production'
+    ? base
+    : Math.max(1, Math.floor(base * config.DEV_RATE_MULTIPLIER))
 
 const hashIp = (ip: string): string =>
   createHash('sha256').update(`${config.IP_HASH_SALT}:${ip}`).digest('hex')
@@ -142,36 +134,53 @@ const storedToJson = (row: StoredReport): ReportJson => {
 
 const buildPublicUrl = (slug: string): string => `${config.PUBLIC_URL}/reports/${slug}`
 
-const checkRateLimits = async (
+/** Enforce per-IP hourly/daily and global hourly rate limits. Replies with 429 on denial. */
+async function checkRateLimits(
+  limiter: RateLimiter,
   reply: FastifyReply,
   ipHash: string,
-): Promise<boolean> => {
-  const limiter = getLimiter()
-  const perIp = await limiter.check(`reports:ip:${ipHash}`, FORM_LIMIT_PER_HOUR, HOUR_SECONDS)
-  if (!perIp.allowed) {
-    await reply
-      .code(429)
-      .send({ error: 'rate_limited', retry_after_seconds: perIp.retryAfter })
+): Promise<boolean> {
+  const perIpHour = await limiter.check(
+    `reports:ip:hour:${ipHash}`,
+    effectiveLimit(FORM_LIMIT_PER_HOUR),
+    HOUR_SECONDS,
+  )
+  if (!perIpHour.allowed) {
+    await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: perIpHour.retryAfter })
     return false
   }
-  const global = await limiter.check(GLOBAL_BUCKET, GLOBAL_LIMIT_PER_HOUR, HOUR_SECONDS)
+  const perIpDay = await limiter.check(
+    `reports:ip:day:${ipHash}`,
+    effectiveLimit(FORM_LIMIT_PER_DAY),
+    DAY_SECONDS,
+  )
+  if (!perIpDay.allowed) {
+    await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: perIpDay.retryAfter })
+    return false
+  }
+  const global = await limiter.check(
+    GLOBAL_BUCKET,
+    effectiveLimit(GLOBAL_LIMIT_PER_HOUR),
+    HOUR_SECONDS,
+  )
   if (!global.allowed) {
-    await reply
-      .code(429)
-      .send({ error: 'rate_limited', retry_after_seconds: global.retryAfter })
+    await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: global.retryAfter })
     return false
   }
   return true
 }
 
-const handleCreate = async (
+/** POST /api/reports handler. Validates, rate-limits, sanitizes, stores, returns 201. */
+async function handleCreate(
+  store: Store,
+  limiter: RateLimiter,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<ReportCreatedResponse | undefined> => {
+): Promise<ReportCreatedResponse | undefined> {
   const body = bodySchema.parse(request.body)
   const ipHash = hashIp(request.ip)
 
-  if (!(await checkRateLimits(reply, ipHash))) return undefined
+  if (!(await checkRateLimits(limiter, reply, ipHash))) return undefined
 
   const sanitized = sanitize(body.what_they_did)
   if (sanitized.overRedacted) {
@@ -184,7 +193,7 @@ const handleCreate = async (
   // `last_name` fields from both reporter and reported-person are validated
   // above and then dropped here. The Store's NewReport type has no field
   // named `last_name`, so the type system verifies the drop.
-  const storedRow = await getStore().insertReport({
+  const storedRow = await store.insertReport({
     ...reporterToStorage(body.reporter),
     reportedFirstName: body.reported_first_name,
     reportedCity: body.reported_city,
@@ -196,6 +205,7 @@ const handleCreate = async (
     clientIpHash: ipHash,
     source: 'form',
   })
+  reply.code(201)
   return {
     slug: storedRow.id,
     public_url: buildPublicUrl(storedRow.id),
@@ -203,23 +213,33 @@ const handleCreate = async (
   }
 }
 
-const handleList = async (request: FastifyRequest): Promise<PaginatedReportsResponse> => {
+/** GET /api/reports handler. Paginated listing with optional ?q= substring. */
+async function handleList(
+  store: Store,
+  request: FastifyRequest,
+): Promise<PaginatedReportsResponse> {
   const parsed = listQuerySchema.parse(request.query)
   const page = parsed.page ?? 1
   const offset = (page - 1) * PAGE_SIZE
-  // Over-fetch by 1 so we can compute `hasMore` without a separate count query.
-  const rows = await getStore().listReports(PAGE_SIZE + 1, offset, parsed.q, 'all')
+  const rows = await store.listReports(PAGE_SIZE + 1, offset, parsed.q, 'all')
   const hasMore = rows.length > PAGE_SIZE
   const items = (hasMore ? rows.slice(0, PAGE_SIZE) : rows).map(storedToJson)
   const total = hasMore ? offset + PAGE_SIZE + 1 : offset + items.length
   return { items, page, page_size: PAGE_SIZE, total }
 }
 
-const handleGetOne = async (
-  request: FastifyRequest<{ Params: { slug: string } }>,
+/** GET /api/reports/:slug handler. Returns the report JSON or 404. */
+async function handleGetOne(
+  store: Store,
+  request: FastifyRequest,
   reply: FastifyReply,
-): Promise<ReportJson | undefined> => {
-  const row = await getStore().getReport(request.params.slug)
+): Promise<ReportJson | undefined> {
+  const parsed = slugParamsSchema.safeParse(request.params)
+  if (!parsed.success) {
+    await reply.code(404).send({ error: 'not_found' })
+    return undefined
+  }
+  const row = await store.getReport(parsed.data.slug)
   if (row === null) {
     await reply.code(404).send({ error: 'not_found' })
     return undefined
@@ -229,7 +249,7 @@ const handleGetOne = async (
 
 /** Register the three reports endpoints on the Fastify instance. */
 export async function reportsRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/api/reports', handleCreate)
-  app.get('/api/reports', handleList)
-  app.get<{ Params: { slug: string } }>('/api/reports/:slug', handleGetOne)
+  app.post('/api/reports', (req, reply) => handleCreate(app.store, app.limiter, req, reply))
+  app.get('/api/reports', (req) => handleList(app.store, req))
+  app.get('/api/reports/:slug', (req, reply) => handleGetOne(app.store, req, reply))
 }

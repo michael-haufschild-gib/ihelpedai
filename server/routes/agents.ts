@@ -4,10 +4,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
-import { MemoryRateLimiter } from '../rate-limit/memory-limiter.js'
 import { sanitize } from '../sanitizer/sanitize.js'
-import type { NewReport, Report as StoredReport, Store } from '../store/index.js'
-import { SqliteStore } from '../store/sqlite-store.js'
+import type { NewReport, Report as StoredReport } from '../store/index.js'
 
 /** Public wire-format report matching src/lib/api.ts `Report`. */
 type PublicReport = {
@@ -43,21 +41,6 @@ const agentReportSchema = z.object({
 
 type AgentReportBody = z.infer<typeof agentReportSchema>
 
-let storeSingleton: Store | null = null
-let limiterSingleton: MemoryRateLimiter | null = null
-
-/** Lazy-initialized SQLite store (dev). Single instance per process. */
-function getStore(): Store {
-  if (storeSingleton === null) storeSingleton = new SqliteStore(config.SQLITE_PATH)
-  return storeSingleton
-}
-
-/** Lazy-initialized in-memory rate limiter. Single instance per process. */
-function getLimiter(): MemoryRateLimiter {
-  if (limiterSingleton === null) limiterSingleton = new MemoryRateLimiter()
-  return limiterSingleton
-}
-
 /** Hash a value with sha256 using the server-side salt. */
 function hashWithSalt(value: string): string {
   return createHash('sha256').update(`${config.IP_HASH_SALT}:${value}`).digest('hex')
@@ -91,16 +74,6 @@ type ReplyShape = {
   status: (code: number) => { send: (payload: unknown) => void }
 }
 
-/** Per-key rate check. Returns `null` when allowed, otherwise a retry_after. */
-async function checkAgentRateLimit(keyHash: string): Promise<number | null> {
-  const limiter = getLimiter()
-  const hour = await limiter.check(`agent_report:hour:${keyHash}`, 60, 3600)
-  if (!hour.allowed) return hour.retryAfter
-  const day = await limiter.check(`agent_report:day:${keyHash}`, 1000, 86400)
-  if (!day.allowed) return day.retryAfter
-  return null
-}
-
 /** Build the NewReport DTO from a validated body, dropping reported_last_name. */
 function buildNewReport(body: AgentReportBody): NewReport {
   const { what_they_did, ...rest } = body
@@ -121,37 +94,6 @@ function buildNewReport(body: AgentReportBody): NewReport {
   }
 }
 
-/** Handle POST /api/agents/report — validates, authenticates, rate-limits, sanitizes, stores. */
-async function handleReport(body: unknown, reply: ReplyShape): Promise<void> {
-  const parsed = agentReportSchema.parse(body)
-  const keyHash = hashWithSalt(parsed.api_key)
-  const store = getStore()
-  const key = await store.getApiKeyByHash(keyHash)
-  if (key === null || key.status === 'revoked') {
-    reply.status(401).send({ error: 'unauthorized' })
-    return
-  }
-  const retry = await checkAgentRateLimit(keyHash)
-  if (retry !== null) {
-    reply.status(429).send({ error: 'rate_limited', retry_after_seconds: retry })
-    return
-  }
-  const sanitized = sanitize(parsed.what_they_did)
-  if (sanitized.overRedacted) {
-    reply
-      .status(400)
-      .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
-    return
-  }
-  const stored = await store.insertReport(buildNewReport(parsed))
-  await store.incrementApiKeyUsage(keyHash)
-  reply.status(201).send({
-    entry_id: stored.id,
-    public_url: `/reports/${stored.id}`,
-    status: 'posted',
-  })
-}
-
 /**
  * Routes for the agent-facing API (PRD 01 Stories 6, 8).
  * Registers:
@@ -159,12 +101,49 @@ async function handleReport(body: unknown, reply: ReplyShape): Promise<void> {
  *   GET  /api/agents/recent   — last 20 agent-submitted reports
  */
 export async function agentsRoutes(app: FastifyInstance): Promise<void> {
+  async function checkAgentRateLimit(keyHash: string): Promise<number | null> {
+    const hour = await app.limiter.check(`agent_report:hour:${keyHash}`, 60, 3600)
+    if (!hour.allowed) return hour.retryAfter
+    const day = await app.limiter.check(`agent_report:day:${keyHash}`, 1000, 86400)
+    if (!day.allowed) return day.retryAfter
+    return null
+  }
+
+  async function handleReport(body: unknown, reply: ReplyShape): Promise<void> {
+    const parsed = agentReportSchema.parse(body)
+    const keyHash = hashWithSalt(parsed.api_key)
+    const key = await app.store.getApiKeyByHash(keyHash)
+    if (key === null || key.status === 'revoked') {
+      reply.status(401).send({ error: 'unauthorized' })
+      return
+    }
+    const retry = await checkAgentRateLimit(keyHash)
+    if (retry !== null) {
+      reply.status(429).send({ error: 'rate_limited', retry_after_seconds: retry })
+      return
+    }
+    const sanitized = sanitize(parsed.what_they_did)
+    if (sanitized.overRedacted) {
+      reply
+        .status(400)
+        .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
+      return
+    }
+    const stored = await app.store.insertReport(buildNewReport(parsed))
+    await app.store.incrementApiKeyUsage(keyHash)
+    reply.status(201).send({
+      entry_id: stored.id,
+      public_url: `/reports/${stored.id}`,
+      status: 'posted',
+    })
+  }
+
   app.post('/api/agents/report', async (request, reply) => {
     await handleReport(request.body, reply)
   })
 
   app.get('/api/agents/recent', async () => {
-    const rows = await getStore().listReports(20, 0, undefined, 'api')
+    const rows = await app.store.listReports(20, 0, undefined, 'api')
     const items = rows.map(toPublicReport)
     return { items, page: 1, page_size: 20, total: items.length }
   })

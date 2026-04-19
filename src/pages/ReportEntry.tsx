@@ -62,6 +62,15 @@ function copyCurrentUrl(setCopied: (v: boolean) => void): void {
 
 function useConcurred(slug: string | undefined): boolean {
   const [voted, setVoted] = useState(false)
+  const [lastSlug, setLastSlug] = useState<string | undefined>(slug)
+
+  // Reset during render when slug changes so a prior `true` never bleeds
+  // into a new entry if the vote fetch later errors out.
+  if (lastSlug !== slug) {
+    setLastSlug(slug)
+    setVoted(false)
+  }
+
   useEffect(() => {
     if (slug === undefined || slug === '') return undefined
     let cancelled = false
@@ -69,7 +78,9 @@ function useConcurred(slug: string | undefined): boolean {
       .then((r) => {
         if (!cancelled) setVoted(r.voted.includes(slug))
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!cancelled) setVoted(false)
+      })
     return () => {
       cancelled = true
     }
@@ -87,6 +98,12 @@ export function ReportEntry() {
   const state = useReport(slug)
   const voted = useConcurred(slug)
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return undefined
+    const t = window.setTimeout(() => setCopied(false), 1500)
+    return () => window.clearTimeout(t)
+  }, [copied])
 
   return (
     <section data-testid="page-report-entry" className="flex flex-col gap-6">

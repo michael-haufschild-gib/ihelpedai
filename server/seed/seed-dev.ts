@@ -189,4 +189,9 @@ export async function seedDev(): Promise<void> {
   }
 }
 
-await seedDev()
+try {
+  await seedDev()
+} catch (err) {
+  process.stderr.write(`[seed-dev] failed: ${err instanceof Error ? err.message : String(err)}\n`)
+  process.exit(1)
+}

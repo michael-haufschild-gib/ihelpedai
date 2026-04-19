@@ -16,7 +16,7 @@ export function StatusPulse({ label, 'data-testid': testId }: StatusPulseProps) 
     >
       <span
         aria-hidden="true"
-        className="inline-block h-1.5 w-1.5 animate-status-pulse rounded-full bg-accent/60 shadow-accent-sm"
+        className="inline-block h-1.5 w-1.5 animate-status-pulse motion-reduce:animate-none rounded-full bg-accent/60 shadow-accent-sm"
       />
       {label}
     </span>

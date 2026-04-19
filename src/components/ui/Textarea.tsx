@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useId } from 'react'
 
 /** Props for the Textarea component. */
 export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -35,9 +35,13 @@ export const Textarea = ({
   label,
   disabled,
   ref,
+  id,
   ...props
 }: TextareaProps & { ref?: React.Ref<HTMLTextAreaElement> }) => {
   const hasError = error !== undefined && error !== false && error !== ''
+  const fallbackId = useId()
+  const textareaId = id ?? `textarea-${fallbackId}`
+  const errorId = typeof error === 'string' && error !== '' ? `${textareaId}-error` : undefined
   const textareaClassName = buildTextareaClassName({
     hasError,
     disabled: disabled === true,
@@ -50,17 +54,24 @@ export const Textarea = ({
       data-testid="textarea-container"
     >
       {label !== undefined && label !== '' && (
-        <label className="text-xs font-medium text-text-secondary ms-1">{label}</label>
+        <label htmlFor={textareaId} className="text-xs font-medium text-text-secondary ms-1">
+          {label}
+        </label>
       )}
       <textarea
         data-testid="textarea"
         ref={ref}
+        id={textareaId}
+        aria-invalid={hasError ? true : undefined}
+        aria-describedby={errorId}
         disabled={disabled}
         className={textareaClassName}
         {...props}
       />
       {typeof error === 'string' && error !== '' && (
-        <span className="text-xs text-danger ms-1">{error}</span>
+        <span id={errorId} className="text-xs text-danger ms-1">
+          {error}
+        </span>
       )}
     </div>
   )

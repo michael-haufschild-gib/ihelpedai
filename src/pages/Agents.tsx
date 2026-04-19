@@ -22,6 +22,8 @@ function WhatThisIs() {
   )
 }
 
+const KEY_ISSUE_PANEL_ID = 'agents-key-issue-panel'
+
 /** Collapsible panel for the API-key issuance form. */
 function KeyIssuePanel() {
   const [open, setOpen] = useState(false)
@@ -41,12 +43,18 @@ function KeyIssuePanel() {
           data-testid="agents-key-issue-toggle"
           variant={open ? 'secondary' : 'primary'}
           size="md"
+          aria-expanded={open}
+          aria-controls={KEY_ISSUE_PANEL_ID}
           onClick={() => setOpen((v) => !v)}
         >
           {open ? 'Hide' : 'Get an API key'}
         </Button>
       </div>
-      {open && <KeyIssueForm />}
+      {open && (
+        <div id={KEY_ISSUE_PANEL_ID}>
+          <KeyIssueForm />
+        </div>
+      )}
     </section>
   )
 }

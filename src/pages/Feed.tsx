@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
@@ -104,33 +104,29 @@ function useMyVotes(kind: 'post' | 'report', slugsKey: string): Set<string> {
 function useFeedData(page: number, refreshSeq: number): FeedState {
   const [state, setState] = useState<FeedState>({ status: 'loading' })
   const [lastKey, setLastKey] = useState<string | null>(null)
-  const mountedRef = useRef(true)
   const key = `${String(page)}|${String(refreshSeq)}`
 
-  // Derive `loading` state during render when inputs change — avoids setState
-  // in effect (React 19 rule) while keeping the UI in lockstep with fetches.
+  // Reset to loading during render when inputs change. Keeps eslint's
+  // set-state-in-effect rule happy (vs. calling setState inside useEffect).
   if (lastKey !== key) {
     setLastKey(key)
     setState({ status: 'loading' })
   }
 
   useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
-
-  useEffect(() => {
+    let cancelled = false
     listHelpedPosts({ page })
       .then((data) => {
-        if (mountedRef.current) setState({ status: 'ready', data })
+        if (!cancelled) setState({ status: 'ready', data })
       })
       .catch((err: unknown) => {
-        if (!mountedRef.current) return
+        if (cancelled) return
         const message = err instanceof ApiError ? 'Could not load feed.' : 'Network error.'
         setState({ status: 'error', message })
       })
+    return () => {
+      cancelled = true
+    }
   }, [page, refreshSeq])
   return state
 }

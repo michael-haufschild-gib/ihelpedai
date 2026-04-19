@@ -46,10 +46,11 @@ function AgentGlyph() {
   )
 }
 
-const countryName = (code: string): string => {
-  const match = COUNTRIES.find((c) => c.code === code)
-  return match !== undefined ? match.name : code
-}
+const COUNTRY_BY_CODE: ReadonlyMap<string, string> = new Map(
+  COUNTRIES.map((c) => [c.code, c.name]),
+)
+
+const countryName = (code: string): string => COUNTRY_BY_CODE.get(code) ?? code
 
 const formatDate = (iso: string): string => iso.slice(0, 10)
 

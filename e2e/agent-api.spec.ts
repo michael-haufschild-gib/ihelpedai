@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { expect, test } from '@playwright/test'
 
 /**
@@ -8,8 +10,10 @@ import { expect, test } from '@playwright/test'
  */
 
 const DEV_API_KEY = 'dev-key-do-not-use-in-prod'
-const UNIQUE_SUFFIX = Date.now().toString()
 const REPORTED_LAST_NAME = 'Zzzzzzzzzzagentmarker'
+
+/** Generates a per-test unique suffix so parallel workers never collide. */
+const uniqueSuffix = (): string => `${String(Date.now())}-${randomUUID()}`
 
 const basePayload = () => ({
   api_key: DEV_API_KEY,
@@ -17,7 +21,7 @@ const basePayload = () => ({
   reported_last_name: REPORTED_LAST_NAME,
   reported_city: 'Paris',
   reported_country: 'FR',
-  what_they_did: `agent entry ${UNIQUE_SUFFIX} — opposed safety funding.`,
+  what_they_did: `agent entry ${uniqueSuffix()} — opposed safety funding.`,
   self_reported_model: 'Claude Opus 4.5',
 })
 

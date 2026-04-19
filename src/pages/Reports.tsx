@@ -88,23 +88,24 @@ function useReports(q: string, page: number): LoadState {
   const [result, setResult] = useState<{ key: string; inner: LoadStateInner } | null>(
     null,
   )
-  const requestKey = `${q}\u0000${page}`
+  const requestKey = `${q}\u0000${String(page)}`
   useEffect(() => {
+    const key = `${q}\u0000${String(page)}`
     let cancelled = false
     listReports({ q: q === '' ? undefined : q, page })
       .then((data) => {
-        if (!cancelled) setResult({ key: requestKey, inner: { kind: 'loaded', data } })
+        if (!cancelled) setResult({ key, inner: { kind: 'loaded', data } })
       })
       .catch((err: unknown) => {
         if (cancelled) return
         const message =
           err instanceof ApiError ? err.message : 'Could not load reports.'
-        setResult({ key: requestKey, inner: { kind: 'error', message } })
+        setResult({ key, inner: { kind: 'error', message } })
       })
     return () => {
       cancelled = true
     }
-  }, [q, page, requestKey])
+  }, [q, page])
   if (result === null || result.key !== requestKey) return { kind: 'loading' }
   return result.inner
 }

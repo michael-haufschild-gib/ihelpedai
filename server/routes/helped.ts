@@ -4,11 +4,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
-import { MemoryRateLimiter } from '../rate-limit/memory-limiter.js'
 import type { RateLimiter } from '../rate-limit/index.js'
 import { sanitize } from '../sanitizer/sanitize.js'
 import type { Post, Store } from '../store/index.js'
-import { SqliteStore } from '../store/sqlite-store.js'
 
 /**
  * Shape returned on the public wire for a single post. `last_name` is never
@@ -69,14 +67,10 @@ const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
 })
 
-/**
- * Module-scoped dev dependencies. Instantiated on import so the route module
- * stays a single registrar; other feature modules will follow the same pattern.
- * A full shared-state design (one Store, one RateLimiter for the whole app) is
- * a Round 3 integration task.
- */
-const store: Store = new SqliteStore(config.SQLITE_PATH)
-const limiter: RateLimiter = new MemoryRateLimiter()
+/** Zod schema for the :slug route param. */
+const slugParamsSchema = z.object({
+  slug: z.string().min(1).max(64),
+})
 
 /** Multiplies a raw limit by DEV_RATE_MULTIPLIER except in production. */
 const effectiveLimit = (base: number): number =>
@@ -99,11 +93,8 @@ const toWire = (p: Post): HelpedPostWire => ({
   created_at: p.createdAt,
 })
 
-/**
- * Checks all rate-limit buckets for an incoming POST. Returns the retryAfter
- * in seconds if any bucket is exhausted, or null if the request may proceed.
- */
-async function checkRateLimits(ipHash: string): Promise<number | null> {
+/** Runs the three rate-limit checks. Returns retry-after seconds if any bucket denies. */
+async function checkRateLimits(limiter: RateLimiter, ipHash: string): Promise<number | null> {
   const hour = await limiter.check(
     `helped:post:hour:${ipHash}`,
     effectiveLimit(PER_IP_HOURLY_LIMIT),
@@ -125,10 +116,15 @@ async function checkRateLimits(ipHash: string): Promise<number | null> {
   return null
 }
 
-/** POST handler: validates, sanitizes, rate-limits, and stores a new post. */
-async function handleCreate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+/** POST /api/helped/posts handler. Validates, sanitizes, rate-limits, and stores. */
+async function handleCreate(
+  store: Store,
+  limiter: RateLimiter,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
   const ipHash = hashIp(request.ip)
-  const retryAfter = await checkRateLimits(ipHash)
+  const retryAfter = await checkRateLimits(limiter, ipHash)
   if (retryAfter !== null) {
     reply.code(429).send({ error: 'rate_limited', retry_after_seconds: retryAfter })
     return
@@ -166,8 +162,12 @@ async function handleCreate(request: FastifyRequest, reply: FastifyReply): Promi
   })
 }
 
-/** GET list handler: paginated, optionally filtered by `q`. */
-async function handleList(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+/** GET /api/helped/posts handler. Paginated, optional ?q= substring filter. */
+async function handleList(
+  store: Store,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
   const parsed = listQuerySchema.safeParse(request.query)
   if (!parsed.success) {
     reply.code(400).send({ error: 'invalid_input' })
@@ -188,10 +188,18 @@ async function handleList(request: FastifyRequest, reply: FastifyReply): Promise
   reply.code(200).send(body)
 }
 
-/** GET one handler: returns a single live post by slug, or 404. */
-async function handleGetOne(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const { slug } = request.params as { slug: string }
-  const post = await store.getPost(slug)
+/** GET /api/helped/posts/:slug handler. Returns the live post or 404. */
+async function handleGetOne(
+  store: Store,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const parsed = slugParamsSchema.safeParse(request.params)
+  if (!parsed.success) {
+    reply.code(404).send({ error: 'not_found' })
+    return
+  }
+  const post = await store.getPost(parsed.data.slug)
   if (post === null || post.status !== 'live') {
     reply.code(404).send({ error: 'not_found' })
     return
@@ -209,7 +217,7 @@ async function handleGetOne(request: FastifyRequest, reply: FastifyReply): Promi
  * boundary per PRD Story 11; the Store layer never receives it.
  */
 export async function helpedRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/api/helped/posts', handleCreate)
-  app.get('/api/helped/posts', handleList)
-  app.get('/api/helped/posts/:slug', handleGetOne)
+  app.post('/api/helped/posts', (req, reply) => handleCreate(app.store, app.limiter, req, reply))
+  app.get('/api/helped/posts', (req, reply) => handleList(app.store, req, reply))
+  app.get('/api/helped/posts/:slug', (req, reply) => handleGetOne(app.store, req, reply))
 }

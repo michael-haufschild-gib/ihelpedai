@@ -20,6 +20,8 @@ function useEntry(slug: string | undefined): EntryState {
   const [state, setState] = useState<EntryState>(() => initialEntryState(slug))
   const [lastSlug, setLastSlug] = useState<string | undefined>(slug)
 
+  // Reset during render when the slug changes so the effect always sees a
+  // fresh `loading` baseline without violating set-state-in-effect lint.
   if (lastSlug !== slug) {
     setLastSlug(slug)
     setState(initialEntryState(slug))

@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PreviewCard } from '@/features/helped/PreviewCard'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('PreviewCard', () => {
   it('renders header with first name and resolved country label', () => {
@@ -33,9 +37,10 @@ describe('PreviewCard', () => {
   })
 
   it("renders today's date when no createdAt is provided", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-19T12:00:00.000Z'))
     render(<PreviewCard firstName="Sam" city="Berlin" country="DE" text="hi" />)
-    const today = new Date().toISOString().slice(0, 10)
-    expect(screen.getByTestId('preview-card-date')).toHaveTextContent(today)
+    expect(screen.getByTestId('preview-card-date')).toHaveTextContent('2026-04-19')
   })
 
   it('renders a provided createdAt stamp as YYYY-MM-DD', () => {

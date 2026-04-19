@@ -8,6 +8,13 @@ set -euo pipefail
 HOST="${IHELPED_DEPLOY_HOST:-calmerapy}"
 REMOTE_ROOT="${IHELPED_DEPLOY_ROOT:-/var/www/ihelped.ai}"
 
+# `rsync --delete` with a dangerous REMOTE_ROOT (empty or "/") would wipe the
+# target host. Fail fast before any rsync touches the remote.
+if [[ -z "${REMOTE_ROOT}" || "${REMOTE_ROOT}" == "/" || "${REMOTE_ROOT}" == "." ]]; then
+  echo "[deploy] refusing to deploy: unsafe REMOTE_ROOT='${REMOTE_ROOT}'" >&2
+  exit 1
+fi
+
 echo "[deploy] building frontend + server"
 pnpm build
 pnpm build:server
@@ -22,5 +29,8 @@ rsync -az --delete \
 
 echo "[deploy] restarting systemd unit and reloading nginx"
 ssh "${HOST}" 'sudo systemctl restart ihelped-api && sudo nginx -s reload'
+
+echo "[deploy] verifying health endpoint"
+ssh "${HOST}" 'curl --fail --silent --show-error --max-time 5 --retry 5 --retry-delay 1 --retry-all-errors http://127.0.0.1:3001/api/health >/dev/null'
 
 echo "[deploy] done"
