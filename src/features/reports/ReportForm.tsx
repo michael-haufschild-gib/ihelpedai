@@ -6,7 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { ApiError, createReport, type ReportCreated, type ReportInput } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
-import { sanitize } from '@/lib/sanitizePreview'
+import { sanitize, type SanitizeResult } from '@/lib/sanitizePreview'
 
 import { ReportCard } from './ReportCard'
 
@@ -189,8 +189,8 @@ function BodyFields({
   const charCount = state.what_they_did.length
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-xs font-medium text-text-secondary">What did they do?</label>
       <Textarea
+        label="What did they do?"
         data-testid="rf-what-they-did"
         className="min-h-24"
         maxLength={MAX_TEXT}
@@ -235,8 +235,6 @@ function buildDraftReport(state: FormState, sanitizedText: string): Parameters<t
     submitted_via_api: false,
   }
 }
-
-type SanitizeResult = { clean: string; overRedacted: boolean }
 
 /** Preview panel: shows the draft card, disclaimer, Post/Edit controls, and errors. */
 function PreviewPanel({

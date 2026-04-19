@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { ApiError, createHelpedPost } from '@/lib/api'
+import { formatApiError } from '@/lib/formatApiError'
 import { bumpLoyalty } from '@/lib/loyalty'
 import { sanitize } from '@/lib/sanitizePreview'
 
@@ -29,20 +30,6 @@ export interface FeedComposerProps {
 type Mode = 'closed' | 'editing' | 'previewing' | 'posted'
 
 const ROW = 'flex flex-col gap-3 sm:flex-row'
-
-/** Maps an `ApiError` to a short user-facing string. */
-function formatApiError(err: ApiError): string {
-  if (err.kind === 'rate_limited') return "You're posting too fast. Try again later."
-  if (err.kind === 'invalid_input') {
-    if (err.fields?.text === 'over_redacted') {
-      return 'Most of what you wrote was redacted for privacy. Edit and re-preview.'
-    }
-    const first = err.fields ? Object.keys(err.fields)[0] : undefined
-    if (first !== undefined) return `Check the ${first.replace('_', ' ')} field.`
-    return 'Some fields are invalid. Edit and try again.'
-  }
-  return 'Something went wrong. Try again.'
-}
 
 function ClosedComposer({ onOpen }: { onOpen: () => void }) {
   return (

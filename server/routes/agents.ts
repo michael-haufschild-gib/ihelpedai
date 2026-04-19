@@ -131,8 +131,9 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
       return
     }
-    const stored = await app.store.insertReport(buildNewReport(parsed))
-    await app.store.incrementApiKeyUsage(keyHash)
+    // Insert the report and bump key usage in a single transaction so a
+    // failed usage bump can't leave an orphan report that a retry duplicates.
+    const stored = await app.store.insertAgentReport(buildNewReport(parsed), keyHash)
     reply.status(201).send({
       entry_id: stored.id,
       public_url: `/reports/${stored.id}`,

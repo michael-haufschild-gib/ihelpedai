@@ -31,7 +31,16 @@ APP_VERSION="${IHELPED_APP_VERSION:-$(git rev-parse --short HEAD)}"
 ENV_FILE="${IHELPED_REMOTE_ENV_FILE:-/etc/ihelped.env}"
 
 echo "[deploy] publishing APP_VERSION=${APP_VERSION} to ${ENV_FILE}"
-ssh "${HOST}" "sudo sh -c 'if [ -f ${ENV_FILE} ]; then sed -i \"/^APP_VERSION=/d\" ${ENV_FILE}; fi; echo APP_VERSION=${APP_VERSION} >> ${ENV_FILE}'"
+# Pass ENV_FILE and APP_VERSION as positional args so the remote shell never
+# parses their literal contents — prevents injection from unusual values.
+ssh "${HOST}" sudo sh -s -- "${ENV_FILE}" "${APP_VERSION}" <<'REMOTE_SCRIPT'
+env_file="$1"
+app_version="$2"
+if [ -f "$env_file" ]; then
+  sed -i '/^APP_VERSION=/d' "$env_file"
+fi
+printf 'APP_VERSION=%s\n' "$app_version" >> "$env_file"
+REMOTE_SCRIPT
 
 echo "[deploy] restarting systemd unit and reloading nginx"
 ssh "${HOST}" 'sudo systemctl restart ihelped-api && sudo nginx -s reload'

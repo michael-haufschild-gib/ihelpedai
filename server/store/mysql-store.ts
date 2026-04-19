@@ -83,6 +83,10 @@ export class MysqlStore implements Store {
     return NOT_IMPL('incrementApiKeyUsage')
   }
 
+  async insertAgentReport(_input: NewReport, _keyHash: string): Promise<Report> {
+    return NOT_IMPL('insertAgentReport')
+  }
+
   async countEntries(_table: CountableTable): Promise<number> {
     return NOT_IMPL('countEntries')
   }

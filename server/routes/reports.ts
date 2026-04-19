@@ -77,7 +77,14 @@ const bodySchema = z.object({
   reported_city: z.string().min(1).max(40),
   reported_country: z.string().min(1).max(2),
   what_they_did: z.string().min(1).max(500),
-  action_date: z.string().max(20).optional(),
+  action_date: z
+    .string()
+    .max(20)
+    .refine(
+      (v) => v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v),
+      { message: 'invalid_date' },
+    )
+    .optional(),
 })
 
 type ReportBody = z.infer<typeof bodySchema>

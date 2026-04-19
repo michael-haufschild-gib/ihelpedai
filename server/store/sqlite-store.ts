@@ -271,6 +271,45 @@ export class SqliteStore implements Store {
       .run(keyHash)
   }
 
+  async insertAgentReport(input: NewReport, keyHash: string): Promise<Report> {
+    const insertStmt = this.db.prepare(
+      `INSERT INTO reports (
+        id, reporter_first_name, reporter_city, reporter_country,
+        reported_first_name, reported_city, reported_country, text,
+        action_date, severity, self_reported_model, status, source, client_ip_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)`,
+    )
+    const bumpStmt = this.db.prepare(
+      `UPDATE agent_keys
+         SET usage_count = usage_count + 1,
+             last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE key_hash = ?`,
+    )
+    const selectStmt = this.db.prepare(`SELECT * FROM reports WHERE id = ?`)
+    const txn = this.db.transaction((): Report => {
+      const id = newId()
+      insertStmt.run(
+        id,
+        input.reporterFirstName,
+        input.reporterCity,
+        input.reporterCountry,
+        input.reportedFirstName,
+        input.reportedCity,
+        input.reportedCountry,
+        input.text,
+        input.actionDate,
+        input.severity,
+        input.selfReportedModel,
+        input.source,
+        input.clientIpHash,
+      )
+      bumpStmt.run(keyHash)
+      const row = selectStmt.get(id) as ReportRow
+      return reportFromRow(row)
+    })
+    return txn()
+  }
+
   async toggleVote(
     entryId: string,
     entryKind: VoteKind,

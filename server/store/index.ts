@@ -151,6 +151,14 @@ export interface Store {
   /** Bump usage counter and lastUsedAt for a key. */
   incrementApiKeyUsage(keyHash: string): Promise<void>
 
+  /**
+   * Atomically insert an agent-submitted report and bump the API key's usage
+   * counter in a single transaction. Prevents partial writes where the report
+   * exists but the usage counter is stale — a client retry would otherwise
+   * duplicate the report.
+   */
+  insertAgentReport(input: NewReport, keyHash: string): Promise<Report>
+
   /** Count rows in a given table (for stats / seed-empty check). */
   countEntries(table: CountableTable): Promise<number>
 
