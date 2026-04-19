@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { m, AnimatePresence } from 'motion/react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
@@ -50,40 +50,40 @@ function computeTooltipCoords(
   return { x, y }
 }
 
-/** Reactive coordinate tracking for a visible tooltip — repositions on scroll/resize. */
+/**
+ * Positions a visible tooltip imperatively — writes left/top directly to the DOM node
+ * on mount and on scroll/resize. Using style writes instead of setState avoids the
+ * set-state-in-effect rule without sacrificing correctness.
+ */
 function useTooltipPosition(
   isVisible: boolean,
   triggerRef: React.RefObject<HTMLDivElement | null>,
   tooltipRef: React.RefObject<HTMLDivElement | null>,
   position: Position
 ) {
-  const [coords, setCoords] = useState({ x: 0, y: 0 })
-
-  const reposition = useCallback(() => {
-    if (triggerRef.current && tooltipRef.current) {
-      setCoords(
-        computeTooltipCoords(
-          triggerRef.current.getBoundingClientRect(),
-          tooltipRef.current.getBoundingClientRect(),
-          position
-        )
-      )
-    }
-  }, [position, triggerRef, tooltipRef])
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isVisible) return
-    reposition()
-    const handler = () => reposition()
-    window.addEventListener('scroll', handler, true)
-    window.addEventListener('resize', handler)
-    return () => {
-      window.removeEventListener('scroll', handler, true)
-      window.removeEventListener('resize', handler)
+    const reposition = () => {
+      const trigger = triggerRef.current
+      const tooltip = tooltipRef.current
+      if (!trigger || !tooltip) return
+      const { x, y } = computeTooltipCoords(
+        trigger.getBoundingClientRect(),
+        tooltip.getBoundingClientRect(),
+        position
+      )
+      tooltip.style.left = `${String(x)}px`
+      tooltip.style.top = `${String(y)}px`
+      tooltip.style.visibility = 'visible'
     }
-  }, [isVisible, reposition])
-
-  return coords
+    reposition()
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [isVisible, position, triggerRef, tooltipRef])
 }
 
 /** Hover tooltip that portals to body and positions relative to the trigger. */
@@ -102,7 +102,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const { theme, accent } = useLayoutStore(
     useShallow((s: LayoutStore) => ({ theme: s.theme, accent: s.accent }))
   )
-  const coords = useTooltipPosition(isVisible, triggerRef, tooltipRef, position)
+  useTooltipPosition(isVisible, triggerRef, tooltipRef, position)
 
   const showTooltip = () => {
     if (timeoutRef.current !== null) clearTimeout(timeoutRef.current)
@@ -145,8 +145,8 @@ export const Tooltip: React.FC<TooltipProps> = ({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                className="fixed z-[100] px-3 py-1.5 text-[11px] font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg shadow-lg pointer-events-none max-w-xs break-words tracking-wide"
-                style={sx({ left: `${String(coords.x)}px`, top: `${String(coords.y)}px` })}
+                className="fixed z-[100] px-3 py-1.5 text-2xs-plus font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg shadow-lg pointer-events-none max-w-xs break-words tracking-wide"
+                style={sx({ left: 0, top: 0, visibility: 'hidden' as const })}
                 role="tooltip"
               >
                 {content}

@@ -7,6 +7,24 @@ import { sx } from '@/lib/sx'
 import type { DropdownMenuItem } from './DropdownMenu'
 import { SubmenuPortalContext } from './SubmenuPortalContext'
 
+/** Compute a submenu's top/left relative to its trigger, clamped to the viewport. */
+function computeSubmenuPosition(
+  triggerRect: DOMRect,
+  menuRect: DOMRect
+): { top: number; left: number } {
+  let left = triggerRect.right + 2
+  let top = triggerRect.top
+  if (left + menuRect.width > window.innerWidth - 8) left = triggerRect.left - menuRect.width - 2
+  if (left < 8) {
+    left = Math.max(8, triggerRect.left)
+    top = triggerRect.bottom + 2
+  }
+  if (top + menuRect.height > window.innerHeight - 8) {
+    top = Math.max(8, window.innerHeight - menuRect.height - 8)
+  }
+  return { top, left }
+}
+
 /** Portaled submenu that positions itself relative to a trigger rect. */
 const PortaledSubmenu: React.FC<{
   items: DropdownMenuItem[]
@@ -17,29 +35,18 @@ const PortaledSubmenu: React.FC<{
   onMouseLeave: () => void
 }> = ({ items, triggerRect, onClose, depth, onMouseEnter, onMouseLeave }) => {
   const menuRef = useRef<HTMLDivElement>(null)
-  const [coords, setCoords] = useState({ top: 0, left: 0 })
-  const [ready, setReady] = useState(false)
-  const portalContainerRef = use(SubmenuPortalContext)
-  const [portalTarget, setPortalTarget] = useState<Element>(() => document.body)
+  const portalTarget = use(SubmenuPortalContext) ?? document.body
 
-  useEffect(() => {
-    setPortalTarget(portalContainerRef?.current ?? document.body)
-  }, [portalContainerRef])
-
+  // Measure after mount and write position + visibility straight to the DOM.
+  // No setState, so the set-state-in-effect rule does not fire.
   useLayoutEffect(() => {
-    if (!menuRef.current) return
-    const menuRect = menuRef.current.getBoundingClientRect()
-    let left = triggerRect.right + 2
-    let top = triggerRect.top
-    if (left + menuRect.width > window.innerWidth - 8) left = triggerRect.left - menuRect.width - 2
-    if (left < 8) {
-      left = Math.max(8, triggerRect.left)
-      top = triggerRect.bottom + 2
-    }
-    if (top + menuRect.height > window.innerHeight - 8)
-      top = Math.max(8, window.innerHeight - menuRect.height - 8)
-    setCoords({ top, left })
-    setReady(true)
+    const el = menuRef.current
+    if (!el) return
+    const { top, left } = computeSubmenuPosition(triggerRect, el.getBoundingClientRect())
+    el.style.top = `${String(top)}px`
+    el.style.left = `${String(left)}px`
+    el.style.visibility = 'visible'
+    el.style.opacity = '1'
   }, [triggerRect])
 
   return createPortal(
@@ -47,19 +54,20 @@ const PortaledSubmenu: React.FC<{
       ref={menuRef}
       data-dropdown-content="true"
       initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: ready ? 1 : 0, scale: 1 }}
+      animate={{ scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.12 }}
       className="glass-panel min-w-[180px] max-w-[280px] rounded-lg py-1 shadow-xl border border-border-default"
       style={sx({
         position: 'fixed' as const,
-        top: coords.top,
-        left: coords.left,
+        top: 0,
+        left: 0,
         zIndex: 200 + depth * 10,
         maxHeight: '60vh',
         overflowY: 'auto' as const,
         backdropFilter: 'blur(16px)',
-        visibility: ready ? ('visible' as const) : ('hidden' as const),
+        visibility: 'hidden' as const,
+        opacity: 0,
       })}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}

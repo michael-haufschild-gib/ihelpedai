@@ -35,7 +35,7 @@ export function ColorModeToggle({
             onClick={() => {
               setMode(m)
             }}
-            className={`px-2 py-0.5 text-[9px] font-bold rounded-sm transition-all ${mode === m ? 'bg-[var(--bg-active)] text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-secondary'}`}
+            className={`px-2 py-0.5 text-3xs font-bold rounded-sm transition-all ${mode === m ? 'bg-[var(--bg-active)] text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-secondary'}`}
           >
             {m}
           </MotionEl.button>
@@ -60,7 +60,7 @@ export function AlphaInput({
       className={`${compact ? 'w-12' : 'w-14'} bg-[var(--bg-hover)] border border-border-default rounded px-1 py-1 flex items-center gap-1${compact ? '' : ' group-focus-within:border-accent/50 transition-colors'}`}
     >
       <span
-        className={`text-[9px] text-text-tertiary ${compact ? 'uppercase' : ''} font-bold`}
+        className={`text-3xs text-text-tertiary ${compact ? 'uppercase' : ''} font-bold`}
       >
         {compact ? 'a' : '%'}
       </span>
@@ -97,7 +97,7 @@ export function HexInputRow({
   return (
     <div className="flex gap-2">
       <div className="flex-1 bg-[var(--bg-hover)] border border-border-default rounded px-2 py-1 flex items-center gap-2 group-focus-within:border-accent/50 transition-colors">
-        <span className="text-[10px] text-text-tertiary font-mono select-none">#</span>
+        <span className="text-2xs text-text-tertiary font-mono select-none">#</span>
         <MotionEl.input
           type="text"
           value={hexInput.replace('#', '')}
@@ -142,7 +142,7 @@ export function RgbInputRow({
           key={c}
           className="flex-1 bg-[var(--bg-hover)] border border-border-default rounded px-1 py-1 flex items-center gap-1"
         >
-          <span className="text-[9px] text-text-tertiary uppercase font-bold">{c}</span>
+          <span className="text-3xs text-text-tertiary uppercase font-bold">{c}</span>
           <MotionEl.input
             type="number"
             min={0}

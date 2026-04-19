@@ -7,6 +7,7 @@
  * - require-data-testid: interactive elements need data-testid
  * - no-unstyled-interactive-elements: interactive elements need className
  * - no-eslint-disable-comments: ban eslint-disable/disable-next-line/disable-line directives
+ * - no-arbitrary-text-size: ban Tailwind `text-[Npx]` (and rem/em/pt/%) in className strings
  */
 
 import { getFilename, isConfigFile } from './rule-helpers.js'
@@ -180,6 +181,40 @@ const portabilityRules = {
               context.report({ loc: comment.loc, messageId: 'banned' })
             }
           }
+        },
+      }
+    },
+  },
+
+  'no-arbitrary-text-size': {
+    meta: {
+      type: 'problem',
+      docs: {
+        description:
+          'Ban arbitrary Tailwind font-size utilities like `text-[11px]`, `text-[0.625rem]`, `text-[14pt]`. Use the central typography scale (text-3xs, text-2xs, text-xs, text-sm, text-base, text-lg, text-xl, text-2xl, …). Extend the scale in `src/index.css` `@theme` if a missing tier is genuinely needed.',
+      },
+      schema: [],
+      messages: {
+        arbitrary:
+          'Arbitrary font-size utility "{{ match }}" is banned — use the semantic scale (text-xs / text-sm / text-base / text-lg / text-xl / text-2xl, or text-3xs / text-2xs / text-2xs-plus for sub-xs tiers). Extend `@theme` in src/index.css if you truly need a new tier.',
+      },
+    },
+    create(context) {
+      const pattern = /text-\[[^\]]*(?:\d|\.)(?:px|rem|em|pt|%)\s*\]/g
+      function check(node, text) {
+        if (typeof text !== 'string') return
+        let m
+        while ((m = pattern.exec(text)) !== null) {
+          context.report({ node, messageId: 'arbitrary', data: { match: m[0] } })
+        }
+        pattern.lastIndex = 0
+      }
+      return {
+        Literal(node) {
+          if (typeof node.value === 'string') check(node, node.value)
+        },
+        TemplateElement(node) {
+          check(node, node.value.raw)
         },
       }
     },

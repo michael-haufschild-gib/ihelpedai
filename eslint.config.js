@@ -118,6 +118,7 @@ export default defineConfig([
       'custom-rules/require-data-testid': 'error',
       'custom-rules/no-unstyled-interactive-elements': 'error',
       'custom-rules/no-eslint-disable-comments': 'error',
+      'custom-rules/no-arbitrary-text-size': 'error',
     },
   },
   // Source code quality gates: line limits and default export ban.

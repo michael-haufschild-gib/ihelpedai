@@ -45,7 +45,7 @@ export const TabButton: React.FC<TabButtonProps> = ({
       if (!isActive) soundManager.playHover()
     }}
     onKeyDown={(e) => onKeyDown(e, index)}
-    className={`relative px-4 py-2 text-[10px] uppercase tracking-widest font-bold whitespace-nowrap select-none transition-colors duration-200 cursor-pointer outline-none focus:outline-none focus-visible:outline-none border-none focus:ring-0 ${fullWidth ? 'flex-1' : ''} ${isActive ? 'text-accent text-glow-subtle' : 'text-text-secondary hover:text-text-primary'} ${variant === 'pills' && isActive ? 'bg-[var(--bg-active)] rounded shadow-sm' : ''} ${variant === 'pills' && !isActive ? 'hover:bg-[var(--bg-hover)] rounded' : ''}`}
+    className={`relative px-4 py-2 text-2xs uppercase tracking-widest font-bold whitespace-nowrap select-none transition-colors duration-200 cursor-pointer outline-none focus:outline-none focus-visible:outline-none border-none focus:ring-0 ${fullWidth ? 'flex-1' : ''} ${isActive ? 'text-accent text-glow-subtle' : 'text-text-secondary hover:text-text-primary'} ${variant === 'pills' && isActive ? 'bg-[var(--bg-active)] rounded shadow-sm' : ''} ${variant === 'pills' && !isActive ? 'hover:bg-[var(--bg-hover)] rounded' : ''}`}
     data-testid={testId ? `${testId}-tab-${tab.id}` : undefined}
   >
     {isActive && variant !== 'pills' && (

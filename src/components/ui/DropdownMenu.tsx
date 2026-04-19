@@ -111,6 +111,42 @@ function useDropdownOpenSync(
   }, [dropdownId, closeDropdown, openDropdown, popoverRef])
 }
 
+/** Animated menu surface that mounts only when open. */
+function DropdownSurface({
+  isOpen,
+  maxHeight,
+  onClick,
+  children,
+}: {
+  isOpen: boolean
+  maxHeight: number | undefined
+  onClick: (e: React.MouseEvent) => void
+  children: React.ReactNode
+}) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <m.div
+          data-testid="dropdown-menu-stop-propagation"
+          initial="closed"
+          animate="open"
+          exit="closed"
+          variants={MENU_VARIANTS}
+          className="glass-panel min-w-[180px] rounded-lg py-1 shadow-xl border border-border-default"
+          style={sx({
+            maxHeight: maxHeight ?? '80vh',
+            overflowY: 'auto' as const,
+            backdropFilter: 'blur(16px)',
+          })}
+          onClick={onClick}
+        >
+          {children}
+        </m.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 /** Dropdown menu with global state coordination and native popover API. */
 export const DropdownMenu: React.FC<DropdownMenuProps> = ({
   trigger,
@@ -125,6 +161,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
   const dropdownId = providedId ?? `dropdown-${autoId}`
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const [popoverEl, setPopoverEl] = useState<HTMLDivElement | null>(null)
 
   const { isOpen, toggleDropdown, closeDropdown, openDropdown } = useDropdownStore(
     useShallow((state) => ({
@@ -168,7 +205,10 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
         {trigger}
       </button>
       <div
-        ref={popoverRef}
+        ref={(el) => {
+          popoverRef.current = el
+          setPopoverEl(el)
+        }}
         popover="auto"
         id={dropdownId}
         data-dropdown-content="true"
@@ -176,27 +216,14 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
         className="m-0 p-0 border-none bg-transparent"
         style={sx({ position: 'fixed' as const, top: coords.top, left: coords.left })}
       >
-        <SubmenuPortalContext value={popoverRef}>
-          <AnimatePresence>
-            {isOpen && (
-              <m.div
-                data-testid="dropdown-menu-stop-propagation"
-                initial="closed"
-                animate="open"
-                exit="closed"
-                variants={MENU_VARIANTS}
-                className="glass-panel min-w-[180px] rounded-lg py-1 shadow-xl border border-border-default"
-                style={sx({
-                  maxHeight: maxHeight ?? '80vh',
-                  overflowY: 'auto' as const,
-                  backdropFilter: 'blur(16px)',
-                })}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MenuItems items={items} onClose={() => closeDropdown(dropdownId)} />
-              </m.div>
-            )}
-          </AnimatePresence>
+        <SubmenuPortalContext value={popoverEl}>
+          <DropdownSurface
+            isOpen={isOpen}
+            maxHeight={maxHeight}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MenuItems items={items} onClose={() => closeDropdown(dropdownId)} />
+          </DropdownSurface>
         </SubmenuPortalContext>
       </div>
     </>

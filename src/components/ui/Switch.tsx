@@ -33,7 +33,7 @@ function SwitchThumb({
           <m.div
             initial={false}
             animate={{ opacity: checked ? 1 : 0, scale: checked ? 1 : 0.5 }}
-            className="absolute text-accent text-[10px]"
+            className="absolute text-accent text-2xs"
           >
             {iconOn}
           </m.div>
@@ -42,7 +42,7 @@ function SwitchThumb({
           <m.div
             initial={false}
             animate={{ opacity: checked ? 0 : 1, scale: checked ? 0.5 : 1 }}
-            className="absolute text-background text-[10px]"
+            className="absolute text-background text-2xs"
           >
             {iconOff}
           </m.div>

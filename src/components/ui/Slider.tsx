@@ -61,7 +61,7 @@ function SliderLabelRow({
           className={NUMBER_INPUT_CLASSES}
           aria-label={`${label} value`}
         />
-        {unit != null && <span className="text-[10px] text-text-tertiary">{unit}</span>}
+        {unit != null && <span className="text-2xs text-text-tertiary">{unit}</span>}
       </div>
     </div>
   )
