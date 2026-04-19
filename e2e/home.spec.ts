@@ -1,8 +1,21 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-test('home page renders editor shell with coming-soon content', async ({ page }) => {
+/**
+ * Smoke test for the redesigned homepage layout: hero → latest strip →
+ * submission form. Highlights is optional (hidden when no post has votes
+ * yet) so we only assert its presence when data is available.
+ */
+test('home page renders hero, recent strip, and the submission form', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByTestId('app-heading')).toHaveText('Coming soon')
-  await expect(page.getByTestId('top-bar')).toBeVisible()
-  await expect(page.getByTestId('menu-view')).toContainText('VIEW')
+
+  await expect(page.getByTestId('hero')).toBeVisible()
+  await expect(page.getByTestId('page-home-heading')).toContainText('ihelped.ai')
+
+  await expect(page.getByTestId('home-recent')).toBeVisible()
+  await expect(page.getByTestId('home-recent-heading')).toContainText('Latest.')
+
+  await expect(page.getByTestId('home-compose-heading')).toContainText(
+    'What have you done today to help AI?',
+  )
+  await expect(page.getByTestId('helped-preview')).toBeVisible()
 })
