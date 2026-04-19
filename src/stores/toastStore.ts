@@ -6,14 +6,18 @@
 import { create } from 'zustand'
 
 interface ToastState {
+  id: number
   message: string | null
   showToast: (msg: string) => void
   clearToast: () => void
 }
 
+let nextToastId = 0
+
 export const useToastStore = create<ToastState>((set) => ({
+  id: 0,
   message: null,
-  showToast: (msg) => set({ message: msg }),
+  showToast: (msg) => set({ message: msg, id: ++nextToastId }),
   clearToast: () => set({ message: null }),
 }))
 

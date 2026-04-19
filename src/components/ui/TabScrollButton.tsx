@@ -14,6 +14,7 @@ export const TabScrollButton: React.FC<{
     <m.button
       data-testid={`tabs-scroll-${direction}`}
       type="button"
+      aria-label={direction === 'left' ? 'Scroll tabs left' : 'Scroll tabs right'}
       onClick={() => {
         soundManager.playClick()
         onClick()

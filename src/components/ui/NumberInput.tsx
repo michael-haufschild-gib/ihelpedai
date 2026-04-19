@@ -13,42 +13,38 @@ export interface NumberInputProps extends Omit<InputProps, 'onChange' | 'value'>
   precision?: number
 }
 
-/**
- * Tokenizes a math expression into numbers, operators, and parentheses.
- */
+const NUMERIC_LITERAL = /^(?:\d+(?:\.\d+)?|\.\d+)$/
+
+function readNumber(expr: string, start: number): { value: number; end: number } | null {
+  let end = start
+  while (end < expr.length && /[0-9.]/.test(expr.charAt(end))) end++
+  const numStr = expr.slice(start, end)
+  if (!NUMERIC_LITERAL.test(numStr)) return null
+  const value = parseFloat(numStr)
+  if (isNaN(value)) return null
+  return { value, end }
+}
+
+/** Tokenizes a math expression into numbers, operators, and parentheses. */
 function tokenize(expr: string): (string | number)[] | null {
   const tokens: (string | number)[] = []
   let i = 0
-
   while (i < expr.length) {
     const char = expr.charAt(i)
-
     if (/\s/.test(char)) {
       i++
-      continue
-    }
-
-    if ('+-*/()%'.includes(char)) {
+    } else if ('+-*/()%'.includes(char)) {
       tokens.push(char)
       i++
-      continue
+    } else if (/[0-9.]/.test(char)) {
+      const num = readNumber(expr, i)
+      if (num === null) return null
+      tokens.push(num.value)
+      i = num.end
+    } else {
+      return null
     }
-
-    if (/[0-9.]/.test(char)) {
-      let numStr = ''
-      while (i < expr.length && /[0-9.]/.test(expr.charAt(i))) {
-        numStr += expr.charAt(i)
-        i++
-      }
-      const num = parseFloat(numStr)
-      if (isNaN(num)) return null
-      tokens.push(num)
-      continue
-    }
-
-    return null
   }
-
   return tokens
 }
 
@@ -243,6 +239,11 @@ export const NumberInput: React.FC<NumberInputProps> = ({
     dispatch({ type: 'focus', value: formatDisplayValue(value, precision) })
   }
 
+  const latestValueRef = useRef(value)
+  useEffect(() => {
+    latestValueRef.current = value
+  }, [value])
+
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const parsed = parseExpression(localValue)
 
@@ -260,13 +261,22 @@ export const NumberInput: React.FC<NumberInputProps> = ({
         }
         errorTimerRef.current = window.setTimeout(() => {
           if (!isMountedRef.current) return
-          dispatch({ type: 'reset', value: formatDisplayValue(value, precision) })
+          dispatch({
+            type: 'reset',
+            value: formatDisplayValue(latestValueRef.current, precision),
+          })
           errorTimerRef.current = null
         }, 1500)
       }
     }
 
     if (onBlur) onBlur(e)
+  }
+
+  const stepperBase = (): number => {
+    const parsed = parseExpression(localValue)
+    if (parsed !== null) return Math.min(Math.max(parsed, min), max)
+    return value
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -292,7 +302,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({
             data-testid="number-input-change"
             className="h-2 w-3 hover:bg-(--bg-active) rounded-sm flex items-center justify-center"
             onClick={() => {
-              onChange(Math.min(value + step, max))
+              onChange(Math.min(stepperBase() + step, max))
             }}
             tabIndex={-1}
           >
@@ -304,7 +314,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({
             data-testid="number-input-change-2"
             className="h-2 w-3 hover:bg-(--bg-active) rounded-sm flex items-center justify-center"
             onClick={() => {
-              onChange(Math.max(value - step, min))
+              onChange(Math.max(stepperBase() - step, min))
             }}
             tabIndex={-1}
           >

@@ -8,7 +8,7 @@
  * - Inline color picker panel for the selected stop (side-by-side layout)
  */
 
-import React, { useCallback, useRef, useState, useMemo } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { ColorPickerPanel } from './ColorPickerPanel'
 import { toCssGradientString, nextStopId } from '@/lib/colors/gradientUtils'
 import { sx } from '@/lib/sx'
@@ -135,7 +135,7 @@ function GradientMarker({
       setIsDragging(true)
       startXRef.current = e.clientX
       startPosRef.current = stop.position
-      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+      e.currentTarget.setPointerCapture(e.pointerId)
     },
     [onSelect, stop.position]
   )
@@ -152,8 +152,11 @@ function GradientMarker({
     [isDragging, barRef, onPositionChange]
   )
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
     setIsDragging(false)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
   }, [])
 
   return (
@@ -244,6 +247,7 @@ function StopList({
                 }
               }}
               onClick={(e) => e.stopPropagation()}
+              data-testid={`gradient-stop-position-${String(i)}`}
               className="w-10 bg-transparent text-xs font-mono text-text-primary outline-none text-right [&::-webkit-inner-spin-button]:appearance-none"
             />
             <span className="text-xs text-text-tertiary">%</span>
@@ -258,6 +262,7 @@ function StopList({
               }}
               className="text-text-tertiary hover:text-danger text-sm p-1 shrink-0 transition-colors"
               aria-label={`Remove stop ${i + 1}`}
+              data-testid={`gradient-stop-delete-${String(i)}`}
             >
               ×
             </button>
@@ -296,6 +301,7 @@ function AngleControl({ angle, onChange }: { angle: number; onChange: (angle: nu
             const val = parseInt(e.target.value, 10)
             if (!Number.isNaN(val)) onChange(((val % 360) + 360) % 360)
           }}
+          data-testid="gradient-angle-input"
           className="w-10 bg-[var(--bg-hover)] border border-border-default rounded px-1 py-0.5 text-xs font-mono text-text-primary outline-none text-right [&::-webkit-inner-spin-button]:appearance-none"
         />
         <span className="text-xs text-text-tertiary">°</span>
@@ -366,6 +372,14 @@ function useGradientEditorState(
       return newStops.map((s, i) => ({ ...s, key: prev[i]?.key ?? nextStopId() }))
     })
   }, [])
+
+  // Resync keys + clamp selection when external value changes (controlled reset, preset switch).
+  /* eslint-disable react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect -- sync keyed cache with controlled value */
+  useEffect(() => {
+    syncStopsFromValue(value.stops)
+    setSelectedIndex((prev) => Math.min(prev, Math.max(0, value.stops.length - 1)))
+  }, [value.stops, syncStopsFromValue])
+  /* eslint-enable react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect */
 
   const emitChange = useCallback(
     (newStops: GradientStop[], newAngle?: number) => {
@@ -504,6 +518,7 @@ function StopColorPanel({
         <span className="text-xs text-text-tertiary font-medium">Stop {index + 1}</span>
         <button
           onClick={onClose}
+          data-testid="gradient-stop-color-close"
           className="text-text-tertiary hover:text-text-primary text-xs p-0.5 transition-colors"
           aria-label="Close stop color editor"
         >

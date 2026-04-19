@@ -20,7 +20,11 @@ const PortaledSubmenu: React.FC<{
   const [coords, setCoords] = useState({ top: 0, left: 0 })
   const [ready, setReady] = useState(false)
   const portalContainerRef = use(SubmenuPortalContext)
-  const portalTarget = portalContainerRef?.current ?? document.body
+  const [portalTarget, setPortalTarget] = useState<Element>(() => document.body)
+
+  useEffect(() => {
+    setPortalTarget(portalContainerRef?.current ?? document.body)
+  }, [portalContainerRef])
 
   useLayoutEffect(() => {
     if (!menuRef.current) return
@@ -77,10 +81,14 @@ export const MenuItems: React.FC<{
   const [submenuTriggerRect, setSubmenuTriggerRect] = useState<DOMRect | null>(null)
   const itemsRef = useRef<(HTMLButtonElement | null)[]>([])
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [mountTime] = useState(() => Date.now())
+  const mountTimeRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    mountTimeRef.current = Date.now()
+  }, [])
 
   const clearClose = () => {
-    if (closeTimeoutRef.current) {
+    if (closeTimeoutRef.current !== null) {
       clearTimeout(closeTimeoutRef.current)
       closeTimeoutRef.current = null
     }
@@ -125,10 +133,9 @@ export const MenuItems: React.FC<{
 
         const hasSubmenu = Boolean(item.items)
         const isSubmenuOpen = activeSubmenuIndex === index
-        const isGrace = Date.now() - mountTime < 150
 
         return (
-          <React.Fragment key={item.label}>
+          <React.Fragment key={`${String(index)}-${item.label}`}>
             <m.button
               ref={(el) => {
                 itemsRef.current[index] = el
@@ -149,7 +156,11 @@ export const MenuItems: React.FC<{
               }}
               onMouseEnter={() => {
                 if (!item.disabled) soundManager.playHover()
-                if (isGrace) return
+                if (
+                  mountTimeRef.current !== null &&
+                  Date.now() - mountTimeRef.current < 150
+                )
+                  return
                 if (hasSubmenu) {
                   openSubmenu(index)
                 } else {

@@ -76,6 +76,7 @@ export const Slider: React.FC<SliderProps> = ({
               max={max}
               step={step}
               disabled={disabled}
+              data-testid={dataTestId ? `${dataTestId}-number` : 'slider-number'}
               className="w-16 h-6 text-xs text-center border border-(--border-subtle) bg-glass text-text-primary rounded px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none focus:border-accent"
               aria-label={label != null ? `${label} value` : 'Slider value'}
             />
@@ -100,6 +101,7 @@ export const Slider: React.FC<SliderProps> = ({
           max={max}
           step={step}
           disabled={disabled}
+          data-testid={dataTestId ? `${dataTestId}-range` : 'slider-range'}
           className="absolute inset-x-0 w-full h-5 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-(--theme-accent) [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-(--theme-accent) [&::-moz-range-thumb]:shadow-sm"
           aria-label={label ?? 'Slider'}
         />

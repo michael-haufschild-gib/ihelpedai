@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { m, AnimatePresence } from 'motion/react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
@@ -50,34 +50,17 @@ function computeTooltipCoords(
   return { x, y }
 }
 
-/** Hover tooltip that portals to body and positions relative to the trigger. */
-export const Tooltip: React.FC<TooltipProps> = ({
-  content,
-  children,
-  position = 'top',
-  delay = 300,
-  className = '',
-}) => {
-  const [isVisible, setIsVisible] = useState(false)
+/** Reactive coordinate tracking for a visible tooltip — repositions on scroll/resize. */
+function useTooltipPosition(
+  isVisible: boolean,
+  triggerRef: React.RefObject<HTMLDivElement | null>,
+  tooltipRef: React.RefObject<HTMLDivElement | null>,
+  position: Position
+) {
   const [coords, setCoords] = useState({ x: 0, y: 0 })
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const triggerRef = useRef<HTMLDivElement>(null)
-  const tooltipRef = useRef<HTMLDivElement>(null)
-  const { theme, accent } = useLayoutStore(
-    useShallow((s: LayoutStore) => ({ theme: s.theme, accent: s.accent }))
-  )
 
-  const showTooltip = () => {
-    timeoutRef.current = setTimeout(() => setIsVisible(true), delay)
-  }
-
-  const hideTooltip = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    setIsVisible(false)
-  }
-
-  useEffect(() => {
-    if (isVisible && triggerRef.current && tooltipRef.current) {
+  const reposition = useCallback(() => {
+    if (triggerRef.current && tooltipRef.current) {
       setCoords(
         computeTooltipCoords(
           triggerRef.current.getBoundingClientRect(),
@@ -86,17 +69,60 @@ export const Tooltip: React.FC<TooltipProps> = ({
         )
       )
     }
-  }, [isVisible, position])
+  }, [position, triggerRef, tooltipRef])
+
+  useEffect(() => {
+    if (!isVisible) return
+    reposition()
+    const handler = () => reposition()
+    window.addEventListener('scroll', handler, true)
+    window.addEventListener('resize', handler)
+    return () => {
+      window.removeEventListener('scroll', handler, true)
+      window.removeEventListener('resize', handler)
+    }
+  }, [isVisible, reposition])
+
+  return coords
+}
+
+/** Hover tooltip that portals to body and positions relative to the trigger. */
+export const Tooltip: React.FC<TooltipProps> = ({
+  content,
+  children,
+  position = 'top',
+  delay = 300,
+  className = '',
+  'data-testid': testId,
+}) => {
+  const [isVisible, setIsVisible] = useState(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const { theme, accent } = useLayoutStore(
+    useShallow((s: LayoutStore) => ({ theme: s.theme, accent: s.accent }))
+  )
+  const coords = useTooltipPosition(isVisible, triggerRef, tooltipRef, position)
+
+  const showTooltip = () => {
+    if (timeoutRef.current !== null) clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => setIsVisible(true), delay)
+  }
+
+  const hideTooltip = () => {
+    if (timeoutRef.current !== null) clearTimeout(timeoutRef.current)
+    setIsVisible(false)
+  }
 
   useEffect(
     () => () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (timeoutRef.current !== null) clearTimeout(timeoutRef.current)
     },
     []
   )
 
   return (
-    <div className={`relative inline-block ${className}`} data-testid="tooltip-wrapper">
+    <div className={`relative inline-block ${className}`} data-testid={testId ?? 'tooltip-wrapper'}>
       <div
         ref={triggerRef}
         onMouseEnter={showTooltip}

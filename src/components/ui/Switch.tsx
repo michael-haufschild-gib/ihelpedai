@@ -7,6 +7,7 @@ export interface SwitchProps {
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   label?: string
+  ariaLabel?: string
   disabled?: boolean
   className?: string
   iconOn?: React.ReactNode
@@ -56,12 +57,14 @@ export const Switch: React.FC<SwitchProps> = ({
   checked,
   onCheckedChange,
   label,
+  ariaLabel,
   disabled = false,
   className = '',
   iconOn,
   iconOff,
   'data-testid': dataTestId,
 }) => {
+  const accessibleName = ariaLabel ?? label ?? 'Toggle'
   const trackClass = checked
     ? 'bg-[var(--theme-accent)] border-[var(--theme-accent)] shadow-[0_0_15px_var(--theme-accent-glow)]'
     : 'bg-[var(--bg-surface)] border-[var(--border-default)] group-hover/switch:bg-[var(--bg-hover)]'
@@ -88,6 +91,7 @@ export const Switch: React.FC<SwitchProps> = ({
           disabled={disabled}
           role="switch"
           aria-checked={checked}
+          aria-label={accessibleName}
         />
         <div
           className={`absolute inset-0 rounded-full border transition-all duration-300 ease-out ${trackClass}`}

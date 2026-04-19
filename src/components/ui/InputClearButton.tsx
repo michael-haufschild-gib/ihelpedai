@@ -15,6 +15,8 @@ export const InputClearButton: React.FC<{
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.8 }}
         type="button"
+        aria-label="Clear input"
+        title="Clear input"
         onClick={(e) => {
           e.stopPropagation()
           soundManager.playClick()

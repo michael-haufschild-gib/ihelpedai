@@ -99,7 +99,7 @@ export const parseColorToHsv = (input: string): HSVA => {
   }
 
   // 3. Try modern space-separated: rgb(236 195 255) / rgb(236 195 255 / 5%) / rgb(236 195 255 / 0.05)
-  const modernMatch = input.match(/rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))\s*\)/)
+  const modernMatch = input.match(/rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\s*\)/)
   if (modernMatch) {
     const r = parseInt(modernMatch[1]!, 10)
     const g = parseInt(modernMatch[2]!, 10)

@@ -1,9 +1,10 @@
+/* eslint-disable no-console -- logger intentionally centralizes console usage */
 /**
  * Minimal logger — routes messages to console in dev, swallows in prod.
  * Consumed by useScrollLock, ColorPickerPanel, and any future service code.
  */
 
-const isDev = import.meta.env?.DEV ?? true
+const isDev = import.meta.env?.DEV === true
 
 export const logger = {
   debug: (...args: unknown[]) => {

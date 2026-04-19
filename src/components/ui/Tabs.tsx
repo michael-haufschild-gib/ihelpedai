@@ -4,7 +4,7 @@
  */
 
 import type React from 'react'
-import { useCallback, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTabsScroll } from './useTabsScroll'
 import { TabScrollButton } from './TabScrollButton'
 import { TabButton } from './TabButton'
@@ -73,7 +73,7 @@ function TabListHeader({
       if (newIndex === null) return
       event.preventDefault()
       const target = tabs[newIndex]
-      if (target) {
+      if (target !== undefined) {
         onTabChange(target.id)
         tabsRef.current[newIndex]?.focus()
       }
@@ -137,10 +137,15 @@ export const Tabs: React.FC<TabsProps> = ({
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([])
   const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set([value]))
 
-  // Sync mounted tabs with controlled value during render (derived state pattern)
-  if (!mountedTabs.has(value)) {
-    setMountedTabs(new Set(mountedTabs).add(value))
-  }
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect -- track which tabs have been mounted for keep-alive
+    setMountedTabs((prev) => {
+      if (prev.has(value)) return prev
+      const next = new Set(prev)
+      next.add(value)
+      return next
+    })
+  }, [value])
 
   const handleTabChange = useCallback(
     (id: string) => {

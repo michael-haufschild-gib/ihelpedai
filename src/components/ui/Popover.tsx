@@ -245,7 +245,9 @@ function usePopoverPositioning(
     [popoverRef, surfaceRef, setDragConstraints]
   )
 
-  applyPositionRef.current = applyPopoverPosition
+  useEffect(() => {
+    applyPositionRef.current = applyPopoverPosition
+  }, [applyPopoverPosition, applyPositionRef])
 
   const updatePosition = useCallback(() => {
     if (isDraggingRef.current) return
@@ -406,7 +408,7 @@ export const Popover: React.FC<PopoverProps> = ({
         onClick={() => {
           handleOpenChange(!isOpen)
         }}
-        className={`inline-block cursor-pointer ${className}`}
+        className="inline-block cursor-pointer"
         role="button"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
@@ -441,7 +443,7 @@ export const Popover: React.FC<PopoverProps> = ({
               onDragStart={drag.onDragStart}
               onDragEnd={drag.handleDragEnd}
               transition={{ duration: 0.1, ease: 'easeOut' }}
-              className="glass-panel rounded-lg shadow-2xl border border-border-default"
+              className={`glass-panel rounded-lg shadow-2xl border border-border-default ${className}`}
               onPointerDown={drag.handlePointerDown}
               style={{
                 backdropFilter: 'blur(24px)',

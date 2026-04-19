@@ -8,6 +8,7 @@ import { persist } from 'zustand/middleware'
 
 /** Available theme modes — mapped to `data-mode` attribute on `[data-app-theme]`. */
 export const THEME_MODES = ['dark-purple', 'dark-blue', 'dark-brown', 'dark-black'] as const
+/** Allowed values for the `data-mode` theme attribute. */
 export type ThemeMode = (typeof THEME_MODES)[number]
 
 export const THEME_LABELS: Record<ThemeMode, string> = {
@@ -27,9 +28,11 @@ export const ACCENT_COLORS = [
   'violet',
   'red',
 ] as const
+/** Allowed values for the `data-accent` theme attribute. */
 export type AccentColor = (typeof ACCENT_COLORS)[number]
 
 export const REDUCED_MOTION_OPTIONS = ['no-preference', 'reduce'] as const
+/** User motion preference: full animations or reduced. */
 export type ReducedMotionPreference = (typeof REDUCED_MOTION_OPTIONS)[number]
 
 export const REDUCED_MOTION_LABELS: Record<ReducedMotionPreference, string> = {
@@ -37,6 +40,7 @@ export const REDUCED_MOTION_LABELS: Record<ReducedMotionPreference, string> = {
   'no-preference': 'Full',
 }
 
+/** Persisted shell state: panel visibility, theme, accent, motion preference. */
 export interface LayoutStore {
   showLeftPanel: boolean
   theme: ThemeMode
@@ -50,7 +54,10 @@ export interface LayoutStore {
   setReducedMotion: (pref: ReducedMotionPreference) => void
 }
 
-const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 1220
+/** Below this width the layout auto-collapses the left panel (mid-desktop threshold). */
+export const LEFT_PANEL_AUTO_COLLAPSE_PX = 1220
+const isMobileViewport =
+  typeof window !== 'undefined' && window.innerWidth < LEFT_PANEL_AUTO_COLLAPSE_PX
 
 export const DEFAULT_THEME: ThemeMode = 'dark-blue'
 export const DEFAULT_ACCENT: AccentColor = 'blue'

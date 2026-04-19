@@ -44,7 +44,7 @@ function ModalHeader({
       <div className="flex items-center gap-2">
         {headerRight}
         <Button
-          data-testid="demo-modal-close"
+          data-testid="modal-close"
           variant="ghost"
           size="icon"
           onClick={onClose}
@@ -84,6 +84,7 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const previousActiveElementRef = useRef<HTMLElement | null>(null)
+  const isProgrammaticCloseRef = useRef(false)
   const titleId = useId()
   const { theme, accent } = useLayoutStore(
     useShallow((s: LayoutStore) => ({ theme: s.theme, accent: s.accent }))
@@ -96,6 +97,7 @@ export const Modal: React.FC<ModalProps> = ({
       previousActiveElementRef.current = document.activeElement as HTMLElement
       dialog.showModal()
     } else if (!isOpen && dialog.open) {
+      isProgrammaticCloseRef.current = true
       dialog.close()
     }
   }, [isOpen])
@@ -104,9 +106,13 @@ export const Modal: React.FC<ModalProps> = ({
     const dialog = dialogRef.current
     if (!dialog) return
     const handleClose = () => {
-      onClose()
       const prev = previousActiveElementRef.current
       if (prev && document.body.contains(prev)) prev.focus()
+      if (isProgrammaticCloseRef.current) {
+        isProgrammaticCloseRef.current = false
+        return
+      }
+      onClose()
     }
     dialog.addEventListener('close', handleClose)
     return () => dialog.removeEventListener('close', handleClose)

@@ -4,6 +4,7 @@ import { ToastContent } from './Toast'
 
 /** Renders the global toast portal. Mount once at the app root. */
 export function GlobalToast() {
+  const id = useToastStore((s) => s.id)
   const message = useToastStore((s) => s.message)
   const clearToast = useToastStore((s) => s.clearToast)
 
@@ -11,7 +12,7 @@ export function GlobalToast() {
 
   return createPortal(
     <div data-testid="global-toast">
-      <ToastContent message={message} onDone={clearToast} />
+      <ToastContent key={id} message={message} onDone={clearToast} />
     </div>,
     document.body
   )

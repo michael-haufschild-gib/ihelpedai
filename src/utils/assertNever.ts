@@ -27,5 +27,12 @@
  * ```
  */
 export function assertNever(value: never, message?: string): never {
-  throw new Error(message ?? `Unexpected value: ${JSON.stringify(value)}`)
+  if (message !== undefined) throw new Error(message)
+  let rendered: string
+  try {
+    rendered = JSON.stringify(value)
+  } catch {
+    rendered = String(value)
+  }
+  throw new Error(`Unexpected value: ${rendered}`)
 }

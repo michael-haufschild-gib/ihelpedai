@@ -36,6 +36,7 @@ export const Input = ({
   ...props
 }: InputProps & { ref?: React.Ref<HTMLInputElement> }) => {
   const [isFocused, setIsFocused] = useState(false)
+  const [uncontrolledHasValue, setUncontrolledHasValue] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const setRefs = useCallback(
     (el: HTMLInputElement | null) => {
@@ -51,12 +52,19 @@ export const Input = ({
     if (hasError) soundManager.playSnap()
   }, [hasError])
 
-  const handleClear = () => {
-    if (inputRef.current) clearInputValue(inputRef.current, onChange, onClear)
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (value === undefined) setUncontrolledHasValue(e.target.value.length > 0)
+    onChange?.(e)
   }
 
-  const hasValue =
-    value !== undefined ? String(value).length > 0 : (inputRef.current?.value.length ?? 0) > 0
+  const handleClear = () => {
+    if (inputRef.current) {
+      clearInputValue(inputRef.current, onChange, onClear)
+      if (value === undefined) setUncontrolledHasValue(false)
+    }
+  }
+
+  const hasValue = value !== undefined ? String(value).length > 0 : uncontrolledHasValue
 
   const errorBorder =
     'border-danger-border focus:border-danger focus:ring-1 focus:ring-danger-border placeholder:text-danger/30'
@@ -82,7 +90,7 @@ export const Input = ({
           ref={setRefs}
           type={type}
           value={value}
-          onChange={onChange}
+          onChange={handleInputChange}
           disabled={disabled || loading}
           onFocus={(e) => {
             setIsFocused(true)

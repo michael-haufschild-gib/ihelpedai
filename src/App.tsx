@@ -1,6 +1,7 @@
 import { EditorLayout } from '@/components/layout/EditorLayout'
 import { GlobalToast } from '@/components/ui/GlobalToast'
 
+/** Root application shell. */
 export function App() {
   return (
     <>

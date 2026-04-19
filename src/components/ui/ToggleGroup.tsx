@@ -49,8 +49,8 @@ export const ToggleGroup = <T extends string = string>({
             borderColor: 'var(--accent-muted)',
           })}
           animate={{
-            left: `calc(${String(selectedIndex)} * (100% / ${String(count)}) + 4px)`,
-            width: `calc(100% / ${String(count)} - 8px)`,
+            left: `calc(${selectedIndex} * (100% / ${count}) + 4px)`,
+            width: `calc(100% / ${count} - 8px)`,
           }}
           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
         />

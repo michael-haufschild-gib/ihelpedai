@@ -13,8 +13,17 @@ export function useTabsScroll() {
     let stableCheckCount = 0
     let lastScrollWidth = 0
     let lastClientWidth = 0
-    let rafId: number | null = null
+    const rafIds = new Set<number>()
     let isCleanedUp = false
+
+    const schedule = (cb: () => void) => {
+      if (isCleanedUp) return
+      const id = requestAnimationFrame(() => {
+        rafIds.delete(id)
+        cb()
+      })
+      rafIds.add(id)
+    }
 
     const checkScroll = () => {
       if (isCleanedUp) return
@@ -38,22 +47,19 @@ export function useTabsScroll() {
       }
       lastScrollWidth = scrollWidth
       lastClientWidth = clientWidth
-      rafId = requestAnimationFrame(waitForStableLayout)
+      schedule(waitForStableLayout)
     }
 
-    const resizeObserver = new ResizeObserver(() => {
-      if (!isCleanedUp) rafId = requestAnimationFrame(checkScroll)
-    })
+    const resizeObserver = new ResizeObserver(() => schedule(checkScroll))
     resizeObserver.observe(container)
-    rafId = requestAnimationFrame(waitForStableLayout)
+    schedule(waitForStableLayout)
 
-    const handleScroll = () => {
-      if (!isCleanedUp) rafId = requestAnimationFrame(checkScroll)
-    }
+    const handleScroll = () => schedule(checkScroll)
     container.addEventListener('scroll', handleScroll, { passive: true })
 
     const handleWheel = (e: WheelEvent) => {
       if (container.scrollWidth <= container.clientWidth) return
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
       e.preventDefault()
       container.scrollBy({ left: e.deltaY, behavior: 'smooth' })
     }
@@ -61,7 +67,8 @@ export function useTabsScroll() {
 
     return () => {
       isCleanedUp = true
-      if (rafId !== null) cancelAnimationFrame(rafId)
+      for (const id of rafIds) cancelAnimationFrame(id)
+      rafIds.clear()
       resizeObserver.disconnect()
       container.removeEventListener('scroll', handleScroll)
       container.removeEventListener('wheel', handleWheel)

@@ -1,4 +1,5 @@
-import { useLayoutStore } from '@/stores/layoutStore'
+import { useLayoutStore, type LayoutStore } from '@/stores/layoutStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useRef } from 'react'
 import './Toast.css'
 
@@ -15,8 +16,9 @@ const EXIT_MS = 320
 export function ToastContent({ message, onDone }: ToastProps) {
   const toastRef = useRef<HTMLDivElement>(null)
   const progressRef = useRef<HTMLDivElement>(null)
-  const theme = useLayoutStore((s) => s.theme)
-  const accent = useLayoutStore((s) => s.accent)
+  const { theme, accent } = useLayoutStore(
+    useShallow((s: LayoutStore) => ({ theme: s.theme, accent: s.accent }))
+  )
 
   useEffect(() => {
     const toast = toastRef.current
@@ -38,6 +40,7 @@ export function ToastContent({ message, onDone }: ToastProps) {
       fill: 'forwards',
     })
 
+    let disposed = false
     const exitTimer = setTimeout(() => {
       const exitAnim = toast.animate(
         [
@@ -47,10 +50,13 @@ export function ToastContent({ message, onDone }: ToastProps) {
         ],
         { duration: EXIT_MS, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', fill: 'forwards' }
       )
-      exitAnim.onfinish = onDone
+      exitAnim.onfinish = () => {
+        if (!disposed) onDone()
+      }
     }, VISIBLE_MS)
 
     return () => {
+      disposed = true
       clearTimeout(exitTimer)
       toast.getAnimations().forEach((a) => a.cancel())
       progress.getAnimations().forEach((a) => a.cancel())

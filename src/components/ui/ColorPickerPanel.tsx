@@ -474,7 +474,9 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
 
   // Stable ref so the drag effect doesn't re-subscribe listeners on every HSV change
   const updateSVRef = useRef(updateSV)
-  updateSVRef.current = updateSV
+  useEffect(() => {
+    updateSVRef.current = updateSV
+  }, [updateSV])
 
   useEffect(() => {
     if (!isDraggingSV) return

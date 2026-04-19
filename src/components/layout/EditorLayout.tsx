@@ -51,8 +51,13 @@ export const EditorLayout: React.FC<EditorLayoutProps> = ({ children }) => {
     }))
   )
 
-  if (!hasReducedMotionListener.current) initPrefersReducedMotion()
-  prefersReducedMotion.current = reducedMotion === 'reduce'
+  useEffect(() => {
+    if (!hasReducedMotionListener.current) initPrefersReducedMotion()
+  }, [])
+
+  useEffect(() => {
+    prefersReducedMotion.current = reducedMotion === 'reduce'
+  }, [reducedMotion])
 
   useEffect(() => {
     syncReducedMotionStyles()

@@ -67,9 +67,7 @@ function GroupHeader({
             </svg>
           </m.div>
         )}
-        <span
-          className={`text-xs font-bold uppercase tracking-wider ${collapsible ? 'text-text-primary' : 'text-text-primary'}`}
-        >
+        <span className="text-xs font-bold uppercase tracking-wider text-text-primary">
           {title}
         </span>
       </div>

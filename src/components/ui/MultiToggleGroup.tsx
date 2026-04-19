@@ -64,12 +64,13 @@ export const MultiToggleGroup = <T extends string = string>({
                 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
                 ${
                   isSelected
-                    ? 'bg-accent/20 text-accent border-accent/50 shadow-[0_0_10px_color-mix(in_oklch,var(--color-accent)_20%,transparent)]'
+                    ? 'bg-accent/20 text-accent border-accent/50 shadow-[0_0_10px_color-mix(in_oklch,var(--theme-accent)_20%,transparent)]'
                     : 'bg-[var(--bg-hover)] text-text-secondary border-border-default hover:text-text-primary hover:bg-[var(--bg-active)]'
                 }
               `}
               role="checkbox"
               aria-checked={isSelected}
+              aria-disabled={disabled}
               data-testid={testId ? `${testId}-${option.value}` : undefined}
             >
               <span className="relative z-10">{option.label}</span>
