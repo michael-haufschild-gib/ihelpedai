@@ -1,0 +1,106 @@
+/**
+ * THEME - Semantic Variables for Demo UI
+ * Scoped to [data-app-theme] for isolation from animation component CSS
+ */
+
+@import './tokens.css';
+
+/* DARK MODE (default) */
+[data-app-theme] {
+  /* BACKGROUNDS */
+  --bg-app: var(--token-slate-1000);
+  --bg-panel: oklch(from var(--token-slate-950) l c h / 75%);
+  --bg-surface: var(--token-slate-900);
+  --bg-elevated: var(--token-slate-800);
+  --bg-glass: oklch(from var(--token-slate-900) l c h / 60%);
+  --bg-hover: oklch(100% 0 0deg / 8%);
+  --bg-active: oklch(100% 0 0deg / 12%);
+  --bg-overlay: oklch(0% 0 0deg / 60%);
+
+  /* TEXT */
+  --text-primary: var(--token-slate-50);
+  --text-secondary: var(--token-slate-400);
+  --text-tertiary: var(--token-slate-600);
+  --text-muted: var(--token-slate-500);
+  --text-inverse: var(--token-slate-950);
+
+  /* BORDERS */
+  --border-subtle: oklch(100% 0 0deg / 8%);
+  --border-default: oklch(100% 0 0deg / 12%);
+  --border-strong: oklch(100% 0 0deg / 20%);
+  --border-highlight: var(--border-strong);
+
+  /* PANEL ALIASES */
+  --panel-bg: var(--bg-panel);
+  --panel-border: var(--border-default);
+  --panel-header: var(--bg-hover);
+
+  /* SHADOWS */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0deg / 10%);
+  --shadow-md: 0 4px 6px -1px oklch(0% 0 0deg / 20%);
+  --shadow-lg: 0 4px 12px -2px oklch(0% 0 0deg / 40%);
+  --shadow-xl: 0 8px 24px -4px oklch(0% 0 0deg / 50%);
+  --shadow-soft: var(--shadow-md);
+  --shadow-hard: var(--shadow-lg);
+
+  /* ACCENT COLOR */
+  --theme-accent: oklch(var(--token-accent-l) var(--token-accent-c) var(--token-accent-h));
+  --theme-accent-glow: var(--theme-accent);
+  --accent-subtle: oklch(from var(--theme-accent) l c h / 15%);
+  --accent-muted: oklch(from var(--theme-accent) l c h / 30%);
+
+  /* STATUS: DANGER */
+  --bg-danger: oklch(from var(--token-red-500) l c h / 15%);
+  --bg-danger-solid: var(--token-red-600);
+  --text-danger: var(--token-red-400);
+  --border-danger: oklch(from var(--token-red-500) l c h / 30%);
+
+  /* STATUS: SUCCESS */
+  --bg-success: oklch(from var(--token-green-500) l c h / 15%);
+  --bg-success-solid: var(--token-green-500);
+  --text-success: var(--token-green-400);
+  --border-success: oklch(from var(--token-green-500) l c h / 30%);
+
+  /* STATUS: WARNING */
+  --bg-warning: oklch(from var(--token-amber-500) l c h / 15%);
+  --bg-warning-solid: var(--token-amber-500);
+  --text-warning: var(--token-amber-400);
+  --border-warning: oklch(from var(--token-amber-500) l c h / 30%);
+
+  /* LEGACY COMPATIBILITY */
+  --color-glass: var(--bg-glass);
+
+  /* RADIUS TOKENS */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+}
+
+/* ACCENT GLOW OVERRIDES */
+[data-app-theme][data-accent='cyan'] {
+  --theme-accent-glow: oklch(70% 0.14 200deg);
+}
+
+[data-app-theme][data-accent='green'] {
+  --theme-accent-glow: oklch(75% 0.18 145deg);
+}
+
+[data-app-theme][data-accent='magenta'] {
+  --theme-accent-glow: oklch(70% 0.22 330deg);
+}
+
+[data-app-theme][data-accent='orange'] {
+  --theme-accent-glow: oklch(75% 0.18 40deg);
+}
+
+[data-app-theme][data-accent='blue'] {
+  --theme-accent-glow: oklch(70% 0.14 260deg);
+}
+
+[data-app-theme][data-accent='violet'] {
+  --theme-accent-glow: oklch(70% 0.18 290deg);
+}
+
+[data-app-theme][data-accent='red'] {
+  --theme-accent-glow: oklch(65% 0.2 25deg);
+}

@@ -1,0 +1,48 @@
+/**
+ * Dark Purple Theme - Deep violet palette in oklch
+ * Original purple identity with lavender-tinted glass.
+ */
+
+[data-app-theme][data-mode='dark-purple'] {
+  /* BACKGROUNDS */
+  --bg-app: oklch(12% 0.075 300deg);
+  --bg-panel: oklch(14% 0.06 300deg / 82%);
+  --bg-surface: oklch(22% 0.11 296deg / 65%);
+  --bg-elevated: oklch(14% 0.06 300deg / 86%);
+  --bg-glass: oklch(20% 0.04 298deg / 55%);
+  --bg-hover: oklch(85% 0.08 310deg / 5%);
+  --bg-active: oklch(64% 0.13 310deg / 16%);
+  --bg-overlay: oklch(12% 0.075 300deg / 80%);
+
+  /* TEXT */
+  --text-primary: oklch(85% 0.08 310deg);
+  --text-secondary: oklch(100% 0 0deg / 76%);
+  --text-tertiary: oklch(100% 0 0deg / 54%);
+  --text-muted: oklch(100% 0 0deg / 40%);
+  --text-inverse: oklch(12% 0.075 300deg);
+
+  /* BORDERS — lavender-tinted */
+  --border-subtle: oklch(85% 0.08 310deg / 18%);
+  --border-default: oklch(85% 0.08 310deg / 10%);
+  --border-strong: oklch(85% 0.08 310deg / 30%);
+  --border-highlight: oklch(85% 0.08 310deg / 18%);
+
+  /* PANEL ALIASES */
+  --panel-bg: oklch(14% 0.06 300deg / 82%);
+  --panel-border: oklch(85% 0.08 310deg / 10%);
+  --panel-header: oklch(85% 0.08 310deg / 4%);
+
+  /* SHADOWS */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0deg / 15%);
+  --shadow-md: 0 12px 28px oklch(0% 0 0deg / 38%);
+  --shadow-lg: 0 24px 64px oklch(0% 0 0deg / 55%);
+  --shadow-xl: 0 24px 64px oklch(0% 0 0deg / 55%);
+  --shadow-soft: 0 12px 28px oklch(0% 0 0deg / 38%);
+  --shadow-hard: 0 24px 64px oklch(0% 0 0deg / 55%);
+
+  /* CANVAS (animation demo area) */
+  --app-canvas-bg: oklch(12% 0.075 300deg / 76%);
+  --app-canvas-gradient-start: oklch(85% 0.08 310deg / 25%);
+  --app-canvas-gradient-end: oklch(12% 0.075 300deg / 92%);
+  --app-shadow-canvas: oklch(100% 0 0deg / 4%);
+}

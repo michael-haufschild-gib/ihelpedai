@@ -1,0 +1,48 @@
+/**
+ * Dark Brown Theme - Rich walnut palette in oklch
+ * Warm, luxurious dark earth tones with amber-tinted glass and golden undertones.
+ */
+
+[data-app-theme][data-mode='dark-brown'] {
+  /* BACKGROUNDS */
+  --bg-app: oklch(12% 0.04 55deg);
+  --bg-panel: oklch(14% 0.035 50deg / 82%);
+  --bg-surface: oklch(20% 0.05 52deg / 65%);
+  --bg-elevated: oklch(14% 0.035 50deg / 86%);
+  --bg-glass: oklch(18% 0.025 52deg / 55%);
+  --bg-hover: oklch(78% 0.06 60deg / 5%);
+  --bg-active: oklch(65% 0.08 55deg / 16%);
+  --bg-overlay: oklch(12% 0.04 55deg / 80%);
+
+  /* TEXT */
+  --text-primary: oklch(88% 0.04 65deg);
+  --text-secondary: oklch(100% 0 0deg / 76%);
+  --text-tertiary: oklch(100% 0 0deg / 54%);
+  --text-muted: oklch(100% 0 0deg / 40%);
+  --text-inverse: oklch(12% 0.04 55deg);
+
+  /* BORDERS — warm amber-tinted */
+  --border-subtle: oklch(72% 0.04 60deg / 14%);
+  --border-default: oklch(72% 0.04 60deg / 10%);
+  --border-strong: oklch(72% 0.04 60deg / 25%);
+  --border-highlight: oklch(72% 0.04 60deg / 14%);
+
+  /* PANEL ALIASES */
+  --panel-bg: oklch(14% 0.035 50deg / 82%);
+  --panel-border: oklch(72% 0.04 60deg / 10%);
+  --panel-header: oklch(72% 0.04 60deg / 4%);
+
+  /* SHADOWS — warm dark cast */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0deg / 18%);
+  --shadow-md: 0 12px 28px oklch(8% 0.02 50deg / 42%);
+  --shadow-lg: 0 24px 64px oklch(5% 0.02 50deg / 58%);
+  --shadow-xl: 0 24px 64px oklch(5% 0.02 50deg / 58%);
+  --shadow-soft: 0 12px 28px oklch(8% 0.02 50deg / 42%);
+  --shadow-hard: 0 24px 64px oklch(5% 0.02 50deg / 58%);
+
+  /* CANVAS (animation demo area) */
+  --app-canvas-bg: oklch(12% 0.04 55deg / 76%);
+  --app-canvas-gradient-start: oklch(72% 0.04 60deg / 18%);
+  --app-canvas-gradient-end: oklch(12% 0.04 55deg / 92%);
+  --app-shadow-canvas: oklch(100% 0 0deg / 3%);
+}

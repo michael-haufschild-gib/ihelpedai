@@ -1,0 +1,91 @@
+/**
+ * DESIGN TOKENS - Single source of truth for Demo UI
+ * Scoped to [data-app-theme] for isolation from animation component CSS
+ */
+
+[data-app-theme] {
+  /* NEUTRAL SCALE (Slate) */
+  --token-slate-0: oklch(99% 0.003 245deg);
+  --token-slate-50: oklch(97% 0.004 245deg);
+  --token-slate-100: oklch(92% 0.006 245deg);
+  --token-slate-200: oklch(87% 0.008 245deg);
+  --token-slate-300: oklch(80% 0.012 245deg);
+  --token-slate-400: oklch(70% 0.02 245deg);
+  --token-slate-500: oklch(55% 0.03 245deg);
+  --token-slate-600: oklch(45% 0.03 245deg);
+  --token-slate-700: oklch(35% 0.03 245deg);
+  --token-slate-800: oklch(25% 0.025 245deg);
+  --token-slate-900: oklch(15% 0.02 245deg);
+  --token-slate-950: oklch(10% 0.02 245deg);
+  --token-slate-1000: oklch(5% 0.015 245deg);
+
+  /* STATUS COLORS - DANGER (Red) */
+  --token-red-300: oklch(72% 0.19 25deg);
+  --token-red-400: oklch(65% 0.22 25deg);
+  --token-red-500: oklch(60% 0.22 25deg);
+  --token-red-600: oklch(55% 0.22 25deg);
+  --token-red-700: oklch(45% 0.18 25deg);
+  --token-red-900: oklch(25% 0.08 25deg);
+
+  /* STATUS COLORS - SUCCESS (Green) */
+  --token-green-300: oklch(78% 0.16 145deg);
+  --token-green-400: oklch(72% 0.18 145deg);
+  --token-green-500: oklch(65% 0.18 145deg);
+  --token-green-600: oklch(55% 0.16 145deg);
+  --token-green-900: oklch(25% 0.06 145deg);
+
+  /* STATUS COLORS - WARNING (Amber) */
+  --token-amber-300: oklch(85% 0.14 85deg);
+  --token-amber-400: oklch(80% 0.16 85deg);
+  --token-amber-500: oklch(75% 0.16 85deg);
+  --token-amber-600: oklch(65% 0.14 85deg);
+  --token-amber-900: oklch(30% 0.06 85deg);
+
+  /* ACCENT TOKEN COMPONENTS - Default blue */
+  --token-accent-h: 260;
+  --token-accent-c: 0.14;
+  --token-accent-l: 70%;
+}
+
+/* ACCENT COLOR DEFINITIONS */
+[data-app-theme][data-accent='cyan'] {
+  --token-accent-h: 200;
+  --token-accent-c: 0.14;
+  --token-accent-l: 70%;
+}
+
+[data-app-theme][data-accent='green'] {
+  --token-accent-h: 145;
+  --token-accent-c: 0.18;
+  --token-accent-l: 75%;
+}
+
+[data-app-theme][data-accent='magenta'] {
+  --token-accent-h: 330;
+  --token-accent-c: 0.22;
+  --token-accent-l: 70%;
+}
+
+[data-app-theme][data-accent='orange'] {
+  --token-accent-h: 40;
+  --token-accent-c: 0.18;
+  --token-accent-l: 75%;
+}
+
+[data-app-theme][data-accent='blue'] {
+  --token-accent-h: 260;
+  --token-accent-c: 0.14;
+  --token-accent-l: 70%;
+}
+
+[data-app-theme][data-accent='violet'] {
+  --token-accent-h: 290;
+  --token-accent-c: 0.18;
+  --token-accent-l: 70%;
+}
+
+[data-app-theme][data-accent='red'] {
+  --token-accent-h: 25;
+  --token-accent-c: 0.2;
+  --token-accent-l: 65%;
+}

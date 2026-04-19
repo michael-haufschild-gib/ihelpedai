@@ -1,0 +1,527 @@
+/**
+ * Demo UI Styles
+ * All styles scoped to [data-app-theme] for isolation from animation component CSS
+ */
+
+/* stylelint-disable declaration-no-important -- Tailwind-override utilities need !important for specificity */
+/* stylelint-disable selector-class-pattern -- Tailwind arbitrary value selectors don't follow BEM */
+
+@import './theme.css';
+@import './theme-dark-purple.css';
+@import './theme-dark-blue.css';
+@import './theme-dark-brown.css';
+@import './theme-dark-black.css';
+
+/* GLASSMORPHISM UTILITIES */
+[data-app-theme] .glass-panel {
+  background-color: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--border-subtle);
+  box-shadow:
+    var(--shadow-soft),
+    inset 0 1px 0 0 oklch(100% 0 0deg / 6%),
+    inset 0 0 0 1px oklch(100% 0 0deg / 2%),
+    0 0 0 0.5px oklch(0% 0 0deg / 15%);
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+[data-app-theme].pf-shell-backdrop {
+  background:
+    radial-gradient(
+      ellipse 80% 50% at 20% 10%,
+      color-mix(in oklch, var(--theme-accent) 10%, transparent) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 60% 40% at 80% 90%,
+      color-mix(in oklch, var(--theme-accent) 6%, transparent) 0%,
+      transparent 60%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--bg-app), white 5%) 0%,
+      var(--bg-app) 25%,
+      color-mix(in oklch, var(--bg-app), black 6%) 100%
+    );
+}
+
+[data-app-theme] .glass-input {
+  background-color: var(--color-glass);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 2px oklch(0% 0 0deg / 5%);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+}
+
+[data-app-theme] .glass-input:hover {
+  border-color: var(--border-default);
+  background-color: color-mix(in oklch, var(--color-glass), var(--text-primary) 5%);
+}
+
+[data-app-theme] .glass-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+[data-app-theme] .glass-input:focus {
+  outline: none;
+  border-color: var(--theme-accent);
+  background-color: color-mix(in oklch, var(--color-glass), var(--theme-accent) 5%);
+  box-shadow:
+    inset 0 1px 2px oklch(0% 0 0deg / 5%),
+    0 0 0 1px var(--theme-accent),
+    0 0 12px -2px color-mix(in oklch, var(--theme-accent-glow) 30%, transparent);
+}
+
+/* ============================================
+   BUTTON COMPONENTS
+   ============================================ */
+
+[data-app-theme] .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  border: 1px solid transparent;
+  letter-spacing: 0.01em;
+}
+
+[data-app-theme] .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+[data-app-theme] .btn:active {
+  transform: translateY(1px);
+}
+
+/* Primary Button */
+[data-app-theme] .btn-primary {
+  background-color: var(--accent-subtle);
+  border-color: var(--theme-accent);
+  color: var(--theme-accent);
+  box-shadow: none;
+}
+
+[data-app-theme] .btn-primary:hover {
+  background-color: color-mix(in oklch, var(--theme-accent) 25%, transparent);
+  box-shadow: 0 0 12px var(--accent-subtle);
+  transform: translateY(-0.5px);
+}
+
+[data-app-theme] .btn-primary:active {
+  background-color: var(--accent-subtle);
+  transform: translateY(0);
+}
+
+/* Secondary Button */
+[data-app-theme] .btn-secondary {
+  background-color: transparent;
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
+[data-app-theme] .btn-secondary:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  transform: translateY(-0.5px);
+}
+
+[data-app-theme] .btn-secondary:active {
+  background-color: var(--bg-active);
+  transform: translateY(0);
+}
+
+/* Ghost Button */
+[data-app-theme] .btn-ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+[data-app-theme] .btn-ghost:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+[data-app-theme] .btn-ghost:active {
+  background-color: var(--bg-active);
+}
+
+/* Danger Button */
+[data-app-theme] .btn-danger {
+  background-color: transparent;
+  border-color: var(--border-danger);
+  color: var(--text-danger);
+}
+
+[data-app-theme] .btn-danger:hover {
+  background-color: var(--bg-danger);
+  border-color: var(--text-danger);
+}
+
+[data-app-theme] .btn-danger:active {
+  background-color: color-mix(in oklch, var(--bg-danger), black 10%);
+}
+
+/* --- SIZES --- */
+
+[data-app-theme] .btn-sm {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  height: 1.75rem;
+}
+
+[data-app-theme] .btn-md {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  height: 2.25rem;
+}
+
+[data-app-theme] .btn-lg {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  height: 2.75rem;
+}
+
+[data-app-theme] .btn-icon {
+  padding: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+[data-app-theme] .btn-icon.btn-sm {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+/* TEXT UTILITIES */
+[data-app-theme] .text-glow {
+  text-shadow: 0 0 12px var(--theme-accent-glow);
+}
+
+[data-app-theme] .text-glow-subtle {
+  text-shadow: 0 0 8px color-mix(in oklch, var(--theme-accent-glow) 40%, transparent);
+}
+
+/* COLOR UTILITIES */
+[data-app-theme] .text-text-primary {
+  color: var(--text-primary) !important;
+}
+
+[data-app-theme] .text-text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+[data-app-theme] .text-text-tertiary {
+  color: var(--text-tertiary) !important;
+}
+
+[data-app-theme] .text-accent {
+  color: var(--theme-accent) !important;
+}
+
+[data-app-theme] .text-danger {
+  color: var(--text-danger) !important;
+}
+
+[data-app-theme] .bg-panel {
+  background-color: var(--bg-panel) !important;
+}
+
+[data-app-theme] .bg-panel\/90 {
+  background-color: color-mix(in oklch, var(--bg-panel) 90%, transparent) !important;
+}
+
+[data-app-theme] .bg-panel-header\/50 {
+  background-color: color-mix(in oklch, var(--panel-header) 50%, transparent) !important;
+}
+
+[data-app-theme] .bg-panel-header\/30 {
+  background-color: color-mix(in oklch, var(--panel-header) 30%, transparent) !important;
+}
+
+[data-app-theme] .bg-surface {
+  background-color: var(--bg-surface) !important;
+}
+
+[data-app-theme] .bg-elevated {
+  background-color: var(--bg-elevated) !important;
+}
+
+/* Border utilities */
+[data-app-theme] .border-border-subtle {
+  border-color: var(--border-subtle) !important;
+}
+
+[data-app-theme] .border-border-default {
+  border-color: var(--border-default) !important;
+}
+
+[data-app-theme] .border-panel-border {
+  border-color: var(--panel-border) !important;
+}
+
+[data-app-theme] .border-accent {
+  border-color: var(--theme-accent) !important;
+}
+
+[data-app-theme] .border-accent\/40 {
+  border-color: color-mix(in oklch, var(--theme-accent) 40%, transparent) !important;
+}
+
+[data-app-theme] .border-accent\/50 {
+  border-color: color-mix(in oklch, var(--theme-accent) 50%, transparent) !important;
+}
+
+[data-app-theme] .border-danger-border {
+  border-color: var(--border-danger) !important;
+}
+
+/* Hover states */
+[data-app-theme] .hover\:text-text-primary:hover {
+  color: var(--text-primary) !important;
+}
+
+[data-app-theme] .hover\:bg-\[var\(--bg-hover\)\]:hover {
+  background-color: var(--bg-hover) !important;
+}
+
+[data-app-theme] .hover\:bg-panel:hover {
+  background-color: var(--bg-panel) !important;
+}
+
+/* STATUS UTILITIES */
+[data-app-theme] .text-text-danger {
+  color: var(--text-danger) !important;
+}
+
+[data-app-theme] .text-text-success {
+  color: var(--text-success) !important;
+}
+
+[data-app-theme] .text-text-warning {
+  color: var(--text-warning) !important;
+}
+
+[data-app-theme] .text-text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* Accent with opacity */
+[data-app-theme] .bg-accent\/10 {
+  background-color: color-mix(in oklch, var(--theme-accent) 10%, transparent) !important;
+}
+
+[data-app-theme] .bg-accent\/15 {
+  background-color: color-mix(in oklch, var(--theme-accent) 15%, transparent) !important;
+}
+
+[data-app-theme] .bg-accent\/20 {
+  background-color: color-mix(in oklch, var(--theme-accent) 20%, transparent) !important;
+}
+
+[data-app-theme] .bg-accent\/60 {
+  background-color: color-mix(in oklch, var(--theme-accent) 60%, transparent) !important;
+}
+
+[data-app-theme] .focus\:border-accent:focus {
+  border-color: var(--theme-accent) !important;
+}
+
+[data-app-theme] .focus\:border-danger:focus {
+  border-color: var(--text-danger) !important;
+}
+
+[data-app-theme] .focus\:ring-accent\/50:focus {
+  --tw-ring-color: color-mix(in oklch, var(--theme-accent) 50%, transparent) !important;
+}
+
+[data-app-theme] .focus\:ring-danger-border:focus {
+  --tw-ring-color: var(--border-danger) !important;
+}
+
+[data-app-theme] .placeholder\:text-danger\/30::placeholder {
+  color: color-mix(in oklch, var(--text-danger) 30%, transparent) !important;
+}
+
+[data-app-theme] .group:focus-within .group-focus-within\:border-accent\/50 {
+  border-color: color-mix(in oklch, var(--theme-accent) 50%, transparent) !important;
+}
+
+/* SCROLLBAR UTILITIES */
+[data-app-theme] .scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+[data-app-theme] .scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+[data-app-theme] .scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-app-theme] .scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-app-theme] .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 9999px;
+}
+
+[data-app-theme] .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--border-strong);
+}
+
+/* RESET POPOVER DEFAULTS */
+[data-app-theme] [popover] {
+  border: none;
+  background: transparent;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+}
+
+/* BASE STYLES */
+[data-app-theme] {
+  /* Tailwind border utilities expect this variable to exist in v4. */
+  --tw-border-style: solid;
+  font-family:
+    Roboto,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+[data-app-theme] h1,
+[data-app-theme] h2,
+[data-app-theme] h3,
+[data-app-theme] h4 {
+  font-family: inherit;
+}
+
+/* SIDEBAR NAVIGATION ITEMS */
+[data-app-theme] .pf-nav-item {
+  position: relative;
+  padding-left: 12px;
+}
+
+[data-app-theme] .pf-nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+[data-app-theme] .pf-nav-item--active::before {
+  background: var(--theme-accent);
+  box-shadow: 0 0 6px color-mix(in oklch, var(--theme-accent) 40%, transparent);
+}
+
+/* TOP BAR ACCENT LINE */
+[data-app-theme] .pf-topbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--theme-accent) 50%, transparent) 30%,
+    var(--theme-accent) 50%,
+    color-mix(in oklch, var(--theme-accent) 50%, transparent) 70%,
+    transparent 100%
+  );
+  opacity: 0.5;
+  border-radius: 1px;
+}
+
+/* SECTION LABEL */
+[data-app-theme] .section-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+
+/* ============================================
+   BANNER COMPONENT
+   ============================================ */
+
+[data-app-theme] .banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.875rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-hover);
+  font-size: 0.8125rem;
+}
+
+[data-app-theme] .banner-text {
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-app-theme] .banner-info {
+  border-color: color-mix(in oklch, var(--theme-accent) 30%, var(--border-subtle));
+  background-color: color-mix(in oklch, var(--theme-accent) 6%, transparent);
+}
+
+[data-app-theme] .banner-info .banner-text {
+  color: var(--text-primary);
+}
+
+[data-app-theme] .banner-warning {
+  border-color: color-mix(in oklch, var(--text-warning) 40%, var(--border-subtle));
+  background-color: var(--bg-warning);
+}
+
+[data-app-theme] .banner-warning .banner-text {
+  color: var(--text-warning);
+}
+
+[data-app-theme] .banner-error {
+  border-color: var(--border-danger);
+  background-color: var(--bg-danger);
+}
+
+[data-app-theme] .banner-error .banner-text {
+  color: var(--text-danger);
+}

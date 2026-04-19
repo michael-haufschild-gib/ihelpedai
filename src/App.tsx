@@ -1,10 +1,20 @@
-/** Root application component. */
+import { EditorLayout } from '@/components/layout/EditorLayout'
+import { GlobalToast } from '@/components/ui/GlobalToast'
+
 export function App() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <h1 data-testid="app-heading" className="text-3xl font-semibold tracking-tight">
-        ihelpedai
-      </h1>
-    </main>
+    <>
+      <EditorLayout>
+        <div className="flex min-h-[240px] items-center justify-center">
+          <h1
+            data-testid="app-heading"
+            className="text-3xl font-semibold tracking-tight text-(--text-primary)"
+          >
+            Coming soon
+          </h1>
+        </div>
+      </EditorLayout>
+      <GlobalToast />
+    </>
   )
 }

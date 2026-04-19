@@ -1,0 +1,48 @@
+/**
+ * Dark Black Theme - Neutral charcoal palette in oklch
+ * Minimal, clean dark grays with near-zero chroma. Sleek and modern.
+ */
+
+[data-app-theme][data-mode='dark-black'] {
+  /* BACKGROUNDS */
+  --bg-app: oklch(10% 0.005 240deg);
+  --bg-panel: oklch(13% 0.005 240deg / 82%);
+  --bg-surface: oklch(18% 0.008 240deg / 65%);
+  --bg-elevated: oklch(13% 0.005 240deg / 86%);
+  --bg-glass: oklch(16% 0.004 240deg / 55%);
+  --bg-hover: oklch(80% 0 0deg / 5%);
+  --bg-active: oklch(65% 0 0deg / 14%);
+  --bg-overlay: oklch(8% 0 0deg / 82%);
+
+  /* TEXT */
+  --text-primary: oklch(90% 0 0deg);
+  --text-secondary: oklch(100% 0 0deg / 72%);
+  --text-tertiary: oklch(100% 0 0deg / 50%);
+  --text-muted: oklch(100% 0 0deg / 36%);
+  --text-inverse: oklch(10% 0 0deg);
+
+  /* BORDERS — neutral cool gray */
+  --border-subtle: oklch(75% 0 0deg / 10%);
+  --border-default: oklch(75% 0 0deg / 8%);
+  --border-strong: oklch(75% 0 0deg / 20%);
+  --border-highlight: oklch(75% 0 0deg / 10%);
+
+  /* PANEL ALIASES */
+  --panel-bg: oklch(13% 0.005 240deg / 82%);
+  --panel-border: oklch(75% 0 0deg / 8%);
+  --panel-header: oklch(75% 0 0deg / 3%);
+
+  /* SHADOWS — pure dark */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0deg / 20%);
+  --shadow-md: 0 12px 28px oklch(0% 0 0deg / 45%);
+  --shadow-lg: 0 24px 64px oklch(0% 0 0deg / 60%);
+  --shadow-xl: 0 24px 64px oklch(0% 0 0deg / 60%);
+  --shadow-soft: 0 12px 28px oklch(0% 0 0deg / 45%);
+  --shadow-hard: 0 24px 64px oklch(0% 0 0deg / 60%);
+
+  /* CANVAS (animation demo area) */
+  --app-canvas-bg: oklch(10% 0.005 240deg / 76%);
+  --app-canvas-gradient-start: oklch(75% 0 0deg / 12%);
+  --app-canvas-gradient-end: oklch(8% 0.005 240deg / 92%);
+  --app-shadow-canvas: oklch(100% 0 0deg / 2%);
+}
