@@ -196,27 +196,13 @@ function usePopoverDrag(
   }
 }
 
-function usePopoverPositioning(
-  isOpen: boolean,
-  side: 'top' | 'bottom',
-  align: 'start' | 'end' | 'center',
-  offset: number,
+/** Writes the popover's top/left and updates drag constraints. */
+function useApplyPopoverPosition(
   popoverRef: React.RefObject<HTMLDivElement | null>,
   surfaceRef: React.RefObject<HTMLDivElement | null>,
-  triggerRef: React.RefObject<HTMLDivElement | null>,
-  drag: PopoverDragState
+  setDragConstraints: PopoverDragState['setDragConstraints']
 ) {
-  const {
-    manualPositionRef,
-    isDraggingRef,
-    dragX,
-    dragY,
-    setDragConstraints,
-    setIsDragging,
-    applyPositionRef,
-  } = drag
-
-  const applyPopoverPosition = useCallback(
+  return useCallback(
     (position: { top: number; left: number }) => {
       const popover = popoverRef.current
       const surface = surfaceRef.current
@@ -244,6 +230,69 @@ function usePopoverPositioning(
     },
     [popoverRef, surfaceRef, setDragConstraints]
   )
+}
+
+/** Attaches window/resize listeners that trigger updatePosition while the popover is open. */
+function usePositionObservers(
+  isOpen: boolean,
+  updatePosition: () => void,
+  surfaceRef: React.RefObject<HTMLDivElement | null>
+) {
+  useLayoutEffect(() => {
+    if (!isOpen) return
+
+    let rafId: number | null = null
+    const schedulePositionUpdate = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        updatePosition()
+        rafId = null
+      })
+    }
+    const syncPositionUpdate = () => {
+      updatePosition()
+      schedulePositionUpdate()
+    }
+
+    const surfaceEl = surfaceRef.current
+    const resizeObserver =
+      surfaceEl == null ? null : new ResizeObserver(() => syncPositionUpdate())
+
+    syncPositionUpdate()
+    window.addEventListener('resize', syncPositionUpdate)
+    window.addEventListener('scroll', syncPositionUpdate, true)
+    if (surfaceEl != null) resizeObserver?.observe(surfaceEl)
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', syncPositionUpdate)
+      window.removeEventListener('scroll', syncPositionUpdate, true)
+    }
+  }, [isOpen, updatePosition, surfaceRef])
+}
+
+function usePopoverPositioning(
+  isOpen: boolean,
+  side: 'top' | 'bottom',
+  align: 'start' | 'end' | 'center',
+  offset: number,
+  popoverRef: React.RefObject<HTMLDivElement | null>,
+  surfaceRef: React.RefObject<HTMLDivElement | null>,
+  triggerRef: React.RefObject<HTMLDivElement | null>,
+  drag: PopoverDragState
+) {
+  const {
+    manualPositionRef,
+    isDraggingRef,
+    dragX,
+    dragY,
+    setDragConstraints,
+    setIsDragging,
+    applyPositionRef,
+  } = drag
+
+  const applyPopoverPosition = useApplyPopoverPosition(popoverRef, surfaceRef, setDragConstraints)
 
   useEffect(() => {
     applyPositionRef.current = applyPopoverPosition
@@ -288,39 +337,7 @@ function usePopoverPositioning(
     manualPositionRef,
   ])
 
-  useLayoutEffect(() => {
-    if (!isOpen) return
-
-    let rafId: number | null = null
-    const schedulePositionUpdate = () => {
-      if (rafId !== null) cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(() => {
-        updatePosition()
-        rafId = null
-      })
-    }
-    const syncPositionUpdate = () => {
-      updatePosition()
-      schedulePositionUpdate()
-    }
-
-    const surfaceEl = surfaceRef.current
-    const resizeObserver = surfaceEl == null ? null : new ResizeObserver(() => syncPositionUpdate())
-
-    syncPositionUpdate()
-    window.addEventListener('resize', syncPositionUpdate)
-    window.addEventListener('scroll', syncPositionUpdate, true)
-    if (surfaceEl != null) {
-      resizeObserver?.observe(surfaceEl)
-    }
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId)
-      resizeObserver?.disconnect()
-      window.removeEventListener('resize', syncPositionUpdate)
-      window.removeEventListener('scroll', syncPositionUpdate, true)
-    }
-  }, [isOpen, updatePosition, surfaceRef])
+  usePositionObservers(isOpen, updatePosition, surfaceRef)
 
   useEffect(() => {
     if (isOpen) return
@@ -337,6 +354,82 @@ function usePopoverPositioning(
  * Supports both controlled and uncontrolled modes. Automatically repositions
  * to stay within viewport bounds. Closes on outside click or Escape key.
  */
+/** Syncs the native popover API open state with React-controlled `isOpen`. */
+function useNativePopoverSync(
+  popoverRef: React.RefObject<HTMLDivElement | null>,
+  isOpen: boolean,
+  handleOpenChange: (open: boolean) => void
+) {
+  useEffect(() => {
+    const popover = popoverRef.current
+    if (!popover) return
+    if (isOpen && !popover.matches(':popover-open')) popover.showPopover()
+    else if (!isOpen && popover.matches(':popover-open')) popover.hidePopover()
+  }, [isOpen, popoverRef])
+
+  useEffect(() => {
+    const popover = popoverRef.current
+    if (!popover) return
+    const handleToggle = (e: Event) => {
+      handleOpenChange((e as ToggleEvent).newState === 'open')
+    }
+    popover.addEventListener('toggle', handleToggle)
+    return () => popover.removeEventListener('toggle', handleToggle)
+  }, [handleOpenChange, popoverRef])
+}
+
+/** The content surface (m.div) with drag + animation. */
+function PopoverSurface({
+  isOpen,
+  surfaceRef,
+  drag,
+  draggable,
+  className,
+  children,
+}: {
+  isOpen: boolean
+  surfaceRef: React.RefObject<HTMLDivElement | null>
+  drag: PopoverDragState
+  draggable: boolean
+  className: string
+  children: React.ReactNode
+}) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <m.div
+          ref={surfaceRef}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          drag={draggable}
+          dragControls={drag.dragControls}
+          dragListener={false}
+          dragMomentum={false}
+          dragElastic={0}
+          dragConstraints={drag.dragConstraints}
+          onDragStart={drag.onDragStart}
+          onDragEnd={drag.handleDragEnd}
+          transition={{ duration: 0.1, ease: 'easeOut' }}
+          className={`glass-panel rounded-lg shadow-2xl border border-border-default ${className}`}
+          onPointerDown={drag.handlePointerDown}
+          style={{
+            backdropFilter: 'blur(24px)',
+            maxWidth: 'calc(100dvw - 16px)',
+            maxHeight: 'calc(100dvh - 16px)',
+            overflow: 'auto',
+            x: drag.dragX,
+            y: drag.dragY,
+            cursor: draggable && drag.isDragging ? 'grabbing' : undefined,
+          }}
+        >
+          {children}
+        </m.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 export const Popover: React.FC<PopoverProps> = ({
   trigger,
   content,
@@ -362,52 +455,26 @@ export const Popover: React.FC<PopoverProps> = ({
 
   const prevIsOpenRef = useRef(isOpen)
   useEffect(() => {
-    if (isOpen && !prevIsOpenRef.current) {
-      soundManager.playSwish()
-    }
+    if (isOpen && !prevIsOpenRef.current) soundManager.playSwish()
     prevIsOpenRef.current = isOpen
   }, [isOpen])
 
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
-      if (!isControlled) {
-        setUncontrolledOpen(newOpen)
-      }
+      if (!isControlled) setUncontrolledOpen(newOpen)
       onOpenChange?.(newOpen)
     },
     [isControlled, onOpenChange]
   )
 
-  useEffect(() => {
-    const popover = popoverRef.current
-    if (!popover) return
-    if (isOpen && !popover.matches(':popover-open')) {
-      popover.showPopover()
-    } else if (!isOpen && popover.matches(':popover-open')) {
-      popover.hidePopover()
-    }
-  }, [isOpen])
-
-  useEffect(() => {
-    const popover = popoverRef.current
-    if (!popover) return
-    const handleToggle = (e: Event) => {
-      handleOpenChange((e as ToggleEvent).newState === 'open')
-    }
-    popover.addEventListener('toggle', handleToggle)
-    return () => {
-      popover.removeEventListener('toggle', handleToggle)
-    }
-  }, [handleOpenChange])
+  useNativePopoverSync(popoverRef, isOpen, handleOpenChange)
 
   return (
     <>
       <div
         data-testid="popover-open-change"
         ref={triggerRef}
-        onClick={() => {
-          handleOpenChange(!isOpen)
-        }}
+        onClick={() => handleOpenChange(!isOpen)}
         className="inline-block cursor-pointer"
         role="button"
         aria-haspopup="dialog"
@@ -421,44 +488,17 @@ export const Popover: React.FC<PopoverProps> = ({
         popover="auto"
         id={popoverId}
         className="m-0 p-0 border-none bg-transparent"
-        style={sx({
-          position: 'fixed' as const,
-          top: 0,
-          left: 0,
-        })}
+        style={sx({ position: 'fixed' as const, top: 0, left: 0 })}
       >
-        <AnimatePresence>
-          {isOpen && (
-            <m.div
-              ref={surfaceRef}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              drag={draggable}
-              dragControls={drag.dragControls}
-              dragListener={false}
-              dragMomentum={false}
-              dragElastic={0}
-              dragConstraints={drag.dragConstraints}
-              onDragStart={drag.onDragStart}
-              onDragEnd={drag.handleDragEnd}
-              transition={{ duration: 0.1, ease: 'easeOut' }}
-              className={`glass-panel rounded-lg shadow-2xl border border-border-default ${className}`}
-              onPointerDown={drag.handlePointerDown}
-              style={{
-                backdropFilter: 'blur(24px)',
-                maxWidth: 'calc(100dvw - 16px)',
-                maxHeight: 'calc(100dvh - 16px)',
-                overflow: 'auto',
-                x: drag.dragX,
-                y: drag.dragY,
-                cursor: draggable && drag.isDragging ? 'grabbing' : undefined,
-              }}
-            >
-              {content}
-            </m.div>
-          )}
-        </AnimatePresence>
+        <PopoverSurface
+          isOpen={isOpen}
+          surfaceRef={surfaceRef}
+          drag={drag}
+          draggable={draggable}
+          className={className}
+        >
+          {content}
+        </PopoverSurface>
       </div>
     </>
   )

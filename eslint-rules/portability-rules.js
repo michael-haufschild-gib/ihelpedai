@@ -6,6 +6,7 @@
  * - no-excessive-z-index: cap inline z-index values
  * - require-data-testid: interactive elements need data-testid
  * - no-unstyled-interactive-elements: interactive elements need className
+ * - no-eslint-disable-comments: ban eslint-disable/disable-next-line/disable-line directives
  */
 
 import { getFilename, isConfigFile } from './rule-helpers.js'
@@ -152,6 +153,33 @@ const portabilityRules = {
           if (getAttr(node, 'data-testid')) return
           if (getAttr(node, 'aria-hidden')) return
           context.report({ node, messageId: 'missing', data: { tag: name } })
+        },
+      }
+    },
+  },
+
+  'no-eslint-disable-comments': {
+    meta: {
+      type: 'problem',
+      docs: {
+        description:
+          'Ban eslint-disable, eslint-disable-next-line, eslint-disable-line, and block eslint-disable/enable directives. Fix the code or configure the rule in eslint.config.js instead.',
+      },
+      schema: [],
+      messages: {
+        banned:
+          'eslint-disable directives are forbidden. Restructure the code so the rule passes, or configure a per-file override in eslint.config.js.',
+      },
+    },
+    create(context) {
+      const sourceCode = context.sourceCode ?? context.getSourceCode()
+      return {
+        Program() {
+          for (const comment of sourceCode.getAllComments()) {
+            if (/\beslint-(?:disable|enable)(?:-next-line|-line)?\b/.test(comment.value)) {
+              context.report({ loc: comment.loc, messageId: 'banned' })
+            }
+          }
         },
       }
     },

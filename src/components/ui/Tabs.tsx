@@ -4,7 +4,7 @@
  */
 
 import type React from 'react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useId, useRef, useState } from 'react'
 import { useTabsScroll } from './useTabsScroll'
 import { TabScrollButton } from './TabScrollButton'
 import { TabButton } from './TabButton'
@@ -137,22 +137,25 @@ export const Tabs: React.FC<TabsProps> = ({
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([])
   const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set([value]))
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect -- track which tabs have been mounted for keep-alive
+  const ensureMounted = useCallback((id: string) => {
     setMountedTabs((prev) => {
-      if (prev.has(value)) return prev
+      if (prev.has(id)) return prev
       const next = new Set(prev)
-      next.add(value)
+      next.add(id)
       return next
     })
-  }, [value])
+  }, [])
 
   const handleTabChange = useCallback(
     (id: string) => {
+      ensureMounted(id)
       if (id !== value) onChange(id)
     },
-    [value, onChange]
+    [value, onChange, ensureMounted]
   )
+
+  // If a parent-controlled value flips to a tab we haven't mounted yet, mount it now.
+  if (!mountedTabs.has(value)) ensureMounted(value)
 
   return (
     <div className={`flex flex-col ${className}`} data-testid={testId}>

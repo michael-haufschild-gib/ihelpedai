@@ -8,7 +8,7 @@
  * - Inline color picker panel for the selected stop (side-by-side layout)
  */
 
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
+import React, { useCallback, useRef, useState, useMemo } from 'react'
 import { ColorPickerPanel } from './ColorPickerPanel'
 import { toCssGradientString, nextStopId } from '@/lib/colors/gradientUtils'
 import { sx } from '@/lib/sx'
@@ -354,47 +354,54 @@ function lerpHex(hex1: string, hex2: string, t: number): string {
 
 // ── State hook ──────────────────────────────────────────────────────────
 
+function resizeKeys(current: string[], nextLength: number): string[] {
+  if (current.length === nextLength) return current
+  if (current.length < nextLength) {
+    return [
+      ...current,
+      ...Array.from({ length: nextLength - current.length }, () => nextStopId()),
+    ]
+  }
+  return current.slice(0, nextLength)
+}
+
 function useGradientEditorState(
   value: LinearGradientValue,
   onChange: (v: LinearGradientValue) => void
 ) {
-  const [stopsWithKeys, setStopsWithKeys] = useState<StopWithKey[]>(() =>
-    value.stops.map((s) => ({ ...s, key: nextStopId() }))
-  )
+  const [keys, setKeys] = useState<string[]>(() => value.stops.map(() => nextStopId()))
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [editingStopColor, setEditingStopColor] = useState(false)
 
-  const syncStopsFromValue = useCallback((newStops: GradientStop[]) => {
-    setStopsWithKeys((prev) => {
-      if (prev.length === newStops.length) {
-        return prev.map((s, i) => ({ ...newStops[i]!, key: s.key }))
-      }
-      return newStops.map((s, i) => ({ ...s, key: prev[i]?.key ?? nextStopId() }))
-    })
-  }, [])
+  // Clamp selection if the external value shrinks the stops array.
+  const maxIndex = Math.max(0, value.stops.length - 1)
+  const clampedSelected = Math.min(selectedIndex, maxIndex)
 
-  // Resync keys + clamp selection when external value changes (controlled reset, preset switch).
-  /* eslint-disable react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect -- sync keyed cache with controlled value */
-  useEffect(() => {
-    syncStopsFromValue(value.stops)
-    setSelectedIndex((prev) => Math.min(prev, Math.max(0, value.stops.length - 1)))
-  }, [value.stops, syncStopsFromValue])
-  /* eslint-enable react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect */
+  // Zip current keys with stops; if the array length diverges (e.g. external reset),
+  // synthesize placeholder keys. The effect below will replace them on the next tick.
+  const stopsWithKeys: StopWithKey[] = value.stops.map((s, i) => ({
+    ...s,
+    key: keys[i] ?? `idx-${String(i)}`,
+  }))
+
+  const setKeysForLength = useCallback((length: number) => {
+    setKeys((current) => resizeKeys(current, length))
+  }, [])
 
   const emitChange = useCallback(
     (newStops: GradientStop[], newAngle?: number) => {
+      setKeysForLength(newStops.length)
       onChange({ type: 'linear-gradient', angle: newAngle ?? value.angle, stops: newStops })
-      syncStopsFromValue(newStops)
     },
-    [onChange, value.angle, syncStopsFromValue]
+    [onChange, value.angle, setKeysForLength]
   )
 
   return {
     stopsWithKeys,
-    selectedIndex,
+    selectedIndex: clampedSelected,
     editingStopColor,
     setEditingStopColor,
-    selectedStop: value.stops[selectedIndex],
+    selectedStop: value.stops[clampedSelected],
     handleStopPositionChange: useCallback(
       (index: number, position: number) => {
         emitChange(value.stops.map((s, i) => (i === index ? { ...s, position } : s)))
@@ -403,9 +410,9 @@ function useGradientEditorState(
     ),
     handleStopColorChange: useCallback(
       (color: string) => {
-        emitChange(value.stops.map((s, i) => (i === selectedIndex ? { ...s, color } : s)))
+        emitChange(value.stops.map((s, i) => (i === clampedSelected ? { ...s, color } : s)))
       },
-      [value.stops, selectedIndex, emitChange]
+      [value.stops, clampedSelected, emitChange]
     ),
     handleAddStop: useCallback(
       (position: number, color: string) => {

@@ -73,6 +73,44 @@ function useDropdownPosition(
   return coords
 }
 
+const MENU_VARIANTS = {
+  closed: { opacity: 0, y: -8, scale: 0.95, transition: { duration: 0.1 } },
+  open: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: 'spring' as const, damping: 25, stiffness: 400, mass: 0.5 },
+  },
+}
+
+/** Syncs the native popover open state with the dropdown store. */
+function useDropdownOpenSync(
+  popoverRef: React.RefObject<HTMLDivElement | null>,
+  dropdownId: string,
+  isOpen: boolean,
+  openDropdown: (id: string) => void,
+  closeDropdown: (id: string) => void
+) {
+  useEffect(() => {
+    const p = popoverRef.current
+    if (!p) return
+    if (isOpen && !p.matches(':popover-open')) p.showPopover()
+    else if (!isOpen && p.matches(':popover-open')) p.hidePopover()
+  }, [isOpen, popoverRef])
+
+  useEffect(() => {
+    const p = popoverRef.current
+    if (!p) return
+    const handle = (e: Event) => {
+      const te = e as ToggleEvent
+      if (te.newState === 'closed') closeDropdown(dropdownId)
+      else openDropdown(dropdownId)
+    }
+    p.addEventListener('toggle', handle)
+    return () => p.removeEventListener('toggle', handle)
+  }, [dropdownId, closeDropdown, openDropdown, popoverRef])
+}
+
 /** Dropdown menu with global state coordination and native popover API. */
 export const DropdownMenu: React.FC<DropdownMenuProps> = ({
   trigger,
@@ -105,37 +143,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
     prevIsOpenRef.current = isOpen
   }, [isOpen, onClose])
 
-  useEffect(() => {
-    const p = popoverRef.current
-    if (!p) return
-    if (isOpen && !p.matches(':popover-open')) p.showPopover()
-    else if (!isOpen && p.matches(':popover-open')) p.hidePopover()
-  }, [isOpen])
-
-  useEffect(() => {
-    const p = popoverRef.current
-    if (!p) return
-    const handle = (e: Event) => {
-      const te = e as ToggleEvent
-      if (te.newState === 'closed') {
-        closeDropdown(dropdownId)
-      } else {
-        openDropdown(dropdownId)
-      }
-    }
-    p.addEventListener('toggle', handle)
-    return () => p.removeEventListener('toggle', handle)
-  }, [dropdownId, closeDropdown, openDropdown])
-
-  const menuVariants = {
-    closed: { opacity: 0, y: -8, scale: 0.95, transition: { duration: 0.1 } },
-    open: {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      transition: { type: 'spring' as const, damping: 25, stiffness: 400, mass: 0.5 },
-    },
-  }
+  useDropdownOpenSync(popoverRef, dropdownId, isOpen, openDropdown, closeDropdown)
 
   return (
     <>
@@ -176,7 +184,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
                 initial="closed"
                 animate="open"
                 exit="closed"
-                variants={menuVariants}
+                variants={MENU_VARIANTS}
                 className="glass-panel min-w-[180px] rounded-lg py-1 shadow-xl border border-border-default"
                 style={sx({
                   maxHeight: maxHeight ?? '80vh',

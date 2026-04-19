@@ -198,6 +198,121 @@ function numberInputReducer(state: NumberInputState, action: NumberInputAction):
   }
 }
 
+/** Mounts effects that manage NumberInput lifecycle: mount flag + timer cleanup + external sync. */
+function useNumberInputEffects(
+  value: number,
+  precision: number,
+  dispatch: React.Dispatch<NumberInputAction>
+) {
+  const errorTimerRef = useRef<number | null>(null)
+  const isMountedRef = useRef(true)
+  const latestValueRef = useRef(value)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    const timerRef = errorTimerRef
+    return () => {
+      isMountedRef.current = false
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    dispatch({ type: 'syncFromExternal', value: formatDisplayValue(value, precision) })
+  }, [value, precision, dispatch])
+
+  useEffect(() => {
+    latestValueRef.current = value
+  }, [value])
+
+  return { errorTimerRef, isMountedRef, latestValueRef }
+}
+
+/** Builds the blur/commit/reset handler — pure factory, no hooks. */
+function createNumberInputBlur(args: {
+  value: number
+  localValue: string
+  min: number
+  max: number
+  precision: number
+  onChange: (value: number) => void
+  dispatch: React.Dispatch<NumberInputAction>
+  errorTimerRef: React.RefObject<number | null>
+  isMountedRef: React.RefObject<boolean>
+  latestValueRef: React.RefObject<number>
+}) {
+  const {
+    value,
+    localValue,
+    min,
+    max,
+    precision,
+    onChange,
+    dispatch,
+    errorTimerRef,
+    isMountedRef,
+    latestValueRef,
+  } = args
+
+  return () => {
+    const parsed = parseExpression(localValue)
+    if (parsed !== null) {
+      const clamped = Math.min(Math.max(parsed, min), max)
+      onChange(clamped)
+      dispatch({ type: 'commit', value: formatDisplayValue(clamped, precision) })
+      return
+    }
+    if (localValue.trim() === '') {
+      dispatch({ type: 'reset', value: formatDisplayValue(value, precision) })
+      return
+    }
+    dispatch({ type: 'showError', error: 'Invalid expression' })
+    if (errorTimerRef.current !== null) clearTimeout(errorTimerRef.current)
+    errorTimerRef.current = window.setTimeout(() => {
+      if (!isMountedRef.current) return
+      dispatch({
+        type: 'reset',
+        value: formatDisplayValue(latestValueRef.current, precision),
+      })
+      errorTimerRef.current = null
+    }, 1500)
+  }
+}
+
+/** Up/down stepper buttons shown as the input's right icon. */
+function NumberInputSteppers({
+  onIncrement,
+  onDecrement,
+}: {
+  onIncrement: () => void
+  onDecrement: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-px">
+      <MotionEl.button
+        data-testid="number-input-change"
+        className="h-2 w-3 hover:bg-(--bg-active) rounded-sm flex items-center justify-center"
+        onClick={onIncrement}
+        tabIndex={-1}
+      >
+        <svg width="6" height="4" viewBox="0 0 8 4" fill="currentColor">
+          <path d="M4 0L8 4H0L4 0Z" />
+        </svg>
+      </MotionEl.button>
+      <MotionEl.button
+        data-testid="number-input-change-2"
+        className="h-2 w-3 hover:bg-(--bg-active) rounded-sm flex items-center justify-center"
+        onClick={onDecrement}
+        tabIndex={-1}
+      >
+        <svg width="6" height="4" viewBox="0 0 8 4" fill="currentColor">
+          <path d="M4 4L0 0H8L4 4Z" />
+        </svg>
+      </MotionEl.button>
+    </div>
+  )
+}
+
 export const NumberInput: React.FC<NumberInputProps> = ({
   value,
   onChange,
@@ -214,22 +329,11 @@ export const NumberInput: React.FC<NumberInputProps> = ({
     isFocused: false,
   })
   const inputRef = useRef<HTMLInputElement>(null)
-  const errorTimerRef = useRef<number | null>(null)
-  const isMountedRef = useRef(true)
-
-  useEffect(() => {
-    isMountedRef.current = true
-    return () => {
-      isMountedRef.current = false
-      if (errorTimerRef.current !== null) {
-        clearTimeout(errorTimerRef.current)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    dispatch({ type: 'syncFromExternal', value: formatDisplayValue(value, precision) })
-  }, [value, precision])
+  const { errorTimerRef, isMountedRef, latestValueRef } = useNumberInputEffects(
+    value,
+    precision,
+    dispatch
+  )
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch({ type: 'setLocalValue', value: e.target.value })
@@ -239,37 +343,21 @@ export const NumberInput: React.FC<NumberInputProps> = ({
     dispatch({ type: 'focus', value: formatDisplayValue(value, precision) })
   }
 
-  const latestValueRef = useRef(value)
-  useEffect(() => {
-    latestValueRef.current = value
-  }, [value])
+  const commitOrReset = createNumberInputBlur({
+    value,
+    localValue,
+    min,
+    max,
+    precision,
+    onChange,
+    dispatch,
+    errorTimerRef,
+    isMountedRef,
+    latestValueRef,
+  })
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    const parsed = parseExpression(localValue)
-
-    if (parsed !== null) {
-      const clamped = Math.min(Math.max(parsed, min), max)
-      onChange(clamped)
-      dispatch({ type: 'commit', value: formatDisplayValue(clamped, precision) })
-    } else {
-      if (localValue.trim() === '') {
-        dispatch({ type: 'reset', value: formatDisplayValue(value, precision) })
-      } else {
-        dispatch({ type: 'showError', error: 'Invalid expression' })
-        if (errorTimerRef.current !== null) {
-          clearTimeout(errorTimerRef.current)
-        }
-        errorTimerRef.current = window.setTimeout(() => {
-          if (!isMountedRef.current) return
-          dispatch({
-            type: 'reset',
-            value: formatDisplayValue(latestValueRef.current, precision),
-          })
-          errorTimerRef.current = null
-        }, 1500)
-      }
-    }
-
+    commitOrReset()
     if (onBlur) onBlur(e)
   }
 
@@ -297,32 +385,10 @@ export const NumberInput: React.FC<NumberInputProps> = ({
       onKeyDown={handleKeyDown}
       error={error || props.error}
       rightIcon={
-        <div className="flex flex-col gap-px">
-          <MotionEl.button
-            data-testid="number-input-change"
-            className="h-2 w-3 hover:bg-(--bg-active) rounded-sm flex items-center justify-center"
-            onClick={() => {
-              onChange(Math.min(stepperBase() + step, max))
-            }}
-            tabIndex={-1}
-          >
-            <svg width="6" height="4" viewBox="0 0 8 4" fill="currentColor">
-              <path d="M4 0L8 4H0L4 0Z" />
-            </svg>
-          </MotionEl.button>
-          <MotionEl.button
-            data-testid="number-input-change-2"
-            className="h-2 w-3 hover:bg-(--bg-active) rounded-sm flex items-center justify-center"
-            onClick={() => {
-              onChange(Math.max(stepperBase() - step, min))
-            }}
-            tabIndex={-1}
-          >
-            <svg width="6" height="4" viewBox="0 0 8 4" fill="currentColor">
-              <path d="M4 4L0 0H8L4 4Z" />
-            </svg>
-          </MotionEl.button>
-        </div>
+        <NumberInputSteppers
+          onIncrement={() => onChange(Math.min(stepperBase() + step, max))}
+          onDecrement={() => onChange(Math.max(stepperBase() - step, min))}
+        />
       }
     />
   )

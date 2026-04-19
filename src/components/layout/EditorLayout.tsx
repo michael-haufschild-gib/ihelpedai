@@ -41,24 +41,8 @@ const sidePanelOffsetStyle: React.CSSProperties = {
   height: `calc(100% - ${TOP_BAR_OFFSET_PX}px)`,
 }
 
-export const EditorLayout: React.FC<EditorLayoutProps> = ({ children }) => {
-  const { leftPanelVisible, theme, accent, reducedMotion } = useLayoutStore(
-    useShallow((state: LayoutStore) => ({
-      leftPanelVisible: state.showLeftPanel,
-      theme: state.theme,
-      accent: state.accent,
-      reducedMotion: state.reducedMotion,
-    }))
-  )
-
-  useEffect(() => {
-    if (!hasReducedMotionListener.current) initPrefersReducedMotion()
-  }, [])
-
-  useEffect(() => {
-    prefersReducedMotion.current = reducedMotion === 'reduce'
-  }, [reducedMotion])
-
+/** Observe head mutations so late-loaded stylesheets get reduced-motion mirrored. */
+function useReducedMotionSync() {
   useEffect(() => {
     syncReducedMotionStyles()
 
@@ -89,6 +73,27 @@ export const EditorLayout: React.FC<EditorLayoutProps> = ({ children }) => {
       }
     }
   }, [])
+}
+
+export const EditorLayout: React.FC<EditorLayoutProps> = ({ children }) => {
+  const { leftPanelVisible, theme, accent, reducedMotion } = useLayoutStore(
+    useShallow((state: LayoutStore) => ({
+      leftPanelVisible: state.showLeftPanel,
+      theme: state.theme,
+      accent: state.accent,
+      reducedMotion: state.reducedMotion,
+    }))
+  )
+
+  useEffect(() => {
+    if (!hasReducedMotionListener.current) initPrefersReducedMotion()
+  }, [])
+
+  useEffect(() => {
+    prefersReducedMotion.current = reducedMotion === 'reduce'
+  }, [reducedMotion])
+
+  useReducedMotionSync()
 
   return (
     <div

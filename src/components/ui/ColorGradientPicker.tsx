@@ -6,7 +6,7 @@
  * gradient mode shows the gradient editor with inline stop color editing.
  */
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Popover } from './Popover'
 import { ColorPickerPanel } from './ColorPickerPanel'
 import { GradientEditor } from './GradientEditor'
@@ -139,32 +139,31 @@ export const ColorGradientPicker: React.FC<ColorGradientPickerProps> = ({
   // Derive mode from current value
   const mode: PickerMode = isLinearGradient(value) ? 'gradient' : 'solid'
 
-  // Cache the last solid/gradient so mode switching preserves state.
-  const [lastSolid, setLastSolid] = useState<string>(() =>
-    isLinearGradient(value) ? '#ffb400' : value
-  )
-  const [lastGradient, setLastGradient] = useState<LinearGradientValue>(() =>
+  // Cache the most recent solid/gradient in refs so that when the user switches modes
+  // the other mode's last-known value is restored. Refs are written in effects and in
+  // event handlers; never read during render.
+  const lastSolidRef = useRef<string>(isLinearGradient(value) ? '#ffb400' : value)
+  const lastGradientRef = useRef<LinearGradientValue>(
     isLinearGradient(value) ? value : createDefaultGradient()
   )
 
-  /* eslint-disable react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect -- sync cached value on controlled prop change */
   useEffect(() => {
-    if (isLinearGradient(value)) setLastGradient(value)
-    else setLastSolid(value)
+    if (isLinearGradient(value)) lastGradientRef.current = value
+    else lastSolidRef.current = value
   }, [value])
-  /* eslint-enable react-hooks/set-state-in-effect, @eslint-react/set-state-in-effect */
 
   const handleModeChange = useCallback(
     (newMode: PickerMode) => {
-      if (newMode === 'solid') onChange(lastSolid)
-      else onChange(lastGradient)
+      if (newMode === mode) return
+      if (newMode === 'solid') onChange(lastSolidRef.current)
+      else onChange(lastGradientRef.current)
     },
-    [onChange, lastSolid, lastGradient]
+    [onChange, mode]
   )
 
   const handleSolidChange = useCallback(
     (color: string) => {
-      setLastSolid(color)
+      lastSolidRef.current = color
       onChange(color)
     },
     [onChange]
@@ -172,7 +171,7 @@ export const ColorGradientPicker: React.FC<ColorGradientPickerProps> = ({
 
   const handleGradientChange = useCallback(
     (grad: LinearGradientValue) => {
-      setLastGradient(grad)
+      lastGradientRef.current = grad
       onChange(grad)
     },
     [onChange]
@@ -205,18 +204,16 @@ export const ColorGradientPicker: React.FC<ColorGradientPickerProps> = ({
         content={
           <div className="flex flex-col">
             <ModeSwitcher mode={mode} onModeChange={handleModeChange} />
-            {mode === 'solid' ? (
+            {mode === 'solid' && typeof value === 'string' ? (
               <ColorPickerPanel
-                value={typeof value === 'string' ? value : lastSolid}
+                value={value}
                 onChange={handleSolidChange}
                 disableAlpha={false}
               />
-            ) : (
-              <GradientEditor
-                value={isLinearGradient(value) ? value : lastGradient}
-                onChange={handleGradientChange}
-              />
-            )}
+            ) : null}
+            {mode === 'gradient' && isLinearGradient(value) ? (
+              <GradientEditor value={value} onChange={handleGradientChange} />
+            ) : null}
           </div>
         }
       />
