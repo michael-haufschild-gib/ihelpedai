@@ -186,7 +186,7 @@ function BodyFields({
   state: FormState
   patch: (p: Partial<FormState>) => void
 }) {
-  const remaining = state.what_they_did.length
+  const charCount = state.what_they_did.length
   return (
     <div className="flex flex-col gap-2">
       <label className="text-xs font-medium text-text-secondary">What did they do?</label>
@@ -199,7 +199,7 @@ function BodyFields({
         onChange={(e) => patch({ what_they_did: e.target.value })}
       />
       <p data-testid="rf-char-counter" className="self-end text-xs text-text-secondary">
-        {remaining} / {MAX_TEXT}
+        {charCount} / {MAX_TEXT}
       </p>
       <Input
         type="date"

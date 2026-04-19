@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
@@ -102,6 +102,15 @@ export function FeedEntry() {
   const state = useEntry(slug)
   const voted = useSingleVoted(slug)
   const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current)
+      }
+    }
+  }, [])
 
   const copy = (): void => {
     const clip = navigator.clipboard as Clipboard | undefined
@@ -110,7 +119,13 @@ export function FeedEntry() {
       clip.writeText(href).then(
         () => {
           setCopied(true)
-          window.setTimeout(() => setCopied(false), 1500)
+          if (copyTimerRef.current !== null) {
+            window.clearTimeout(copyTimerRef.current)
+          }
+          copyTimerRef.current = window.setTimeout(() => {
+            setCopied(false)
+            copyTimerRef.current = null
+          }, 1500)
         },
         () => undefined,
       )

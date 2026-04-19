@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE TABLE IF NOT EXISTS votes (
   entry_id    VARCHAR(16)  NOT NULL,
-  entry_kind  VARCHAR(8)   NOT NULL,
+  entry_kind  VARCHAR(8)   NOT NULL CHECK (entry_kind IN ('post', 'report')),
   ip_hash     VARCHAR(64)  NOT NULL,
   created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (entry_id, entry_kind, ip_hash),

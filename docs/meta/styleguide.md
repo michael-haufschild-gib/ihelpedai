@@ -73,6 +73,6 @@ export function foo() { /* … */ }
 
 | Topic | Source |
 |---|---|
-| Full CSS pattern examples (oklch, color-mix, etc.) | Serena memory `modern_css_standard` |
-| JSDoc full templates (components, hooks, utilities) | Serena memory `jsdoc_templates` |
-| Full code style detail | Serena memory `code_style_conventions` |
+| Full CSS pattern examples (oklch, color-mix, etc.) | `src/styles/theme.css` + `src/styles/index.css` |
+| JSDoc templates (components, hooks, utilities) | Inline examples in `src/components/ui/*.tsx` |
+| Full code style detail | This file + `eslint.config.js` |

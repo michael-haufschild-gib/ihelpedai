@@ -16,6 +16,7 @@ type PublicReport = {
   text: string
   action_date: string
   created_at: string
+  dislike_count: number
   reporter?: { first_name: string; city: string; country: string }
   self_reported_model?: string
   severity?: number
@@ -54,8 +55,9 @@ function toPublicReport(row: StoredReport): PublicReport {
     reported_city: row.reportedCity,
     reported_country: row.reportedCountry,
     text: row.text,
-    action_date: row.actionDate ?? '',
+    action_date: row.actionDate ?? row.createdAt.slice(0, 10),
     created_at: row.createdAt,
+    dislike_count: row.dislikeCount,
     submitted_via_api: row.source === 'api',
   }
   if (row.reporterFirstName !== null) {

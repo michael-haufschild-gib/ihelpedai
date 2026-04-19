@@ -56,12 +56,19 @@ interface ReportJson {
   submitted_via_api: boolean
 }
 
-const reporterSchema = z.object({
-  first_name: z.string().max(20),
-  last_name: z.string().max(40),
-  city: z.string().max(40),
-  country: z.string().max(2),
-})
+const reporterSchema = z
+  .object({
+    first_name: z.string().max(20),
+    last_name: z.string().max(40),
+    city: z.string().max(40),
+    country: z.string().max(2),
+  })
+  .refine(
+    (v) =>
+      v.first_name.trim() === '' ||
+      (v.city.trim() !== '' && v.country.trim() !== ''),
+    { path: ['city'], message: 'reporter_location_required' },
+  )
 
 const bodySchema = z.object({
   reporter: reporterSchema,

@@ -38,6 +38,7 @@ No data-fetching library (SWR/React-Query) is installed. Fetch directly via `src
 All network calls go through `src/lib/api.ts`. Do not call `fetch()` directly from components. Each wrapper returns a typed result or throws `ApiError` with a typed `.kind` (`'invalid_input' | 'rate_limited' | 'unauthorized' | 'internal_error'`).
 
 Error mapping in forms:
+
 ```ts
 function formatApiError(err: ApiError): string {
   if (err.kind === 'rate_limited') return "You're posting too fast. Try again later."
@@ -46,6 +47,7 @@ function formatApiError(err: ApiError): string {
   return 'Something went wrong. Try again.'
 }
 ```
+
 
 ## Forms with preview + submit
 

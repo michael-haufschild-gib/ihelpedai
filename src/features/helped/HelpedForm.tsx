@@ -278,6 +278,7 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
   const [mode, setMode] = useState<Mode>('form')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const submitLatchRef = useRef(false)
   const valuesRef = useRef(values)
   useEffect(() => {
     valuesRef.current = values
@@ -295,12 +296,18 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
   const sanitized = useMemo(() => sanitize(values.text), [values.text])
 
   const handlePost = async () => {
+    if (submitLatchRef.current) return
+    submitLatchRef.current = true
     setSubmitting(true)
     setSubmitError(null)
-    const err = await submitPost(values)
-    setSubmitting(false)
-    if (err === null) onPosted()
-    else setSubmitError(err)
+    try {
+      const err = await submitPost(values)
+      if (err === null) onPosted()
+      else setSubmitError(err)
+    } finally {
+      submitLatchRef.current = false
+      setSubmitting(false)
+    }
   }
 
   if (mode === 'preview') {

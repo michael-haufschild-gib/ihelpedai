@@ -27,6 +27,12 @@ rsync -az --delete \
 rsync -az --delete \
   deploy/schema/   "${HOST}:${REMOTE_ROOT}/schema/"
 
+APP_VERSION="${IHELPED_APP_VERSION:-$(git rev-parse --short HEAD)}"
+ENV_FILE="${IHELPED_REMOTE_ENV_FILE:-/etc/ihelped.env}"
+
+echo "[deploy] publishing APP_VERSION=${APP_VERSION} to ${ENV_FILE}"
+ssh "${HOST}" "sudo sh -c 'if [ -f ${ENV_FILE} ]; then sed -i \"/^APP_VERSION=/d\" ${ENV_FILE}; fi; echo APP_VERSION=${APP_VERSION} >> ${ENV_FILE}'"
+
 echo "[deploy] restarting systemd unit and reloading nginx"
 ssh "${HOST}" 'sudo systemctl restart ihelped-api && sudo nginx -s reload'
 

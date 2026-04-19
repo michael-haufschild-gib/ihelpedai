@@ -442,11 +442,7 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
     state.setSubmitError(null)
     createHelpedPost(state.values)
       .then(() => {
-        try {
-          bumpLoyalty()
-        } catch {
-          // Non-critical client-side side effect; keep success UI intact.
-        }
+        bumpLoyalty()
         inFlightRef.current = false
         state.setSubmitting(false)
         state.setMode('posted')

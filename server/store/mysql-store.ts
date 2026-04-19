@@ -28,6 +28,9 @@ export class MysqlStore implements Store {
   constructor(url: string) {
     if (url === '') throw new Error('MysqlStore: MYSQL_URL is required')
     this.url = url
+    throw new Error(
+      'STORE=mysql is not yet implemented in this build. Use STORE=sqlite until the MySQL backend ships.',
+    )
   }
 
   /** Exposed for later rounds to build the mysql2 pool. */

@@ -68,7 +68,7 @@ export function Name() {
   return (
     <section data-testid="page-<slug>" className="flex flex-col gap-6">
       <h1 data-testid="page-<slug>-heading" className="text-2xl font-semibold text-text-primary">
-        <Title>
+        {/* Page title */}
       </h1>
       {/* Feature composition */}
     </section>
@@ -158,7 +158,7 @@ export async function registerFeatureRoutes(app: FastifyInstance) {
 | Behavioral spec for public site | `docs/plans/prd-01-public-site.md` |
 | Behavioral spec for admin backoffice (phase 2) | `docs/plans/prd-02-admin-backoffice.md` |
 | Dev/prod environment matrix | `docs/plans/local-dev.md` |
-| Full code style detail | Serena memory `code_style_conventions` |
-| Folder purpose detail | Serena memory `codebase_structure` |
-| Sanitizer contract + exceptions | Serena memory `ihelped_sanitizer_contract` |
-| `last_name` discard guarantees | Serena memory `ihelped_last_name_discard` |
+| Full code style detail | `docs/meta/styleguide.md` + `eslint.config.js` |
+| Folder purpose detail | This file (section "Folder map") + the decision tree above |
+| Sanitizer contract + exceptions | `server/sanitizer/sanitize.ts` (inline docs) + `server/sanitizer/sanitize.test.ts` |
+| `last_name` discard guarantees | `server/__tests__/last-name-discard.spec.ts` |

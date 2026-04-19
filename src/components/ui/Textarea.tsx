@@ -36,12 +36,18 @@ export const Textarea = ({
   disabled,
   ref,
   id,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
   ...props
 }: TextareaProps & { ref?: React.Ref<HTMLTextAreaElement> }) => {
   const hasError = error !== undefined && error !== false && error !== ''
   const fallbackId = useId()
   const textareaId = id ?? `textarea-${fallbackId}`
   const errorId = typeof error === 'string' && error !== '' ? `${textareaId}-error` : undefined
+  const describedByTokens = [ariaDescribedBy, errorId].filter(
+    (v): v is string => typeof v === 'string' && v !== '',
+  )
+  const describedBy = describedByTokens.length > 0 ? describedByTokens.join(' ') : undefined
   const textareaClassName = buildTextareaClassName({
     hasError,
     disabled: disabled === true,
@@ -62,8 +68,8 @@ export const Textarea = ({
         data-testid="textarea"
         ref={ref}
         id={textareaId}
-        aria-invalid={hasError ? true : undefined}
-        aria-describedby={errorId}
+        aria-invalid={hasError ? true : ariaInvalid}
+        aria-describedby={describedBy}
         disabled={disabled}
         className={textareaClassName}
         {...props}

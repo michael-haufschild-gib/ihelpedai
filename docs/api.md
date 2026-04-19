@@ -6,7 +6,7 @@
 
 ## App shape
 
-```
+```text
 server/index.ts          — buildApp() factory, error handler, cookie/cors
 server/config.ts         — Zod-validated env (NODE_ENV, PORT, STORE, …)
 server/routes/index.ts   — registerRoutes(app): wires all feature modules
@@ -118,5 +118,5 @@ See `docs/testing.md` for the full template.
 | Exact types and field lists | `src/lib/api.ts` |
 | Full PRD behavior spec | `docs/plans/prd-01-public-site.md` |
 | Prod deploy (nginx, systemd, envs) | `docs/plans/local-dev.md` + `deploy/` |
-| Sanitizer rules + exception list | Serena memory `ihelped_sanitizer_contract` |
-| `last_name` discard invariants | Serena memory `ihelped_last_name_discard` |
+| Sanitizer rules + exception list | `server/sanitizer/sanitize.ts` (inline docs) + `server/sanitizer/sanitize.test.ts` |
+| `last_name` discard invariants | `server/__tests__/last-name-discard.spec.ts` |

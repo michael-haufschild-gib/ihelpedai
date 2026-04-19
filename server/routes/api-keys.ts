@@ -69,11 +69,19 @@ export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
     const apiKey = generateApiKey()
     const keyHash = hashWithSalt(apiKey)
     await app.store.insertApiKey({ keyHash, emailHash, status: 'active' })
-    await app.mailer.send({
-      to: parsed.email,
-      subject: 'Your ihelped.ai API key',
-      text: buildMailBody(apiKey),
-    })
+    try {
+      await app.mailer.send({
+        to: parsed.email,
+        subject: 'Your ihelped.ai API key',
+        text: buildMailBody(apiKey),
+      })
+    } catch (err) {
+      // Key is persisted but mail failed. Surface a distinct error so the
+      // caller can retry without the client-side rate-limit hiding the issue.
+      app.log.error({ err, emailHash }, 'api_key_issue: mail delivery failed')
+      reply.status(502).send({ error: 'mail_delivery_failed' })
+      return
+    }
     reply.status(200).send({ status: 'sent' })
   }
 
