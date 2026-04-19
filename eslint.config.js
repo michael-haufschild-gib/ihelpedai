@@ -42,7 +42,7 @@ export default defineConfig([
       ecmaVersion: 2022,
       globals: globals.browser,
       parserOptions: {
-        project: ['./tsconfig.app.json', './tsconfig.node.json', './tsconfig.test.json', './tsconfig.e2e.json'],
+        project: ['./tsconfig.app.json', './tsconfig.node.json', './tsconfig.test.json', './tsconfig.e2e.json', './tsconfig.server.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -119,6 +119,7 @@ export default defineConfig([
       'custom-rules/no-unstyled-interactive-elements': 'error',
       'custom-rules/no-eslint-disable-comments': 'error',
       'custom-rules/no-arbitrary-text-size': 'error',
+      'custom-rules/no-raw-form-controls': 'error',
     },
   },
   // Source code quality gates: line limits and default export ban.

@@ -8,6 +8,7 @@
  * - no-unstyled-interactive-elements: interactive elements need className
  * - no-eslint-disable-comments: ban eslint-disable/disable-next-line/disable-line directives
  * - no-arbitrary-text-size: ban Tailwind `text-[Npx]` (and rem/em/pt/%) in className strings
+ * - no-raw-form-controls: ban raw <button>/<input>/<select>/<textarea> outside src/components/ui/
  */
 
 import { getFilename, isConfigFile } from './rule-helpers.js'
@@ -215,6 +216,63 @@ const portabilityRules = {
         },
         TemplateElement(node) {
           check(node, node.value.raw)
+        },
+      }
+    },
+  },
+
+  'no-raw-form-controls': {
+    meta: {
+      type: 'problem',
+      docs: {
+        description:
+          'Ban raw <button>, <input>, <select>, <textarea> JSX elements outside src/components/ui/. Use the custom primitives (Button, Input, Select, Textarea) so styling, theming, and accessibility stay consistent.',
+      },
+      schema: [],
+      messages: {
+        rawButton:
+          'Raw <button> is banned. Import and use the <Button> primitive from `@/components/ui/Button`. If this needs a variant the primitive does not support, extend the primitive rather than rolling a one-off.',
+        rawInput:
+          'Raw <input> is banned. Use the <Input> primitive from `@/components/ui/Input` for text-like inputs. `<input type="hidden">` is allowed for form state.',
+        rawSelect:
+          'Raw <select> is banned. Use the <Select> primitive from `@/components/ui/Select`.',
+        rawTextarea:
+          'Raw <textarea> is banned. Use the <Textarea> primitive from `@/components/ui/Textarea`.',
+      },
+    },
+    create(context) {
+      const f = getFilename(context)
+      // The UI primitives themselves MUST render raw elements — they are the
+      // one place in the codebase where raw form controls are allowed.
+      if (f.includes('/src/components/ui/')) return {}
+      return {
+        JSXOpeningElement(node) {
+          const name = getJsxName(node)
+          if (!name) return
+          if (name === 'button') {
+            context.report({ node, messageId: 'rawButton' })
+            return
+          }
+          if (name === 'input') {
+            const typeAttr = getAttr(node, 'type')
+            if (
+              typeAttr &&
+              typeAttr.value &&
+              typeAttr.value.type === 'Literal' &&
+              typeAttr.value.value === 'hidden'
+            ) {
+              return
+            }
+            context.report({ node, messageId: 'rawInput' })
+            return
+          }
+          if (name === 'select') {
+            context.report({ node, messageId: 'rawSelect' })
+            return
+          }
+          if (name === 'textarea') {
+            context.report({ node, messageId: 'rawTextarea' })
+          }
         },
       }
     },

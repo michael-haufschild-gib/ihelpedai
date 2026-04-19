@@ -1,0 +1,26 @@
+[Unit]
+Description=ihelped.ai API (Fastify + Node 20)
+After=network.target mysql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ihelped.ai
+EnvironmentFile=/etc/ihelped.env
+ExecStart=/usr/bin/node /var/www/ihelped.ai/server/dist/index.js
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/www/ihelped.ai
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
