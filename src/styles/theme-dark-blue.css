@@ -1,0 +1,50 @@
+/**
+ * Dark Blue Theme - Deep navy palette in oklch
+ * Cool, sophisticated dark blue with steel-tinted glass and subtle cyan undertones.
+ * Also serves as the fallback theme when no data-mode is provided.
+ */
+
+[data-app-theme][data-mode='dark-blue'],
+[data-app-theme]:not([data-mode]) {
+  /* BACKGROUNDS */
+  --bg-app: oklch(10% 0.04 250deg);
+  --bg-panel: oklch(13% 0.035 248deg / 82%);
+  --bg-surface: oklch(18% 0.05 250deg / 65%);
+  --bg-elevated: oklch(13% 0.035 248deg / 86%);
+  --bg-glass: oklch(16% 0.025 248deg / 55%);
+  --bg-hover: oklch(75% 0.06 230deg / 5%);
+  --bg-active: oklch(60% 0.08 230deg / 16%);
+  --bg-overlay: oklch(10% 0.04 250deg / 80%);
+
+  /* TEXT */
+  --text-primary: oklch(88% 0.03 230deg);
+  --text-secondary: oklch(100% 0 0deg / 76%);
+  --text-tertiary: oklch(100% 0 0deg / 54%);
+  --text-muted: oklch(100% 0 0deg / 40%);
+  --text-inverse: oklch(10% 0.04 250deg);
+
+  /* BORDERS — steel-blue-tinted */
+  --border-subtle: oklch(70% 0.04 230deg / 14%);
+  --border-default: oklch(70% 0.04 230deg / 10%);
+  --border-strong: oklch(70% 0.04 230deg / 25%);
+  --border-highlight: oklch(70% 0.04 230deg / 14%);
+
+  /* PANEL ALIASES */
+  --panel-bg: oklch(13% 0.035 248deg / 82%);
+  --panel-border: oklch(70% 0.04 230deg / 10%);
+  --panel-header: oklch(70% 0.04 230deg / 4%);
+
+  /* SHADOWS — deep navy cast */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0deg / 18%);
+  --shadow-md: 0 12px 28px oklch(8% 0.03 250deg / 42%);
+  --shadow-lg: 0 24px 64px oklch(5% 0.03 250deg / 58%);
+  --shadow-xl: 0 24px 64px oklch(5% 0.03 250deg / 58%);
+  --shadow-soft: 0 12px 28px oklch(8% 0.03 250deg / 42%);
+  --shadow-hard: 0 24px 64px oklch(5% 0.03 250deg / 58%);
+
+  /* CANVAS (animation demo area) */
+  --app-canvas-bg: oklch(10% 0.04 250deg / 76%);
+  --app-canvas-gradient-start: oklch(70% 0.04 230deg / 20%);
+  --app-canvas-gradient-end: oklch(10% 0.04 250deg / 92%);
+  --app-shadow-canvas: oklch(100% 0 0deg / 3%);
+}

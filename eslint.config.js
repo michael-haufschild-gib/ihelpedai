@@ -117,6 +117,8 @@ export default defineConfig([
       'custom-rules/no-excessive-z-index': 'error',
       'custom-rules/require-data-testid': 'error',
       'custom-rules/no-unstyled-interactive-elements': 'error',
+      'custom-rules/no-eslint-disable-comments': 'error',
+      'custom-rules/no-arbitrary-text-size': 'error',
     },
   },
   // Source code quality gates: line limits and default export ban.
@@ -235,6 +237,13 @@ export default defineConfig([
     files: ['src/test/setup.ts'],
     rules: {
       'testing-library/no-manual-cleanup': 'off',
+    },
+  },
+  // Logger: the single allowed entry point for direct console.* calls.
+  {
+    files: ['src/services/logger.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
 ])
