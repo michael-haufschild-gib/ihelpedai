@@ -76,20 +76,22 @@ function NotFound() {
 }
 
 function useSingleVoted(slug: string | undefined): boolean {
-  const [voted, setVoted] = useState(false)
+  // Keyed by slug so the return value resets automatically whenever the slug
+  // changes or a fetch fails — no synchronous setState-in-effect needed.
+  const [votedBySlug, setVotedBySlug] = useState<Record<string, boolean>>({})
   useEffect(() => {
     if (slug === undefined || slug === '') return undefined
     let alive = true
     fetchMyVotes('post', [slug])
       .then((r) => {
-        if (alive) setVoted(r.voted.includes(slug))
+        if (alive) setVotedBySlug((prev) => ({ ...prev, [slug]: r.voted.includes(slug) }))
       })
       .catch(() => undefined)
     return () => {
       alive = false
     }
   }, [slug])
-  return voted
+  return slug !== undefined ? (votedBySlug[slug] ?? false) : false
 }
 
 /**

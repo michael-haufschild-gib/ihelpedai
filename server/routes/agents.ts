@@ -25,6 +25,21 @@ type PublicReport = {
 
 const LETTERS_ONLY = /^[\p{L}\s'-]+$/u
 
+// Reject impossible calendar dates like "2026-13-40" that the regex alone
+// would accept; once the MySQL `DATE` path lands, those would fail at insert.
+const isValidIsoDate = (value: string): boolean => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (match === null) return false
+  const [, year, month, day] = match
+  const date = new Date(`${value}T00:00:00Z`)
+  return (
+    Number.isFinite(date.getTime()) &&
+    date.getUTCFullYear() === Number(year) &&
+    date.getUTCMonth() + 1 === Number(month) &&
+    date.getUTCDate() === Number(day)
+  )
+}
+
 const agentReportSchema = z.object({
   api_key: z.string().min(1),
   reported_first_name: z.string().min(1).max(20).regex(LETTERS_ONLY, 'letters_only'),
@@ -34,7 +49,7 @@ const agentReportSchema = z.object({
   what_they_did: z.string().min(1).max(500),
   action_date: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine(isValidIsoDate, { message: 'invalid_date' })
     .optional(),
   severity: z.number().int().min(1).max(10).optional(),
   self_reported_model: z.string().max(60).optional(),
@@ -136,7 +151,7 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
     const stored = await app.store.insertAgentReport(buildNewReport(parsed), keyHash)
     reply.status(201).send({
       entry_id: stored.id,
-      public_url: `/reports/${stored.id}`,
+      public_url: `${config.PUBLIC_URL}/reports/${stored.id}`,
       status: 'posted',
     })
   }

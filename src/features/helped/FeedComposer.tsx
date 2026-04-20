@@ -296,6 +296,10 @@ function useComposerState() {
   const [errors, setErrors] = useState<Partial<Record<HelpedFieldName, string>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const valuesRef = useRef(values)
+  useEffect(() => {
+    valuesRef.current = values
+  }, [values])
 
   const setValue = (name: HelpedFieldName, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }))
@@ -304,7 +308,7 @@ function useComposerState() {
     }
   }
   const setBlurred = (name: HelpedFieldName) => {
-    setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, values[name]) }))
+    setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, valuesRef.current[name]) }))
   }
   const reset = () => {
     setValues(EMPTY_HELPED_VALUES)

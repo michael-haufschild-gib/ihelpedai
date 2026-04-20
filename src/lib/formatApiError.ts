@@ -13,7 +13,7 @@ export function formatApiError(err: ApiError): string {
       return 'Most of what you wrote was redacted for privacy. Edit and re-preview.'
     }
     const firstField = err.fields ? Object.keys(err.fields)[0] : undefined
-    if (firstField !== undefined) return `Check the ${firstField.replace('_', ' ')} field.`
+    if (firstField !== undefined) return `Check the ${firstField.replaceAll('_', ' ')} field.`
     return 'Some fields are invalid. Edit and try again.'
   }
   if (err.kind === 'unauthorized') return 'Your session expired. Refresh and try again.'

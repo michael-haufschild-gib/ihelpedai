@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { ApiError, createReport, type ReportCreated, type ReportInput } from '@/lib/api'
 import { COUNTRIES } from '@/lib/countries'
+import { formatApiError } from '@/lib/formatApiError'
 import { sanitize, type SanitizeResult } from '@/lib/sanitizePreview'
 
 import { ReportCard } from './ReportCard'
@@ -288,14 +289,7 @@ function PreviewPanel({
 }
 
 function errorMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    if (err.kind === 'rate_limited') {
-      return "You're posting too fast. Try again later."
-    }
-    if (err.kind === 'invalid_input') {
-      return 'Some fields were rejected. Check and try again.'
-    }
-  }
+  if (err instanceof ApiError) return formatApiError(err)
   return 'Something went wrong. Try again.'
 }
 
@@ -324,6 +318,7 @@ export function ReportForm({ onSuccess }: ReportFormProps) {
   }
 
   const handlePost = async (): Promise<void> => {
+    if (submitting) return
     setSubmitting(true)
     setError(null)
     try {

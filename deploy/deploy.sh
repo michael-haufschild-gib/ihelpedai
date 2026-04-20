@@ -34,6 +34,8 @@ echo "[deploy] publishing APP_VERSION=${APP_VERSION} to ${ENV_FILE}"
 # Pass ENV_FILE and APP_VERSION as positional args so the remote shell never
 # parses their literal contents — prevents injection from unusual values.
 ssh "${HOST}" sudo sh -s -- "${ENV_FILE}" "${APP_VERSION}" <<'REMOTE_SCRIPT'
+set -eu
+
 env_file="$1"
 app_version="$2"
 if [ -f "$env_file" ]; then
@@ -45,7 +47,10 @@ REMOTE_SCRIPT
 echo "[deploy] restarting systemd unit and reloading nginx"
 ssh "${HOST}" 'sudo systemctl restart ihelped-api && sudo nginx -s reload'
 
-echo "[deploy] verifying health endpoint"
-ssh "${HOST}" 'curl --fail --silent --show-error --max-time 5 --retry 5 --retry-delay 1 --retry-all-errors http://127.0.0.1:3001/api/health >/dev/null'
+echo "[deploy] verifying health endpoint via nginx"
+# Hit nginx (not the private Fastify port) so a bad nginx reload or broken
+# /api/ proxy rule surfaces here instead of passing silently. `--resolve`
+# pins the SNI/Host to localhost without relying on public DNS.
+ssh "${HOST}" 'curl --fail --silent --show-error --max-time 5 --retry 5 --retry-delay 1 --retry-all-errors --resolve ihelped.ai:443:127.0.0.1 https://ihelped.ai/api/health >/dev/null'
 
 echo "[deploy] done"
