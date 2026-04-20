@@ -1,5 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import { LazyMotion } from 'motion/react'
 import '@fontsource/roboto/300.css'
 import '@fontsource/roboto/400.css'
 import '@fontsource/roboto/500.css'
@@ -7,10 +9,19 @@ import '@fontsource/roboto/700.css'
 import './index.css'
 import { App } from '@/App.tsx'
 
+const loadFeatures = () => import('./features').then((res) => res.features)
+
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root element')
+document.documentElement.dataset.appTheme = ''
+document.documentElement.dataset.mode = 'dark-black'
+document.documentElement.dataset.accent = 'violet'
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <LazyMotion features={loadFeatures} strict>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </LazyMotion>
   </StrictMode>,
 )

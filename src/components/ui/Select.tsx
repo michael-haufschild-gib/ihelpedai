@@ -61,7 +61,7 @@ export const Select = <T extends string = string>({
             </option>
           ))}
         </MotionEl.select>
-        <div className="absolute end-2.5 top-1/2 -translate-y-1/2 pointer-events-none transition-transform duration-200 group-hover:translate-y-[-40%]">
+        <div className="absolute end-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
           <svg
             className="w-3.5 h-3.5 text-text-tertiary group-hover:text-text-primary transition-colors"
             fill="none"

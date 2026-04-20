@@ -132,7 +132,7 @@ function DropdownSurface({
           animate="open"
           exit="closed"
           variants={MENU_VARIANTS}
-          className="glass-panel min-w-[180px] rounded-lg py-1 shadow-xl border border-border-default"
+          className="glass-panel min-w-44 rounded-lg py-1 shadow-xl border border-border-default"
           style={sx({
             maxHeight: maxHeight ?? '80vh',
             overflowY: 'auto' as const,

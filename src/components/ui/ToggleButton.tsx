@@ -50,7 +50,7 @@ export const ToggleButton = ({
           px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-300 border
           ${
             pressed
-              ? 'bg-accent/20 text-accent border-accent/50 shadow-[0_0_10px_color-mix(in_oklch,var(--theme-accent)_20%,transparent)]'
+              ? 'bg-accent/20 text-accent border-accent/50 shadow-accent'
               : 'bg-[var(--bg-hover)] text-text-secondary border-border-default hover:text-text-primary hover:bg-[var(--bg-active)]'
           }
           ${className}

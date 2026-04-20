@@ -127,7 +127,7 @@ function TriggerSwatch({ value, disabled }: { value: ColorOrGradient; disabled: 
         />
         <div className="absolute inset-0 z-10" style={sx(bgStyle)} />
       </div>
-      <span className="text-xs font-mono text-text-tertiary group-hover:text-text-primary transition-colors truncate max-w-[100px]">
+      <span className="text-xs font-mono text-text-tertiary group-hover:text-text-primary transition-colors truncate max-w-24">
         {displayText}
       </span>
     </div>

@@ -84,7 +84,7 @@ function TabListHeader({
   const listStyles =
     variant === 'pills'
       ? 'bg-[var(--bg-hover)] rounded-lg p-1 gap-1'
-      : 'border-b border-border-subtle pb-[1px]'
+      : 'border-b border-border-subtle pb-px'
 
   return (
     <div className="relative">

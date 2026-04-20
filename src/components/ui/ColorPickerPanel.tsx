@@ -155,7 +155,7 @@ function SaturationArea({
   return (
     <div
       ref={svRef}
-      className="w-full h-[160px] rounded-lg relative cursor-crosshair overflow-hidden shadow-lg ring-1 ring-border-default group"
+      className="w-full h-40 rounded-lg relative cursor-crosshair overflow-hidden shadow-lg ring-1 ring-border-default group"
       onMouseDown={onMouseDown}
       onKeyDown={handleKeyDown}
       style={sx({ backgroundColor: `hsl(${String(hsv.h * 360)}, 100%, 50%)` })}

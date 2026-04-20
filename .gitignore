@@ -34,3 +34,12 @@ docs/plans/
 docs/reports/
 CLAUDE.md
 .claude/
+
+# Server dev artifacts
+dev.db
+dev.db-journal
+dev.db-wal
+dev.db-shm
+tmp/mail/
+.env.local
+server/dist/

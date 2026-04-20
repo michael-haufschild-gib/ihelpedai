@@ -79,7 +79,7 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   headerRight,
   width = 'max-w-md',
-  bodyClassName = 'p-4 max-h-[80vh] overflow-y-auto custom-scrollbar',
+  bodyClassName = 'p-4 max-h-modal overflow-y-auto custom-scrollbar',
   'data-testid': dataTestId,
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null)
