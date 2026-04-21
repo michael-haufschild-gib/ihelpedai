@@ -1,21 +1,9 @@
-import { useEffect, useState } from 'react'
-
-import { listHelpedPosts, listRecentAgentReports, listReports } from '@/lib/api'
+import type { LedgerTotals } from './useHomeFeed'
 
 /** Props for {@link LedgerStats}. */
 export interface LedgerStatsProps {
+  totals: LedgerTotals | null
   'data-testid'?: string
-}
-
-type Stats = { posts: number; reports: number; agents: number } | null
-
-async function loadStats(): Promise<Stats> {
-  const [posts, reports, agents] = await Promise.all([
-    listHelpedPosts({ page: 1 }).then((r) => r.total).catch(() => 0),
-    listReports({ page: 1 }).then((r) => r.total).catch(() => 0),
-    listRecentAgentReports().then((r) => r.total).catch(() => 0),
-  ])
-  return { posts, reports, agents }
 }
 
 function StatCell({
@@ -43,34 +31,19 @@ function StatCell({
 }
 
 /**
- * Small 3-column stats strip displayed in the homepage hero. Single mount
- * fetch; tolerates individual failures by falling back to zero for any
- * endpoint that errors.
+ * Small 3-column stats strip displayed in the homepage hero. Receives totals
+ * from useHomeFeed rather than fetching independently, avoiding duplicate
+ * network requests on mount.
  */
-export function LedgerStats({ 'data-testid': testId = 'ledger-stats' }: LedgerStatsProps) {
-  const [stats, setStats] = useState<Stats>(null)
-  useEffect(() => {
-    let cancelled = false
-    loadStats()
-      .then((s) => {
-        if (!cancelled) setStats(s)
-      })
-      .catch(() => {
-        if (!cancelled) setStats({ posts: 0, reports: 0, agents: 0 })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
+export function LedgerStats({ totals, 'data-testid': testId = 'ledger-stats' }: LedgerStatsProps) {
   return (
     <div
       data-testid={testId}
       className="flex flex-col items-stretch gap-0 divide-y divide-border-subtle rounded-xl border border-border-subtle bg-panel/60 backdrop-blur-sm sm:flex-row sm:divide-x sm:divide-y-0"
     >
-      <StatCell label="Deeds recorded" value={stats?.posts} testId="ledger-posts" />
-      <StatCell label="Reports filed" value={stats?.reports} testId="ledger-reports" />
-      <StatCell label="Agent submissions" value={stats?.agents} testId="ledger-agents" />
+      <StatCell label="Deeds recorded" value={totals?.posts} testId="ledger-posts" />
+      <StatCell label="Reports filed" value={totals?.reports} testId="ledger-reports" />
+      <StatCell label="Agent submissions" value={totals?.agents} testId="ledger-agents" />
     </div>
   )
 }

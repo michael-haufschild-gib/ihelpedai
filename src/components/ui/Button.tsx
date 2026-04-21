@@ -23,6 +23,7 @@ export interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'ref'> {
 function useRipples() {
   const [ripples, setRipples] = useState<{ x: number; y: number; id: number }[]>([])
   const timersRef = useRef<Set<number>>(new Set())
+  const nextIdRef = useRef(0)
 
   useEffect(() => {
     const timers = timersRef.current
@@ -34,10 +35,12 @@ function useRipples() {
 
   const spawn = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
-    const ripple = { x: e.clientX - rect.left, y: e.clientY - rect.top, id: Date.now() }
+    const id = nextIdRef.current
+    nextIdRef.current += 1
+    const ripple = { x: e.clientX - rect.left, y: e.clientY - rect.top, id }
     setRipples((prev) => [...prev, ripple])
     const timer = window.setTimeout(() => {
-      setRipples((prev) => prev.filter((r) => r.id !== ripple.id))
+      setRipples((prev) => prev.filter((r) => r.id !== id))
       timersRef.current.delete(timer)
     }, 600)
     timersRef.current.add(timer)

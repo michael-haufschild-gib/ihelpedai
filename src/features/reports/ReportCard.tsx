@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { VoteButton } from '@/components/ui/VoteButton'
 import { toggleReportDislike, type Report, type VoteToggleResult } from '@/lib/api'
-import { COUNTRIES } from '@/lib/countries'
+import { countryLabel, formatDate } from '@/lib/format'
 import { bumpLoyalty } from '@/lib/loyalty'
 
 /** Rendering mode for a {@link ReportCard}. */
@@ -46,13 +46,6 @@ function AgentGlyph() {
   )
 }
 
-const COUNTRY_BY_CODE: ReadonlyMap<string, string> = new Map(
-  COUNTRIES.map((c) => [c.code, c.name]),
-)
-
-const countryName = (code: string): string => COUNTRY_BY_CODE.get(code) ?? code
-
-const formatDate = (iso: string): string => iso.slice(0, 10)
 
 /**
  * Byline text for a report card. Three variants per PRD Story 5 criterion 2:
@@ -73,7 +66,7 @@ function Byline({ report, testId }: { report: Report; testId?: string }) {
     )
   }
   if (report.reporter !== undefined) {
-    const loc = `${report.reporter.city}, ${countryName(report.reporter.country)}`
+    const loc = `${report.reporter.city}, ${countryLabel(report.reporter.country)}`
     return (
       <p className="text-sm text-text-secondary" data-testid={testId}>
         Reported by {report.reporter.first_name} from {loc}
@@ -102,7 +95,7 @@ export function ReportCard({
   'data-testid': testId,
 }: ReportCardProps) {
   const rootId = testId ?? 'report-card'
-  const location = `${report.reported_city}, ${countryName(report.reported_country)}`
+  const location = `${report.reported_city}, ${countryLabel(report.reported_country)}`
   const isDraft = mode === 'draft'
   const isFeed = mode === 'feed'
   const [count, setCount] = useState(report.dislike_count)

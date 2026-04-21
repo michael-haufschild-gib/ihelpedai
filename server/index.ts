@@ -38,10 +38,11 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
     if (error instanceof ZodError) {
-      reply.status(400).send({
-        error: 'invalid_input',
-        fields: error.flatten().fieldErrors,
-      })
+      const fields: Record<string, string> = {}
+      for (const [key, messages] of Object.entries(error.flatten().fieldErrors)) {
+        if (Array.isArray(messages) && messages.length > 0) fields[key] = messages[0]
+      }
+      reply.status(400).send({ error: 'invalid_input', fields })
       return
     }
     const statusCode = typeof error.statusCode === 'number' ? error.statusCode : 500

@@ -133,4 +133,14 @@ describe('HelpedForm', () => {
     await user.type(screen.getByTestId('helped-text'), 'did a thing')
     expect(screen.getByTestId('helped-preview')).toBeDisabled()
   })
+
+  it('selecting a country does not flash a "Required" error below it', async () => {
+    // Regression: the Select onChange handler previously validated against a
+    // ref whose effect had not yet flushed, so picking any country produced a
+    // spurious "Required" error on first selection.
+    const user = userEvent.setup()
+    render(<HelpedForm onPosted={() => undefined} />)
+    await user.selectOptions(screen.getByTestId('helped-country'), 'US')
+    expect(screen.queryByTestId('helped-country-error')).toBe(null)
+  })
 })

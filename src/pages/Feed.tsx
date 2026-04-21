@@ -4,9 +4,9 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { FeedCard } from '@/features/helped/FeedCard'
 import { FeedComposer } from '@/features/helped/FeedComposer'
+import { useMyVotes } from '@/hooks/useMyVotes'
 import {
   ApiError,
-  fetchMyVotes,
   listHelpedPosts,
   type HelpedPost,
   type Paginated,
@@ -74,31 +74,6 @@ function EmptyState() {
       </Link>
     </p>
   )
-}
-
-/**
- * Fetch which of the given slugs this viewer has voted on. `slugsKey` is the
- * comma-joined slug list — passed as a primitive so useEffect deps stay
- * stable without depending on an array identity.
- */
-function useMyVotes(kind: 'post' | 'report', slugsKey: string): Set<string> {
-  const [voted, setVoted] = useState<Set<string>>(() => new Set())
-  useEffect(() => {
-    if (slugsKey === '') return undefined
-    const slugs = slugsKey.split(',')
-    let cancelled = false
-    fetchMyVotes(kind, slugs)
-      .then((r) => {
-        if (!cancelled) setVoted(new Set(r.voted))
-      })
-      .catch(() => {
-        /* tolerate — buttons will just be un-voted until the user clicks */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [kind, slugsKey])
-  return voted
 }
 
 function useFeedData(page: number, refreshSeq: number): FeedState {

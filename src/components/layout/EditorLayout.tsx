@@ -50,13 +50,13 @@ function useReducedMotionSync() {
     const observer = new MutationObserver((mutations) => {
       for (const mut of mutations) {
         for (const node of mut.addedNodes) {
-          const tag = (node as Element).tagName
-          if (tag === 'STYLE') {
+          if (!(node instanceof Element)) continue
+          if (node.tagName === 'STYLE') {
             syncReducedMotionStyles()
             return
           }
-          if (tag === 'LINK') {
-            const link = node as HTMLLinkElement
+          if (node instanceof HTMLLinkElement) {
+            const link = node
             const handler = () => syncReducedMotionStyles()
             link.addEventListener('load', handler, { once: true })
             linkLoadHandlers.push([link, handler])

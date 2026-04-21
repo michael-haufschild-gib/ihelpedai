@@ -30,7 +30,7 @@ Every `<button>/<a>/<input>/<select>/<textarea>` and every element with an inter
 
 ## Imports
 
-- Use the `@/` path alias for any import that would need `../` to escape the current directory. `../foo` is allowed; `../../foo` and deeper is lint-blocked by `custom-rules/no-relative-parent-imports`.
+- Use the `@/` path alias for any import that would need `../` to escape the current directory. All `../` imports are lint-blocked by `custom-rules/no-relative-parent-imports`; use `@/` instead.
 - Named exports only. Default exports banned outside config files. `export const X = …` or `export function X() …`.
 - `import type` for type-only imports (`verbatimModuleSyntax` is on).
 

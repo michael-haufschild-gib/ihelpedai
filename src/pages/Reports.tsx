@@ -4,13 +4,14 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ReportCard } from '@/features/reports/ReportCard'
+import { useMyVotes } from '@/hooks/useMyVotes'
 import {
   ApiError,
-  fetchMyVotes,
   listReports,
   type Paginated,
   type Report,
 } from '@/lib/api'
+import { formatApiError } from '@/lib/formatApiError'
 
 const DEBOUNCE_MS = 300
 const PAGE_SIZE = 20
@@ -62,27 +63,6 @@ function useDebounced<T>(value: T): T {
   return debounced
 }
 
-/** Fetch which of the given slugs this viewer has concurred on. Tolerates errors. */
-function useMyConcurs(slugsKey: string): Set<string> {
-  const [voted, setVoted] = useState<Set<string>>(() => new Set())
-  useEffect(() => {
-    if (slugsKey === '') return undefined
-    const slugs = slugsKey.split(',')
-    let cancelled = false
-    fetchMyVotes('report', slugs)
-      .then((r) => {
-        if (!cancelled) setVoted(new Set(r.voted))
-      })
-      .catch(() => {
-        /* ignore */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [slugsKey])
-  return voted
-}
-
 /** Fetch reports and track loading/error state. Re-fetches when q or page change. */
 function useReports(q: string, page: number): LoadState {
   const [result, setResult] = useState<{ key: string; inner: LoadStateInner } | null>(
@@ -99,7 +79,7 @@ function useReports(q: string, page: number): LoadState {
       .catch((err: unknown) => {
         if (cancelled) return
         const message =
-          err instanceof ApiError ? err.message : 'Could not load reports.'
+          err instanceof ApiError ? formatApiError(err) : 'Could not load reports.'
         setResult({ key, inner: { kind: 'error', message } })
       })
     return () => {
@@ -175,7 +155,7 @@ function ReportsList({
   voted,
 }: {
   items: Report[]
-  voted: Set<string>
+  voted: ReadonlySet<string>
 }) {
   return (
     <ul data-testid="reports-list" className="flex flex-col gap-4">
@@ -210,7 +190,7 @@ export function Reports() {
   const hasQuery = q !== ''
 
   const items = state.kind === 'loaded' ? state.data.items : []
-  const votedSet = useMyConcurs(items.map((i) => i.slug).join(','))
+  const votedSet = useMyVotes('report', items.map((i) => i.slug).join(','))
 
   return (
     <section data-testid="page-reports" className="flex flex-col gap-6">

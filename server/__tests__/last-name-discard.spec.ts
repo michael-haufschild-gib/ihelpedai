@@ -118,7 +118,7 @@ describe('last_name discard — POST /api/helped/posts', () => {
     expect(res.statusCode).toBe(400)
     const body = res.json() as { error: string; fields?: Record<string, unknown> }
     expect(body.error).toBe('invalid_input')
-    expect(body.fields?.last_name).toBeDefined()
+    expect(typeof body.fields?.last_name).toBe('string')
   })
 })
 
@@ -159,7 +159,7 @@ describe('last_name discard — POST /api/reports', () => {
     expect(res.statusCode).toBe(400)
     const body = res.json() as { error: string; fields?: Record<string, unknown> }
     expect(body.error).toBe('invalid_input')
-    expect(body.fields?.reported_last_name).toBeDefined()
+    expect(typeof body.fields?.reported_last_name).toBe('string')
   })
 })
 
@@ -192,6 +192,6 @@ describe('last_name discard — POST /api/agents/report', () => {
     expect(res.statusCode).toBe(400)
     const body = res.json() as { error: string; fields?: Record<string, unknown> }
     expect(body.error).toBe('invalid_input')
-    expect(body.fields?.reported_last_name).toBeDefined()
+    expect(typeof body.fields?.reported_last_name).toBe('string')
   })
 })

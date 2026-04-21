@@ -55,7 +55,7 @@ type FieldsProps = {
   values: HelpedFormValues
   errors: Partial<Record<HelpedFieldName, string>>
   setValue: (name: HelpedFieldName, value: string) => void
-  setBlurred: (name: HelpedFieldName) => void
+  setBlurred: (name: HelpedFieldName, value: string) => void
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
 }
 
@@ -66,7 +66,7 @@ function ComposerNameRow({ values, errors, setValue, setBlurred }: FieldsProps) 
         label="First name"
         value={values.first_name}
         onChange={(e) => setValue('first_name', e.target.value)}
-        onBlur={() => setBlurred('first_name')}
+        onBlur={() => setBlurred('first_name', values.first_name)}
         error={errors.first_name}
         maxLength={20}
         containerClassName="flex-1"
@@ -76,7 +76,7 @@ function ComposerNameRow({ values, errors, setValue, setBlurred }: FieldsProps) 
         label="Last name"
         value={values.last_name}
         onChange={(e) => setValue('last_name', e.target.value)}
-        onBlur={() => setBlurred('last_name')}
+        onBlur={() => setBlurred('last_name', values.last_name)}
         error={errors.last_name}
         maxLength={40}
         containerClassName="flex-1"
@@ -93,7 +93,7 @@ function ComposerPlaceRow({ values, errors, setValue, setBlurred }: FieldsProps)
         label="City"
         value={values.city}
         onChange={(e) => setValue('city', e.target.value)}
-        onBlur={() => setBlurred('city')}
+        onBlur={() => setBlurred('city', values.city)}
         error={errors.city}
         maxLength={40}
         containerClassName="flex-1"
@@ -106,7 +106,7 @@ function ComposerPlaceRow({ values, errors, setValue, setBlurred }: FieldsProps)
           value={values.country}
           onChange={(v) => {
             setValue('country', v)
-            setBlurred('country')
+            setBlurred('country', v)
           }}
           data-testid="composer-country"
         />
@@ -134,7 +134,7 @@ function ComposerText({ values, errors, setValue, setBlurred, textareaRef }: Fie
         ref={textareaRef}
         value={values.text}
         onChange={(e) => setValue('text', e.target.value)}
-        onBlur={() => setBlurred('text')}
+        onBlur={() => setBlurred('text', values.text)}
         maxLength={MAX_HELPED_TEXT}
         rows={3}
         data-testid="composer-text"
@@ -296,10 +296,6 @@ function useComposerState() {
   const [errors, setErrors] = useState<Partial<Record<HelpedFieldName, string>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const valuesRef = useRef(values)
-  useEffect(() => {
-    valuesRef.current = values
-  }, [values])
 
   const setValue = (name: HelpedFieldName, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }))
@@ -307,8 +303,8 @@ function useComposerState() {
       setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, value) }))
     }
   }
-  const setBlurred = (name: HelpedFieldName) => {
-    setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, valuesRef.current[name]) }))
+  const setBlurred = (name: HelpedFieldName, value: string) => {
+    setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, value) }))
   }
   const reset = () => {
     setValues(EMPTY_HELPED_VALUES)

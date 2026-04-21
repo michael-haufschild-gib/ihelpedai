@@ -268,3 +268,9 @@ const RAW: readonly Country[] = [
 export const COUNTRIES: readonly Country[] = [...RAW].sort((a, b) =>
   a.name.localeCompare(b.name, 'en'),
 )
+
+/** Pre-built country options for `<Select>` dropdowns, with a leading empty prompt. */
+export const COUNTRY_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Select country' },
+  ...COUNTRIES.map((c) => ({ value: c.code, label: c.name })),
+]

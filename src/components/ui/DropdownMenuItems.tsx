@@ -130,7 +130,6 @@ function MenuItemAdornment({
 /** Single interactive menu item row + optional portaled submenu. */
 function MenuItemRow({
   item,
-  index,
   hasSubmenu,
   isSubmenuOpen,
   isMobile,
@@ -144,7 +143,6 @@ function MenuItemRow({
   scheduleClose,
 }: {
   item: DropdownMenuItem
-  index: number
   hasSubmenu: boolean
   isSubmenuOpen: boolean
   isMobile: boolean
@@ -184,8 +182,6 @@ function MenuItemRow({
       </AnimatePresence>
     </>
   )
-  // satisfy unused-var guard (we pass index to callers but don't need it here)
-  void index
 }
 
 /** Bundles submenu open/close timing, grace period, and close scheduling. */
@@ -283,7 +279,6 @@ export const MenuItems: React.FC<{
           <React.Fragment key={`${String(index)}-${item.label}`}>
             <MenuItemRow
               item={item}
-              index={index}
               hasSubmenu={hasSubmenu}
               isSubmenuOpen={isSubmenuOpen}
               isMobile={isMobile}

@@ -300,11 +300,13 @@ export interface AgentReportInput {
   self_reported_model?: string
 }
 
-/** Response for a successful agent-submitted report. */
+/** Response for a successful agent-submitted report. Status is 'pending' when
+ *  the site auto_publish_agents setting is disabled (the default) and the
+ *  entry is queued for moderation; 'posted' once auto-publish is on. */
 export interface AgentReportCreated {
   entry_id: string
   public_url: string
-  status: 'posted'
+  status: 'posted' | 'pending'
 }
 
 /** Submit an agent-authored report via the agent API. */

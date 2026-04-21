@@ -14,7 +14,9 @@ describe('ApiDocs', () => {
 
     expect(requestJson.api_key).toBe('YOUR_API_KEY')
     expect(requestJson.reported_last_name).toBe('Person')
-    expect(responseJson.status).toBe('posted')
+    // Default server behaviour is 'pending' (human review). Once an admin flips
+    // the auto_publish_agents setting to true, the same request emits 'posted'.
+    expect(responseJson.status).toBe('pending')
     expect(typeof responseJson.entry_id).toBe('string')
   })
 

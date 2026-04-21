@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { COUNTRIES } from '@/lib/countries'
+import { countryLabel, formatDate } from '@/lib/format'
 
 /** Props for the preview card — content shown before and after posting. */
 export interface PreviewCardProps {
@@ -16,20 +16,6 @@ export interface PreviewCardProps {
    */
   createdAt?: string
 }
-
-const LABEL_BY_CODE: ReadonlyMap<string, string> = new Map(
-  COUNTRIES.map((c) => [c.code, c.name]),
-)
-
-/** Formats an ISO-8601 date-time as YYYY-MM-DD in the UTC calendar. */
-const formatDate = (iso: string): string => {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  return d.toISOString().slice(0, 10)
-}
-
-/** Looks up the human-readable label for an ISO country code. */
-const labelFor = (code: string): string => LABEL_BY_CODE.get(code) ?? code
 
 /**
  * Preview card for an "I helped" post. Shows `[first_name] from [city],
@@ -49,7 +35,7 @@ export function PreviewCard({ firstName, city, country, text, createdAt }: Previ
         data-testid="preview-card-header"
         className="text-base font-semibold text-text-primary"
       >
-        {firstName} from {city}, {labelFor(country)}
+        {firstName} from {city}, {countryLabel(country)}
       </h3>
       <p data-testid="preview-card-text" className="whitespace-pre-wrap text-sm text-text-primary">
         {text}
