@@ -155,7 +155,7 @@ function ReportsList({
   voted,
 }: {
   items: Report[]
-  voted: Set<string>
+  voted: ReadonlySet<string>
 }) {
   return (
     <ul data-testid="reports-list" className="flex flex-col gap-4">

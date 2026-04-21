@@ -33,8 +33,7 @@ export function AdminAccounts() {
     setSaving(true)
     try {
       await inviteAdmin(email)
-      setShowInvite(false)
-      setEmail('')
+      setShowInvite(false); setEmail(''); setLoading(true)
       setRefreshKey((k) => k + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed.')
@@ -47,10 +46,9 @@ export function AdminAccounts() {
     if (!deactivateTarget) return
     try {
       await deactivateAdmin(deactivateTarget.id)
+      setLoading(true)
       setRefreshKey((k) => k + 1)
     } catch (err) {
-      // Surface the failure minimally via the existing error banner instead
-      // of raising an unhandled promise rejection from an onClick handler.
       setError(err instanceof Error ? err.message : 'Deactivate failed.')
     } finally {
       setDeactivateTarget(null)

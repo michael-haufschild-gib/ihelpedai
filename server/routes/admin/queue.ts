@@ -63,13 +63,17 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
     }
     const newStatus = body.data.action === 'approve' ? 'live' : 'deleted'
     await store.updateEntryStatus(entry.id, entry.entryType, newStatus)
-    await store.insertAuditEntry(
-      request.admin!.id,
-      body.data.action,
-      entry.id,
-      entry.entryType,
-      body.data.reason ?? null,
-    )
+    try {
+      await store.insertAuditEntry(
+        request.admin!.id,
+        body.data.action,
+        entry.id,
+        entry.entryType,
+        body.data.reason ?? null,
+      )
+    } catch (err) {
+      request.log.error({ err, entryId: entry.id }, 'failed to write audit entry for queue action')
+    }
     reply.status(200).send({ status: 'ok', entry_id: entry.id, action: body.data.action })
   })
 

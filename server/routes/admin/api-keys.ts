@@ -45,7 +45,7 @@ export async function adminApiKeyRoutes(app: FastifyInstance): Promise<void> {
       reply.status(404).send({ error: 'not_found' })
       return
     }
-    const recentReports = await store.listReportsForApiKey(key.emailHash, 20)
+    const recentReports = await store.listReportsForApiKey(key.keyHash, 20)
     reply.status(200).send({ ...key, recent_reports: recentReports })
   })
 

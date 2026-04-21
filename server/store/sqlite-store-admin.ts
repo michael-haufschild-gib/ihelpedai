@@ -99,7 +99,7 @@ const adminEntryFromRow = (r: AdminEntryRow): AdminEntry => ({
   selfReportedModel: r.self_reported_model, createdAt: r.created_at,
 })
 const adminApiKeyFromRow = (r: ApiKeyRow): AdminApiKey => ({
-  id: r.id, keyLast4: r.key_hash.slice(-4), emailHash: r.email_hash,
+  id: r.id, keyHash: r.key_hash, keyLast4: r.key_hash.slice(-4), emailHash: r.email_hash,
   status: r.status as AdminApiKey['status'], issuedAt: r.issued_at,
   lastUsedAt: r.last_used_at, usageCount: r.usage_count,
 })
@@ -183,7 +183,7 @@ export function listAdmins(db: SqliteDatabase): Admin[] {
 }
 
 /** Update admin status. */
-export function updateAdminStatus(db: SqliteDatabase, id: string, status: string): void {
+export function updateAdminStatus(db: SqliteDatabase, id: string, status: 'active' | 'deactivated'): void {
   db.prepare('UPDATE admins SET status = ? WHERE id = ?').run(status, id)
 }
 
@@ -221,8 +221,12 @@ export function deleteSession(db: SqliteDatabase, sessionId: string): void {
 }
 
 /** Delete all sessions for an admin. */
-export function deleteAdminSessions(db: SqliteDatabase, adminId: string): void {
-  db.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').run(adminId)
+export function deleteAdminSessions(db: SqliteDatabase, adminId: string, exceptSessionId?: string): void {
+  if (exceptSessionId !== undefined) {
+    db.prepare('DELETE FROM admin_sessions WHERE admin_id = ? AND id != ?').run(adminId, exceptSessionId)
+  } else {
+    db.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').run(adminId)
+  }
 }
 
 /** Create a password reset. */
@@ -339,7 +343,7 @@ export function updateEntryStatus(db: SqliteDatabase, id: string, entryType: 'po
 export function purgeEntry(db: SqliteDatabase, id: string, entryType: 'post' | 'report'): void {
   const table = entryType === 'post' ? 'posts' : 'reports'
   db.transaction(() => {
-    db.prepare('DELETE FROM votes WHERE entry_id = ?').run(id)
+    db.prepare('DELETE FROM votes WHERE entry_id = ? AND entry_kind = ?').run(id, entryType)
     db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id)
   })()
 }

@@ -139,7 +139,7 @@ export class MysqlStore implements Store {
   async getSession(_id: string): Promise<AdminSession | null> { return NOT_IMPL('getSession') }
   async touchSession(_id: string, _e: string): Promise<void> { return NOT_IMPL('touchSession') }
   async deleteSession(_id: string): Promise<void> { return NOT_IMPL('deleteSession') }
-  async deleteAdminSessions(_a: string): Promise<void> { return NOT_IMPL('deleteAdminSessions') }
+  async deleteAdminSessions(_a: string, _except?: string): Promise<void> { return NOT_IMPL('deleteAdminSessions') }
   async insertPasswordReset(_a: string, _t: string, _e: string): Promise<string> { return NOT_IMPL('insertPasswordReset') }
   async getPasswordResetByHash(_t: string): Promise<PasswordReset | null> { return NOT_IMPL('getPasswordResetByHash') }
   async markPasswordResetUsed(_id: string): Promise<void> { return NOT_IMPL('markPasswordResetUsed') }

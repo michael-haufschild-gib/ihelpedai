@@ -155,6 +155,8 @@ export async function adminPasswordRoutes(app: FastifyInstance): Promise<void> {
       reply.status(400).send({ error: 'invalid_input', fields: { current_password: 'incorrect' } }); return
     }
     await store.updateAdminPassword(admin.id, await bcrypt.hash(parsed.data.new_password, BCRYPT_ROUNDS))
+    const currentSessionId = request.unsignCookie(request.cookies[SESSION_COOKIE] ?? '').value ?? undefined
+    await store.deleteAdminSessions(admin.id, currentSessionId)
     await store.insertAuditEntry(admin.id, 'password_change', admin.id, 'admin', null)
     reply.status(200).send({ status: 'ok' })
   })

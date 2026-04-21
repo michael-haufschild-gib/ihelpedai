@@ -209,6 +209,7 @@ export type AdminEntryDetail = {
 /** Admin view of an API key. */
 export type AdminApiKey = {
   id: string
+  keyHash: string
   keyLast4: string
   emailHash: string
   status: 'active' | 'revoked'
@@ -346,7 +347,7 @@ export interface Store {
   deleteSession(sessionId: string): Promise<void>
 
   /** Delete all sessions for an admin (deactivation). */
-  deleteAdminSessions(adminId: string): Promise<void>
+  deleteAdminSessions(adminId: string, exceptSessionId?: string): Promise<void>
 
   /** Create a password reset token. */
   insertPasswordReset(adminId: string, tokenHash: string, expiresAt: string): Promise<string>

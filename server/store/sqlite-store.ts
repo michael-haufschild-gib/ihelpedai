@@ -321,7 +321,7 @@ export class SqliteStore implements Store {
   async getSession(id: string): Promise<AdminSession | null> { return adm.getSession(this.db, id) }
   async touchSession(id: string, e: string): Promise<void> { adm.touchSession(this.db, id, e) }
   async deleteSession(id: string): Promise<void> { adm.deleteSession(this.db, id) }
-  async deleteAdminSessions(a: string): Promise<void> { adm.deleteAdminSessions(this.db, a) }
+  async deleteAdminSessions(a: string, except?: string): Promise<void> { adm.deleteAdminSessions(this.db, a, except) }
   async insertPasswordReset(a: string, t: string, e: string): Promise<string> { return adm.insertPasswordReset(this.db, a, t, e) }
   async getPasswordResetByHash(t: string): Promise<PasswordReset | null> { return adm.getPasswordResetByHash(this.db, t) }
   async markPasswordResetUsed(id: string): Promise<void> { adm.markPasswordResetUsed(this.db, id) }
