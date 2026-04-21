@@ -90,7 +90,7 @@ export function AdminApiKeys() {
           onConfirmationChange={setConfirmation}
           onReasonChange={setReason}
           onRevoke={handleRevoke}
-          onClose={() => setRevokeTarget(null)}
+          onClose={() => { setRevokeTarget(null); setConfirmation(''); setReason('') }}
         />
       )}
     </section>

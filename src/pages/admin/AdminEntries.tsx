@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
@@ -112,6 +112,13 @@ function EntriesFilters({ entryType, status, q, sort, onFilter }: {
   sort: string
   onFilter: (key: string, value: string) => void
 }) {
+  const [localQ, setLocalQ] = useState(q)
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const handleSearch = (value: string) => {
+    setLocalQ(value)
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => onFilter('q', value), 300)
+  }
   return (
     <div className="flex flex-wrap gap-3">
       <Select
@@ -138,8 +145,8 @@ function EntriesFilters({ entryType, status, q, sort, onFilter }: {
       <Input
         data-testid="admin-entries-search"
         placeholder="Search..."
-        value={q}
-        onChange={(e) => onFilter('q', e.target.value)}
+        value={localQ}
+        onChange={(e) => handleSearch(e.target.value)}
         className="w-48"
       />
       <Button

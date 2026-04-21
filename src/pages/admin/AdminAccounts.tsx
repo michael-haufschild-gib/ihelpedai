@@ -176,15 +176,22 @@ function InviteModal({ email, error, saving, onEmailChange, onInvite, onClose }:
 /** Modal for deactivating an admin. */
 function DeactivateModal({ target, onConfirm, onClose }: {
   target: AdminAccount
-  onConfirm: () => void
+  onConfirm: () => Promise<void>
   onClose: () => void
 }) {
+  const [busy, setBusy] = useState(false)
+  const handleConfirm = () => {
+    setBusy(true)
+    onConfirm().finally(() => setBusy(false))
+  }
   return (
     <Modal data-testid="admin-deactivate-modal" isOpen title={`Deactivate ${target.email}?`} onClose={onClose}>
       <div className="flex flex-col gap-4 p-4">
         <p className="text-sm text-text-secondary">Their sessions will be invalidated immediately.</p>
         <div className="flex gap-2">
-          <Button data-testid="admin-deactivate-confirm" variant="danger" onClick={onConfirm}>Deactivate</Button>
+          <Button data-testid="admin-deactivate-confirm" variant="danger" disabled={busy} onClick={handleConfirm}>
+            {busy ? 'Deactivating...' : 'Deactivate'}
+          </Button>
           <Button data-testid="admin-deactivate-cancel" variant="ghost" onClick={onClose}>Cancel</Button>
         </div>
       </div>

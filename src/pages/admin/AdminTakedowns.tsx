@@ -70,7 +70,7 @@ export function AdminTakedowns() {
     const disposition = closeForm.disposition !== '' ? closeForm.disposition : undefined
     updateTakedown(showDetail.id, { status: 'closed', disposition, notes: closeForm.notes })
       .then(() => { setShowDetail(null); setRefreshKey((k) => k + 1) })
-      .catch(() => undefined)
+      .catch(() => { showToast('Failed to close takedown.') })
   }
 
   const setFilter = (key: string, value: string) => {
