@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useId, useState, useRef, useEffect, useCallback } from 'react'
 import { m, type HTMLMotionProps } from 'motion/react'
 import { LoadingSpinner } from './LoadingSpinner'
 import { soundManager } from '@/lib/audio/SoundManager'
@@ -51,6 +51,15 @@ function InputError({ error }: { error: string }) {
     >
       {error}
     </m.span>
+  )
+}
+
+/** Optional label rendered above the input, bound via htmlFor to inputId. */
+function InputLabel({ htmlFor, text }: { htmlFor: string; text: string }) {
+  return (
+    <label htmlFor={htmlFor} className="text-xs font-medium text-text-secondary ms-1">
+      {text}
+    </label>
   )
 }
 
@@ -112,6 +121,18 @@ function InputAdornments({
   )
 }
 
+/** Merge a callback ref with an optional forwarded ref. */
+function composeInputRefs(
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  forwarded: React.Ref<HTMLInputElement> | undefined,
+): (el: HTMLInputElement | null) => void {
+  return (el) => {
+    inputRef.current = el
+    if (typeof forwarded === 'function') forwarded(el)
+    else if (forwarded && typeof forwarded === 'object') forwarded.current = el
+  }
+}
+
 /** Text input with icon slots, clearable state, error animation, and glass styling. */
 export const Input = ({
   leftIcon,
@@ -127,20 +148,16 @@ export const Input = ({
   value,
   onChange,
   type = 'text',
+  id,
   ref,
   ...props
 }: InputProps & { ref?: React.Ref<HTMLInputElement> }) => {
   const [isFocused, setIsFocused] = useState(false)
   const [uncontrolledHasValue, setUncontrolledHasValue] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const setRefs = useCallback(
-    (el: HTMLInputElement | null) => {
-      inputRef.current = el
-      if (typeof ref === 'function') ref(el)
-      else if (ref && typeof ref === 'object') ref.current = el
-    },
-    [ref]
-  )
+  const fallbackId = useId()
+  const inputId = id ?? `input-${fallbackId}`
+  const setRefs = useCallback((el: HTMLInputElement | null) => composeInputRefs(inputRef, ref)(el), [ref])
 
   const hasError = error !== undefined && error !== false && error !== ''
   useEffect(() => {
@@ -170,10 +187,11 @@ export const Input = ({
 
   return (
     <div className={`flex flex-col gap-1.5 ${containerClassName}`} data-testid="input-container">
-      {label && <label className="text-xs font-medium text-text-secondary ms-1">{label}</label>}
+      {label && <InputLabel htmlFor={inputId} text={label} />}
       <InputField leftIcon={leftIcon} isFocused={isFocused} hasError={hasError}>
         <m.input
           ref={setRefs}
+          id={inputId}
           type={type}
           value={value}
           onChange={handleInputChange}

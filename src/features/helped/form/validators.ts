@@ -5,9 +5,7 @@
  * exactly one place.
  */
 
-import { COUNTRIES } from '@/lib/countries'
-
-import type { SelectOption } from '@/components/ui/Select'
+import { COUNTRY_OPTIONS } from '@/lib/countries'
 
 /** Mutable form values collected by any "I helped" entry surface. */
 export interface HelpedFormValues {
@@ -36,11 +34,7 @@ export const MAX_HELPED_TEXT = 500
 const NAME_REGEX = /^\p{L}+$/u
 const CITY_REGEX = /^[\p{L}\s'-]+$/u
 
-/** Country dropdown options with a leading empty prompt. */
-export const COUNTRY_OPTIONS: SelectOption[] = [
-  { value: '', label: 'Select country' },
-  ...COUNTRIES.map((c) => ({ value: c.code, label: c.name })),
-]
+export { COUNTRY_OPTIONS }
 
 const validateFirstName = (v: string): string => {
   if (v.trim() === '') return 'Required'

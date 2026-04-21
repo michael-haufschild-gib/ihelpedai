@@ -73,10 +73,11 @@ export function Home() {
   const [formKey, setFormKey] = useState(0)
   const feed = useHomeFeed()
   const posts = feed.status === 'ready' ? feed.posts : []
+  const totals = feed.status === 'ready' ? feed.totals : null
 
   return (
     <section data-testid="page-home" className="flex flex-col gap-10">
-      <Hero />
+      <Hero totals={totals} />
       <Highlights posts={selectHighlights(posts)} />
       <Recent posts={selectRecent(posts)} loading={feed.status === 'loading'} />
       <section

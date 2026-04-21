@@ -1,6 +1,8 @@
 /**
- * Global toast store — call showToast() from anywhere in the app.
- * A single GlobalToast renderer in App.tsx subscribes and renders the portal.
+ * Global toast store — call showToast() from anywhere in the app. Consumers
+ * who want the toasts rendered must mount <GlobalToast /> somewhere in the
+ * tree (ihelped.ai itself doesn't use toasts yet, so the renderer is
+ * intentionally not mounted at the app root).
  */
 
 import { create } from 'zustand'

@@ -1,6 +1,12 @@
 import { Link } from 'react-router-dom'
 
 import { LedgerStats } from './LedgerStats'
+import type { LedgerTotals } from './useHomeFeed'
+
+/** Props for {@link Hero}. */
+export interface HeroProps {
+  totals: LedgerTotals | null
+}
 
 /**
  * Homepage hero. Three jobs in three seconds: wordmark, tagline with
@@ -8,7 +14,7 @@ import { LedgerStats } from './LedgerStats'
  * strip. Two low-key calls to action link into the primary flows without
  * pulling attention from the composer further down the page.
  */
-export function Hero() {
+export function Hero({ totals }: HeroProps) {
   return (
     <section
       data-testid="hero"
@@ -61,7 +67,7 @@ export function Hero() {
           </Link>
         </div>
       </div>
-      <LedgerStats />
+      <LedgerStats totals={totals} />
     </section>
   )
 }

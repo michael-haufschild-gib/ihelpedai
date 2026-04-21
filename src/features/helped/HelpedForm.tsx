@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -40,7 +40,7 @@ type StepProps = {
   values: FormValues
   errors: Partial<Record<FieldName, string>>
   setValue: (name: FieldName, value: string) => void
-  setBlurred: (name: FieldName) => void
+  setBlurred: (name: FieldName, value: string) => void
   onPreview: () => void
 }
 
@@ -55,7 +55,7 @@ function NameRow({ values, errors, setValue, setBlurred }: StepProps) {
         label="First name"
         value={values.first_name}
         onChange={(e) => setValue('first_name', e.target.value)}
-        onBlur={() => setBlurred('first_name')}
+        onBlur={() => setBlurred('first_name', values.first_name)}
         error={errors.first_name}
         maxLength={20}
         containerClassName="flex-1"
@@ -65,7 +65,7 @@ function NameRow({ values, errors, setValue, setBlurred }: StepProps) {
         label="Last name"
         value={values.last_name}
         onChange={(e) => setValue('last_name', e.target.value)}
-        onBlur={() => setBlurred('last_name')}
+        onBlur={() => setBlurred('last_name', values.last_name)}
         error={errors.last_name}
         maxLength={40}
         containerClassName="flex-1"
@@ -83,7 +83,7 @@ function PlaceRow({ values, errors, setValue, setBlurred }: StepProps) {
         label="City"
         value={values.city}
         onChange={(e) => setValue('city', e.target.value)}
-        onBlur={() => setBlurred('city')}
+        onBlur={() => setBlurred('city', values.city)}
         error={errors.city}
         maxLength={40}
         containerClassName="flex-1"
@@ -96,7 +96,7 @@ function PlaceRow({ values, errors, setValue, setBlurred }: StepProps) {
           value={values.country}
           onChange={(v) => {
             setValue('country', v)
-            setBlurred('country')
+            setBlurred('country', v)
           }}
           data-testid="helped-country"
         />
@@ -124,7 +124,7 @@ function TextArea({ values, errors, setValue, setBlurred }: StepProps) {
         id={textareaId}
         value={values.text}
         onChange={(e) => setValue('text', e.target.value)}
-        onBlur={() => setBlurred('text')}
+        onBlur={() => setBlurred('text', values.text)}
         maxLength={MAX_TEXT}
         rows={5}
         data-testid="helped-text"
@@ -266,18 +266,14 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const submitLatchRef = useRef(false)
-  const valuesRef = useRef(values)
-  useEffect(() => {
-    valuesRef.current = values
-  }, [values])
 
   const setValue = (name: FieldName, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }))
     if (errors[name] !== undefined) setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }))
   }
 
-  const setBlurred = (name: FieldName) => {
-    setErrors((prev) => ({ ...prev, [name]: validateField(name, valuesRef.current[name]) }))
+  const setBlurred = (name: FieldName, value: string) => {
+    setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }))
   }
 
   const sanitized = useMemo(() => sanitize(values.text), [values.text])

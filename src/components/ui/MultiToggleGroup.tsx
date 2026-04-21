@@ -55,6 +55,7 @@ export const MultiToggleGroup = <T extends string = string>({
           return (
             <MotionEl.button
               key={option.value}
+              type="button"
               onClick={() => {
                 handleToggle(option.value)
               }}

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { VoteButton } from '@/components/ui/VoteButton'
 import { toggleHelpedLike, type HelpedPost, type VoteToggleResult } from '@/lib/api'
-import { COUNTRIES } from '@/lib/countries'
+import { countryLabel, formatDate } from '@/lib/format'
 import { bumpLoyalty } from '@/lib/loyalty'
 
 /** Props for a single feed card. */
@@ -13,17 +13,6 @@ export interface FeedCardProps {
   query?: string
   /** Whether this viewer has already acknowledged this post. */
   voted?: boolean
-}
-
-const LABEL_BY_CODE: ReadonlyMap<string, string> = new Map(
-  COUNTRIES.map((c) => [c.code, c.name]),
-)
-
-const labelFor = (code: string): string => LABEL_BY_CODE.get(code) ?? code
-const formatDate = (iso: string): string => {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  return d.toISOString().slice(0, 10)
 }
 
 const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -73,7 +62,7 @@ export function FeedCard({ post, query, voted: initialVoted = false }: FeedCardP
           className="text-base font-semibold text-text-primary"
         >
           {highlight(first_name, query)} from {highlight(city, query)},{' '}
-          {highlight(labelFor(country), query)}
+          {highlight(countryLabel(country), query)}
         </h3>
         <span
           data-testid={`feed-card-slug-${slug}`}

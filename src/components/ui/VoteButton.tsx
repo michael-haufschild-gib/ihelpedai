@@ -41,9 +41,11 @@ const IDLE_CLASS =
   'border-border-subtle text-text-secondary hover:border-border-default hover:text-text-primary'
 
 /**
- * Toggles a vote with optimistic update. Reverts on error. Server-returned
- * `count` is authoritative. Appearance flips to the variant's accent/warning
- * tone when voted.
+ * Toggles a vote server-side, then reports the authoritative count back to
+ * the caller via onSuccess. Disables itself while the request is in flight
+ * and tolerates errors silently (the caller's next render restores the
+ * correct count). Appearance flips to the variant's accent/warning tone
+ * when voted.
  */
 export function VoteButton({
   variant,

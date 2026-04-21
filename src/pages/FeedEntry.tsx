@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
 import { FeedCard } from '@/features/helped/FeedCard'
-import { ApiError, fetchMyVotes, getHelpedPost, type HelpedPost } from '@/lib/api'
+import { useMyVotes } from '@/hooks/useMyVotes'
+import { ApiError, getHelpedPost, type HelpedPost } from '@/lib/api'
 
 type EntryState =
   | { status: 'loading' }
@@ -75,25 +76,6 @@ function NotFound() {
   )
 }
 
-function useSingleVoted(slug: string | undefined): boolean {
-  // Keyed by slug so the return value resets automatically whenever the slug
-  // changes or a fetch fails — no synchronous setState-in-effect needed.
-  const [votedBySlug, setVotedBySlug] = useState<Record<string, boolean>>({})
-  useEffect(() => {
-    if (slug === undefined || slug === '') return undefined
-    let alive = true
-    fetchMyVotes('post', [slug])
-      .then((r) => {
-        if (alive) setVotedBySlug((prev) => ({ ...prev, [slug]: r.voted.includes(slug) }))
-      })
-      .catch(() => undefined)
-    return () => {
-      alive = false
-    }
-  }, [slug])
-  return slug !== undefined ? (votedBySlug[slug] ?? false) : false
-}
-
 /**
  * Single "I helped" entry page. Loads the post by slug, renders it as a
  * `FeedCard`, and exposes a "Copy link" button that writes the current URL
@@ -102,7 +84,8 @@ function useSingleVoted(slug: string | undefined): boolean {
 export function FeedEntry() {
   const { slug } = useParams<{ slug: string }>()
   const state = useEntry(slug)
-  const voted = useSingleVoted(slug)
+  const votedSet = useMyVotes('post', slug ?? '')
+  const voted = slug !== undefined && votedSet.has(slug)
   const [copied, setCopied] = useState(false)
   const copyTimerRef = useRef<number | null>(null)
 

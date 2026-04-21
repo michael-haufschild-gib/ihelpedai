@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
-import { COUNTRIES } from '@/lib/countries'
 import type { HelpedPost } from '@/lib/api'
+import { countryLabel } from '@/lib/format'
 
 /** Props for {@link HighlightCard}. */
 export interface HighlightCardProps {
@@ -9,12 +9,6 @@ export interface HighlightCardProps {
   /** Controls which testid suffix is used, to keep highlights and recent cards distinct. */
   variant: 'highlight' | 'recent'
 }
-
-const LABEL_BY_CODE: ReadonlyMap<string, string> = new Map(
-  COUNTRIES.map((c) => [c.code, c.name]),
-)
-
-const labelFor = (code: string): string => LABEL_BY_CODE.get(code) ?? code
 
 /**
  * Compact card used by the homepage Highlights and Recent strips. Tighter
@@ -31,7 +25,7 @@ export function HighlightCard({ post, variant }: HighlightCardProps) {
     >
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-sm font-semibold text-text-primary">
-          {post.first_name} from {post.city}, {labelFor(post.country)}
+          {post.first_name} from {post.city}, {countryLabel(post.country)}
         </h3>
         {variant === 'highlight' && (
           <span className="shrink-0 font-mono text-3xs uppercase tracking-wider text-accent">

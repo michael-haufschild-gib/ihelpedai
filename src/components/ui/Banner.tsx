@@ -28,8 +28,10 @@ function BannerComponent({
   onAction,
   'data-testid': testId,
 }: BannerProps) {
+  // Errors and warnings are announced assertively; info is polite.
+  const role = variant === 'info' ? 'status' : 'alert'
   return (
-    <div className={`banner ${variantClasses[variant]}`} role="status" data-testid={testId}>
+    <div className={`banner ${variantClasses[variant]}`} role={role} data-testid={testId}>
       <span className="banner-text">{children}</span>
       {actionLabel && onAction && (
         <Button

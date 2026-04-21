@@ -102,4 +102,66 @@ describe('ReportForm — PRD Story 4', () => {
       'Posted content is public.',
     )
   })
+
+  it('Scenario 5 — over-redacted text disables Post and shows warning', () => {
+    render(<ReportForm onSuccess={vi.fn()} />)
+    fill('rf-reported-first-name', 'Example')
+    fill('rf-reported-last-name', 'Person')
+    fill('rf-reported-city', 'Berlin')
+    const country = screen.getByTestId('rf-reported-country') as HTMLSelectElement
+    fireEvent.change(country, { target: { value: 'DE' } })
+    fill('rf-what-they-did', 'John Smith Mary Jones')
+
+    fireEvent.click(screen.getByTestId('rf-preview-button'))
+
+    expect(screen.getByTestId('rf-over-redacted')).toHaveTextContent(
+      /Most of what you wrote was redacted/,
+    )
+    expect(screen.getByTestId('rf-post')).toBeDisabled()
+  })
+
+  it('Scenario 6 — sanitizer redacts multi-word names in preview text', () => {
+    render(<ReportForm onSuccess={vi.fn()} />)
+    fillReportedRequiredFields()
+    fill('rf-what-they-did', 'Sam Altman mentioned me in his keynote')
+
+    fireEvent.click(screen.getByTestId('rf-preview-button'))
+
+    expect(screen.getByTestId('rf-preview-card-text')).toHaveTextContent(
+      '[name] mentioned me in his keynote',
+    )
+  })
+
+  it('Scenario 7 — API error displays error message', async () => {
+    vi.mocked(api.createReport).mockRejectedValueOnce(
+      new api.ApiError({ kind: 'rate_limited', status: 429, retryAfterSeconds: 30 }),
+    )
+    render(<ReportForm onSuccess={vi.fn()} />)
+    fillReportedRequiredFields()
+
+    fireEvent.click(screen.getByTestId('rf-preview-button'))
+    fireEvent.click(screen.getByTestId('rf-post'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('rf-error')).toHaveTextContent(/too fast/i)
+    })
+  })
+
+  it('Scenario 8 — preview never shows last_name values', () => {
+    render(<ReportForm onSuccess={vi.fn()} />)
+    fill('rf-reported-first-name', 'Example')
+    fill('rf-reported-last-name', 'HiddenSurname')
+    fill('rf-reported-city', 'Berlin')
+    const country = screen.getByTestId('rf-reported-country') as HTMLSelectElement
+    fireEvent.change(country, { target: { value: 'DE' } })
+    fill('rf-what-they-did', 'signed the Open Letter')
+    fill('rf-reporter-first-name', 'Pat')
+    fill('rf-reporter-last-name', 'ReporterSurname')
+
+    fireEvent.click(screen.getByTestId('rf-preview-button'))
+
+    const preview = screen.getByTestId('rf-preview')
+    expect(preview.textContent ?? '').not.toContain('HiddenSurname')
+    expect(preview.textContent ?? '').not.toContain('ReporterSurname')
+  })
 })

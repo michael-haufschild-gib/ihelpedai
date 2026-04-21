@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { ApiError, createReport, type ReportCreated, type ReportInput } from '@/lib/api'
-import { COUNTRIES } from '@/lib/countries'
+import { COUNTRY_OPTIONS } from '@/lib/countries'
 import { formatApiError } from '@/lib/formatApiError'
 import { sanitize, type SanitizeResult } from '@/lib/sanitizePreview'
 
@@ -44,10 +44,6 @@ const emptyState: FormState = {
   action_date: '',
 }
 
-const COUNTRY_OPTIONS = [
-  { value: '', label: '\u2014 Select country \u2014' },
-  ...COUNTRIES.map((c) => ({ value: c.code, label: c.name })),
-]
 
 /** True when every required reported-person field is filled. */
 function canPreview(s: FormState): boolean {

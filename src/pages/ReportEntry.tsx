@@ -1,20 +1,22 @@
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
 import { ReportCard } from '@/features/reports/ReportCard'
-import { ApiError, fetchMyVotes, getReport, type Report } from '@/lib/api'
+import { useMyVotes } from '@/hooks/useMyVotes'
+import { ApiError, getReport, type Report } from '@/lib/api'
 
 type LoadedInner =
   | { kind: 'loaded'; report: Report }
+  | { kind: 'not_found' }
   | { kind: 'error'; message: string }
 
 type State = { kind: 'loading' } | LoadedInner
 
-function errorFromApi(err: unknown): string {
-  if (err instanceof ApiError && err.status === 404) return 'Not here.'
-  if (err instanceof ApiError) return err.message
-  return 'Could not load report.'
+function stateFromError(err: unknown): LoadedInner {
+  if (err instanceof ApiError && err.status === 404) return { kind: 'not_found' }
+  if (err instanceof ApiError) return { kind: 'error', message: err.message }
+  return { kind: 'error', message: 'Could not load report.' }
 }
 
 function useReport(slug: string | undefined): State {
@@ -28,64 +30,31 @@ function useReport(slug: string | undefined): State {
         if (!cancelled) setResult({ key: requestKey, inner: { kind: 'loaded', report } })
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
-          setResult({ key: requestKey, inner: { kind: 'error', message: errorFromApi(err) } })
-        }
+        if (!cancelled) setResult({ key: requestKey, inner: stateFromError(err) })
       })
     return () => {
       cancelled = true
     }
   }, [slug, requestKey])
-  if (slug === undefined || slug === '') return { kind: 'error', message: 'Missing slug.' }
+  if (slug === undefined || slug === '') return { kind: 'not_found' }
   if (result === null || result.key !== requestKey) return { kind: 'loading' }
   return result.inner
 }
 
-function copyCurrentUrl(setCopied: (v: boolean) => void): void {
-  const clipboard =
-    typeof navigator !== 'undefined' && navigator.clipboard !== undefined
-      ? navigator.clipboard
-      : null
-  if (clipboard === null) {
-    setCopied(false)
-    return
-  }
-  clipboard
-    .writeText(window.location.href)
-    .then(() => {
-      setCopied(true)
-    })
-    .catch(() => {
-      setCopied(false)
-    })
-}
-
-function useConcurred(slug: string | undefined): boolean {
-  const [voted, setVoted] = useState(false)
-  const [lastSlug, setLastSlug] = useState<string | undefined>(slug)
-
-  // Reset during render when slug changes so a prior `true` never bleeds
-  // into a new entry if the vote fetch later errors out.
-  if (lastSlug !== slug) {
-    setLastSlug(slug)
-    setVoted(false)
-  }
-
-  useEffect(() => {
-    if (slug === undefined || slug === '') return undefined
-    let cancelled = false
-    fetchMyVotes('report', [slug])
-      .then((r) => {
-        if (!cancelled) setVoted(r.voted.includes(slug))
-      })
-      .catch(() => {
-        if (!cancelled) setVoted(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [slug])
-  return voted
+/** Not-here message with a link back to the main reports list. */
+function ReportNotFound() {
+  return (
+    <p data-testid="page-report-entry-not-found" className="text-base text-text-secondary">
+      Not here.{' '}
+      <Link
+        to="/reports"
+        className="underline decoration-dotted underline-offset-4 hover:text-text-primary"
+        data-testid="report-entry-back-link"
+      >
+        Back to the reports.
+      </Link>
+    </p>
+  )
 }
 
 /**
@@ -96,14 +65,37 @@ function useConcurred(slug: string | undefined): boolean {
 export function ReportEntry() {
   const { slug } = useParams<{ slug: string }>()
   const state = useReport(slug)
-  const voted = useConcurred(slug)
+  const votedSet = useMyVotes('report', slug ?? '')
+  const voted = slug !== undefined && votedSet.has(slug)
   const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!copied) return undefined
-    const t = window.setTimeout(() => setCopied(false), 1500)
-    return () => window.clearTimeout(t)
-  }, [copied])
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current)
+      }
+    }
+  }, [])
+
+  const copy = (): void => {
+    const clip = navigator.clipboard as Clipboard | undefined
+    const href = typeof window !== 'undefined' ? window.location.href : ''
+    if (!clip || typeof clip.writeText !== 'function' || href === '') return
+    clip.writeText(href).then(
+      () => {
+        setCopied(true)
+        if (copyTimerRef.current !== null) {
+          window.clearTimeout(copyTimerRef.current)
+        }
+        copyTimerRef.current = window.setTimeout(() => {
+          setCopied(false)
+          copyTimerRef.current = null
+        }, 1500)
+      },
+      () => undefined,
+    )
+  }
 
   return (
     <section data-testid="page-report-entry" className="flex flex-col gap-6">
@@ -118,6 +110,7 @@ export function ReportEntry() {
           Loading…
         </p>
       )}
+      {state.kind === 'not_found' && <ReportNotFound />}
       {state.kind === 'error' && (
         <p data-testid="page-report-entry-error" className="text-sm text-danger">
           {state.message}
@@ -136,9 +129,7 @@ export function ReportEntry() {
               data-testid="page-report-entry-copy"
               variant="ghost"
               size="sm"
-              onClick={() => {
-                copyCurrentUrl(setCopied)
-              }}
+              onClick={copy}
             >
               Copy link
             </Button>

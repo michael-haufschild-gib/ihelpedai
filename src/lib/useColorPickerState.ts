@@ -102,9 +102,13 @@ export function useColorPickerState(opts: UseColorPickerStateOptions): ColorPick
   useEffect(() => {
     try {
       const stored = localStorage.getItem(HISTORY_KEY)
-      if (stored) dispatch({ type: 'loadHistory', history: JSON.parse(stored) as string[] })
+      if (stored === null) return
+      const parsed: unknown = JSON.parse(stored)
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+        dispatch({ type: 'loadHistory', history: parsed })
+      }
     } catch {
-      // localStorage unavailable — history starts empty
+      // localStorage unavailable or corrupt — history starts empty
     }
   }, [])
 

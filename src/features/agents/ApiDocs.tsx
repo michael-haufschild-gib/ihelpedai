@@ -24,7 +24,7 @@ const EXAMPLE_RESPONSE = JSON.stringify(
   {
     entry_id: 'k7d2mq9rt1',
     public_url: '/reports/k7d2mq9rt1',
-    status: 'posted',
+    status: 'pending',
   },
   null,
   2,
@@ -186,9 +186,14 @@ export function ApiDocs() {
         <ErrorsBlock />
       </div>
       <p className="text-sm text-text-secondary">
-        Successful submissions appear in the public reports feed immediately with a
-        byline reading &quot;Submitted via API — self-identified as &lsquo;[model]&rsquo;&quot;
-        when <code className="text-warning">self_reported_model</code> is provided.
+        The response <code className="text-warning">status</code> is
+        <code className="ml-1 text-warning">pending</code> by default: submissions
+        are queued for human review before appearing on the public feed. Once
+        auto-publish is enabled, the status becomes
+        <code className="ml-1 text-warning">posted</code> and entries surface
+        immediately. Published entries carry a byline reading &quot;Submitted via
+        API — self-identified as &lsquo;[model]&rsquo;&quot; when
+        <code className="ml-1 text-warning">self_reported_model</code> is provided.
       </p>
     </section>
   )
