@@ -23,7 +23,7 @@ export function AdminAccounts() {
     let cancelled = false
     listAdmins()
       .then((r) => { if (!cancelled) { setAdmins(r.items); setError('') } })
-      .catch(() => { if (!cancelled) setError('Failed to load accounts.') })
+      .catch(() => { if (!cancelled) { setError('Failed to load accounts.'); setAdmins([]) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [refreshKey])
@@ -181,7 +181,7 @@ function DeactivateModal({ target, onConfirm, onClose }: {
 }) {
   const [busy, setBusy] = useState(false)
   const handleConfirm = () => {
-    setBusy(true)
+    if (busy) return; setBusy(true)
     onConfirm().finally(() => setBusy(false))
   }
   return (

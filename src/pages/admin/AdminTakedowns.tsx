@@ -104,14 +104,13 @@ export function AdminTakedowns() {
         data-testid="admin-takedowns-status-filter"
         value={statusFilter}
         onChange={(v) => setFilter('status', v)}
-        options={[
-          { value: '', label: 'All' },
-          { value: 'open', label: 'Open' },
-          { value: 'closed', label: 'Closed' },
-        ]}
+        options={[{ value: '', label: 'All' }, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }]}
       />
-      {fetchError !== null && <p data-testid="admin-takedowns-error" className="text-sm text-danger">{fetchError}</p>}
-      <TakedownList data={data} loading={loading} onClose={(td) => { setShowDetail(td); setCloseForm({ disposition: '', notes: td.notes }) }} />
+      {fetchError !== null ? (
+        <p data-testid="admin-takedowns-error" className="text-sm text-danger">{fetchError}</p>
+      ) : (
+        <TakedownList data={data} loading={loading} onClose={(td) => { setShowDetail(td); setCloseForm({ disposition: '', notes: td.notes }) }} />
+      )}
       {totalPages > 1 && (
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button>
