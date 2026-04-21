@@ -232,12 +232,12 @@ export class SqliteStore implements Store {
     this.db.prepare(`UPDATE agent_keys SET usage_count = usage_count + 1, last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key_hash = ?`).run(keyHash)
   }
 
-  async insertAgentReport(input: NewReport, keyHash: string): Promise<Report> {
+  async insertAgentReport(input: NewReport, keyHash: string, initialStatus: EntryStatus = 'live'): Promise<Report> {
     const txn = this.db.transaction((): Report => {
       const id = newId()
       this.db.prepare(
-        `INSERT INTO reports (id, reporter_first_name, reporter_city, reporter_country, reported_first_name, reported_city, reported_country, text, action_date, severity, self_reported_model, status, source, client_ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)`,
-      ).run(id, input.reporterFirstName, input.reporterCity, input.reporterCountry, input.reportedFirstName, input.reportedCity, input.reportedCountry, input.text, input.actionDate, input.severity, input.selfReportedModel, input.source, input.clientIpHash)
+        `INSERT INTO reports (id, reporter_first_name, reporter_city, reporter_country, reported_first_name, reported_city, reported_country, text, action_date, severity, self_reported_model, status, source, client_ip_hash, api_key_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, input.reporterFirstName, input.reporterCity, input.reporterCountry, input.reportedFirstName, input.reportedCity, input.reportedCountry, input.text, input.actionDate, input.severity, input.selfReportedModel, initialStatus, input.source, input.clientIpHash, keyHash)
       this.db.prepare(`UPDATE agent_keys SET usage_count = usage_count + 1, last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key_hash = ?`).run(keyHash)
       return reportFromRow(this.db.prepare('SELECT * FROM reports WHERE id = ?').get(id) as ReportRow)
     })
@@ -281,6 +281,34 @@ export class SqliteStore implements Store {
     return row.n
   }
 
+  async countFilteredEntries(
+    table: 'posts' | 'reports',
+    opts?: { query?: string; source?: ReportSourceFilter; status?: EntryStatus },
+  ): Promise<number> {
+    const conditions: string[] = []
+    const params: string[] = []
+    const status = opts?.status ?? 'live'
+    conditions.push('status = ?')
+    params.push(status)
+    const query = opts?.query
+    if (typeof query === 'string' && query.trim() !== '') {
+      const q = `%${query}%`
+      if (table === 'posts') {
+        conditions.push('(first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?)')
+        params.push(q, q, q, q)
+      } else {
+        conditions.push('(reported_first_name LIKE ? OR reported_city LIKE ? OR reported_country LIKE ? OR text LIKE ? OR reporter_first_name LIKE ?)')
+        params.push(q, q, q, q, q)
+      }
+    }
+    if (table === 'reports' && opts?.source !== undefined && opts.source !== 'all') {
+      conditions.push('source = ?')
+      params.push(opts.source)
+    }
+    const sql = `SELECT COUNT(*) AS n FROM ${table} WHERE ${conditions.join(' AND ')}`
+    return (this.db.prepare(sql).get(...params) as { n: number }).n
+  }
+
   /* Admin methods — delegated to sqlite-store-admin.ts */
   async insertAdmin(e: string, p: string, c: string | null): Promise<Admin> { return adm.insertAdmin(this.db, e, p, c) }
   async getAdminByEmail(e: string): Promise<Admin | null> { return adm.getAdminByEmail(this.db, e) }
@@ -315,7 +343,7 @@ export class SqliteStore implements Store {
   async listTakedowns(l: number, o: number, s?: TakedownStatus): Promise<Takedown[]> { return adm.listTakedowns(this.db, l, o, s) }
   async countTakedowns(s?: TakedownStatus): Promise<number> { return adm.countTakedowns(this.db, s) }
   async getTakedown(id: string): Promise<Takedown | null> { return adm.getTakedown(this.db, id) }
-  async updateTakedown(id: string, f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string }): Promise<void> { adm.updateTakedown(this.db, id, f) }
+  async updateTakedown(id: string, f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null }): Promise<void> { adm.updateTakedown(this.db, id, f) }
   async getSetting(k: string): Promise<string | null> { return adm.getSetting(this.db, k) }
   async setSetting(k: string, v: string): Promise<void> { adm.setSetting(this.db, k, v) }
   async listSettings(): Promise<AdminSetting[]> { return adm.listSettingsAdmin(this.db) }

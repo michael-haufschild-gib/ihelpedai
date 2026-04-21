@@ -31,4 +31,7 @@ test('feed composer: open, fill, preview, post, success', async ({ page }) => {
 
   await expect(page.getByTestId('composer-success')).toContainText('Posted.')
   await expect(page.getByTestId('composer-success-another')).toBeVisible()
+
+  await page.getByTestId('composer-success-another').click()
+  await expect(page.getByTestId('feed-list')).toContainText(UNIQUE_TEXT)
 })

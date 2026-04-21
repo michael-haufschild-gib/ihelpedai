@@ -25,6 +25,7 @@ export function AdminLogin() {
       setAdmin(result.admin)
       navigate('/admin', { replace: true })
     } catch (err) {
+      setPassword('')
       if (err instanceof ApiError && err.kind === 'rate_limited') {
         setError(err.message === '' ? 'Too many attempts. Try again later.' : err.message)
       } else {

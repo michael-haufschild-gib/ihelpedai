@@ -110,7 +110,7 @@ export async function adminTakedownRoutes(app: FastifyInstance): Promise<void> {
       reply.status(404).send({ error: 'not_found' })
       return
     }
-    const closedBy = body.data.status === 'closed' ? request.admin!.id : undefined
+    const closedBy = body.data.status === 'closed' ? request.admin!.id : null
     await store.updateTakedown(params.data.id, { ...body.data, closedBy })
     await store.insertAuditEntry(
       request.admin!.id,

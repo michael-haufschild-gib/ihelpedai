@@ -13,6 +13,7 @@ export function AdminApiKeys() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<Paginated<AdminApiKey> | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<AdminApiKey | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [reason, setReason] = useState('')
@@ -24,8 +25,8 @@ export function AdminApiKeys() {
   useEffect(() => {
     let cancelled = false
     listApiKeys({ status: statusFilter !== '' ? statusFilter : undefined, page })
-      .then((d) => { if (!cancelled) setData(d) })
-      .catch(() => {})
+      .then((d) => { if (!cancelled) { setData(d); setError(null) } })
+      .catch(() => { if (!cancelled) setError('Failed to load API keys.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [page, statusFilter, refreshKey])
@@ -33,23 +34,19 @@ export function AdminApiKeys() {
   const handleRevoke = () => {
     if (!revokeTarget) return
     revokeApiKey(revokeTarget.id, reason !== '' ? reason : undefined)
-      .then(() => {
-        setRevokeTarget(null)
-        setConfirmation('')
-        setReason('')
-        setRefreshKey((k) => k + 1)
-      })
-      // Swallow failures instead of raising an unhandled promise rejection
-      // from an onClick; the modal stays open so the admin can retry.
+      .then(() => { setRevokeTarget(null); setConfirmation(''); setReason(''); setRefreshKey((k) => k + 1) })
       .catch(() => undefined)
   }
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams)
-    if (value !== '') next.set(key, value)
-    else next.delete(key)
+    if (value !== '') next.set(key, value); else next.delete(key)
     next.set('page', '1')
     setSearchParams(next)
+  }
+
+  const setPage = (p: number) => {
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next })
   }
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0
@@ -69,6 +66,8 @@ export function AdminApiKeys() {
       />
       {loading ? (
         <p className="text-text-secondary">Loading...</p>
+      ) : error !== null ? (
+        <p data-testid="admin-apikeys-error" className="text-sm text-danger">{error}</p>
       ) : !data || data.items.length === 0 ? (
         <p data-testid="admin-apikeys-empty" className="text-text-secondary">No API keys found.</p>
       ) : (
@@ -76,9 +75,9 @@ export function AdminApiKeys() {
           <ApiKeysTable items={data.items} onRevoke={setRevokeTarget} />
           {totalPages > 1 && (
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))}>Prev</Button>
+              <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button>
               <span className="text-sm text-text-secondary">Page {page} of {totalPages}</span>
-              <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))}>Next</Button>
+              <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
             </div>
           )}
         </>

@@ -245,7 +245,7 @@ async function handleList(
   const offset = (page - 1) * PAGE_SIZE
   const [rows, total] = await Promise.all([
     store.listReports(PAGE_SIZE, offset, parsed.q, 'all'),
-    store.countEntries('reports', 'live'),
+    store.countFilteredEntries('reports', { query: parsed.q }),
   ])
   const items = rows.map(storedToJson)
   return { items, page, page_size: PAGE_SIZE, total }

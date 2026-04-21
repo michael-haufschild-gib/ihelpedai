@@ -174,7 +174,7 @@ async function handleList(
   const query = typeof q === 'string' && q.length > 0 ? q : undefined
   const [rows, total] = await Promise.all([
     store.listPosts(PAGE_SIZE, offset, query),
-    store.countEntries('posts', 'live'),
+    store.countFilteredEntries('posts', { query }),
   ])
   const items = rows.map(toWire)
   const body: PaginatedWire<HelpedPostWire> = {

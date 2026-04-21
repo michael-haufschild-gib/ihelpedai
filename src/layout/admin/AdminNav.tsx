@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 
 import { getQueueCount } from '@/lib/adminApi'
 
@@ -16,12 +16,13 @@ const NAV_ITEMS = [
 /** Sidebar navigation for the admin backoffice. */
 export function AdminNav() {
   const [queueCount, setQueueCount] = useState(0)
+  const location = useLocation()
 
   useEffect(() => {
     getQueueCount()
       .then((r) => setQueueCount(r.count))
       .catch(() => {})
-  }, [])
+  }, [location.pathname])
 
   return (
     <nav

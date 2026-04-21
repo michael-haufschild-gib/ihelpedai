@@ -27,18 +27,14 @@ export async function adminSettingsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.put('/api/admin/settings', { preHandler: [requireAdmin] }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const parsed = updateSettingSchema.safeParse(request.body)
-    if (!parsed.success) {
-      reply.status(400).send({ error: 'invalid_input' })
-      return
-    }
-    await store.setSetting(parsed.data.key, parsed.data.value)
+    const parsed = updateSettingSchema.parse(request.body)
+    await store.setSetting(parsed.key, parsed.value)
     await store.insertAuditEntry(
       request.admin!.id,
       'update_setting',
-      parsed.data.key,
+      parsed.key,
       'setting',
-      `Set to: ${parsed.data.value.slice(0, 100)}`,
+      `Set to: ${parsed.value.slice(0, 100)}`,
     )
     reply.status(200).send({ status: 'ok' })
   })

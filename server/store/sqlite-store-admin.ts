@@ -367,9 +367,9 @@ export function revokeApiKey(db: SqliteDatabase, id: string): void {
   db.prepare(`UPDATE agent_keys SET status = 'revoked' WHERE id = ?`).run(id)
 }
 
-/** List reports for a given API key. */
-export function listReportsForApiKey(db: SqliteDatabase, _keyHash: string, limit: number): Report[] {
-  return (db.prepare(`SELECT * FROM reports WHERE source = 'api' ORDER BY created_at DESC LIMIT ?`).all(limit) as ReportRowLike[]).map(reportFromRow)
+/** List reports submitted with a given API key. */
+export function listReportsForApiKey(db: SqliteDatabase, keyHash: string, limit: number): Report[] {
+  return (db.prepare(`SELECT * FROM reports WHERE source = 'api' AND api_key_hash = ? ORDER BY created_at DESC LIMIT ?`).all(keyHash, limit) as ReportRowLike[]).map(reportFromRow)
 }
 
 /** Get a single API key for admin view. */
@@ -410,9 +410,9 @@ export function getTakedown(db: SqliteDatabase, id: string): Takedown | null {
 }
 
 /** Update takedown fields. */
-export function updateTakedown(db: SqliteDatabase, id: string, fields: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string }): void {
+export function updateTakedown(db: SqliteDatabase, id: string, fields: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null }): void {
   const sets: string[] = [`updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`]
-  const params: (string | number)[] = []
+  const params: (string | number | null)[] = []
   if (fields.status !== undefined) { sets.push('status = ?'); params.push(fields.status) }
   if (fields.disposition !== undefined) { sets.push('disposition = ?'); params.push(fields.disposition) }
   if (fields.notes !== undefined) { sets.push('notes = ?'); params.push(fields.notes) }

@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import type { AdminTakedown, Paginated } from '@/lib/adminApi'
 import { createTakedown, listTakedowns, updateTakedown } from '@/lib/adminApi'
+import { showToast } from '@/stores/toastStore'
 
 /** Compute overdue status for a takedown. */
 function overdueLevel(dateReceived: string, status: string): 'none' | 'warning' | 'danger' {
@@ -33,6 +34,7 @@ export function AdminTakedowns() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<Paginated<AdminTakedown> | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [showDetail, setShowDetail] = useState<AdminTakedown | null>(null)
   const [form, setForm] = useState(() => ({ requester_email: '', entry_id: '', reason: '', date_received: todayString() }))
@@ -45,45 +47,41 @@ export function AdminTakedowns() {
   useEffect(() => {
     let cancelled = false
     listTakedowns({ status: statusFilter !== '' ? statusFilter : undefined, page })
-      .then((d) => { if (!cancelled) setData(d) })
-      .catch(() => {})
+      .then((d) => { if (!cancelled) { setData(d); setFetchError(null) } })
+      .catch(() => { if (!cancelled) setFetchError('Failed to load takedowns.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [page, statusFilter, refreshKey])
 
-  // Swallow rejections so onClick handlers never raise unhandled promise
-  // rejections; the open modal gives admins an obvious retry surface.
   const handleCreate = () => {
     createTakedown({
       requester_email: form.requester_email !== '' ? form.requester_email : null,
       entry_id: form.entry_id !== '' ? form.entry_id : null,
-      reason: form.reason,
-      date_received: form.date_received,
+      reason: form.reason, date_received: form.date_received,
     }).then(() => {
       setShowCreate(false)
       setForm({ requester_email: '', entry_id: '', reason: '', date_received: todayString() })
       setRefreshKey((k) => k + 1)
-    }).catch(() => undefined)
+    }).catch(() => { showToast('Failed to create takedown.') })
   }
 
   const handleClose = () => {
     if (!showDetail) return
-    updateTakedown(showDetail.id, {
-      status: 'closed',
-      disposition: closeForm.disposition !== '' ? closeForm.disposition : undefined,
-      notes: closeForm.notes !== '' ? closeForm.notes : undefined,
-    }).then(() => {
-      setShowDetail(null)
-      setRefreshKey((k) => k + 1)
-    }).catch(() => undefined)
+    const disposition = closeForm.disposition !== '' ? closeForm.disposition : undefined
+    updateTakedown(showDetail.id, { status: 'closed', disposition, notes: closeForm.notes })
+      .then(() => { setShowDetail(null); setRefreshKey((k) => k + 1) })
+      .catch(() => undefined)
   }
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams)
-    if (value !== '') next.set(key, value)
-    else next.delete(key)
+    if (value !== '') next.set(key, value); else next.delete(key)
     next.set('page', '1')
     setSearchParams(next)
+  }
+
+  const setPage = (p: number) => {
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next })
   }
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0
@@ -104,12 +102,13 @@ export function AdminTakedowns() {
           { value: 'closed', label: 'Closed' },
         ]}
       />
+      {fetchError !== null && <p data-testid="admin-takedowns-error" className="text-sm text-danger">{fetchError}</p>}
       <TakedownList data={data} loading={loading} onClose={(td) => { setShowDetail(td); setCloseForm({ disposition: '', notes: td.notes }) }} />
       {totalPages > 1 && (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))}>Prev</Button>
+          <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button>
           <span className="text-sm text-text-secondary">Page {page} of {totalPages}</span>
-          <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setFilter('page', String(page + 1))}>Next</Button>
+          <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
         </div>
       )}
       {showCreate && (

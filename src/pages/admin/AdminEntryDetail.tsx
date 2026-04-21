@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Textarea'
 import type { AdminEntryDetail as EntryDetail } from '@/lib/adminApi'
+import { ApiError } from '@/lib/api'
 import { entryAction, getEntry, purgeEntry } from '@/lib/adminApi'
 
 /** Format a date string for display. */
@@ -19,6 +20,7 @@ export function AdminEntryDetail() {
   const navigate = useNavigate()
   const [entry, setEntry] = useState<EntryDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ action: string; label: string } | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [reason, setReason] = useState('')
@@ -29,7 +31,13 @@ export function AdminEntryDetail() {
     let cancelled = false
     getEntry(id)
       .then((e) => { if (!cancelled) setEntry(e) })
-      .catch(() => { if (!cancelled) setEntry(null) })
+      .catch((err) => {
+        if (!cancelled) {
+          setEntry(null)
+          if (err instanceof ApiError && err.kind === 'unauthorized') setFetchError('Session expired.')
+          else if (!(err instanceof ApiError)) setFetchError('Network error.')
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [id])
@@ -50,6 +58,7 @@ export function AdminEntryDetail() {
   }
 
   if (loading) return <p className="text-text-secondary">Loading...</p>
+  if (fetchError !== null) return <p data-testid="admin-entry-error" className="text-sm text-danger">{fetchError}</p>
   if (!entry) return <p data-testid="admin-entry-not-found" className="text-text-secondary">Not found.</p>
 
   return (
@@ -67,7 +76,7 @@ export function AdminEntryDetail() {
           onConfirmationChange={setConfirmation}
           onReasonChange={setReason}
           onConfirm={() => handleAction(modal.action)}
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); setConfirmation(''); setReason('') }}
         />
       )}
     </section>

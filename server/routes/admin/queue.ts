@@ -81,21 +81,26 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
     }
     const results: { id: string; ok: boolean }[] = []
     for (const id of body.data.ids) {
-      const entry = await store.getAdminEntryDetail(id)
-      if (!entry || entry.status !== 'pending') {
+      try {
+        const entry = await store.getAdminEntryDetail(id)
+        if (!entry || entry.status !== 'pending') {
+          results.push({ id, ok: false })
+          continue
+        }
+        const newStatus = body.data.action === 'approve' ? 'live' : 'deleted'
+        await store.updateEntryStatus(entry.id, entry.entryType, newStatus)
+        await store.insertAuditEntry(
+          request.admin!.id,
+          body.data.action,
+          entry.id,
+          entry.entryType,
+          body.data.reason ?? null,
+        )
+        results.push({ id, ok: true })
+      } catch (err) {
+        request.log.error({ err, entryId: id }, 'bulk action failed for entry')
         results.push({ id, ok: false })
-        continue
       }
-      const newStatus = body.data.action === 'approve' ? 'live' : 'deleted'
-      await store.updateEntryStatus(entry.id, entry.entryType, newStatus)
-      await store.insertAuditEntry(
-        request.admin!.id,
-        body.data.action,
-        entry.id,
-        entry.entryType,
-        body.data.reason ?? null,
-      )
-      results.push({ id, ok: true })
     }
     reply.status(200).send({ status: 'ok', results })
   })

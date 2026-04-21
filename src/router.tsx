@@ -55,6 +55,7 @@ export function AppRouter() {
         <Route path="/admin/admins" element={<AdminAccounts />} />
         <Route path="/admin/audit" element={<AdminAuditLog />} />
         <Route path="/admin/settings" element={<AdminSettings />} />
+        <Route path="/admin/*" element={<NotFound />} />
       </Route>
     </Routes>
   )

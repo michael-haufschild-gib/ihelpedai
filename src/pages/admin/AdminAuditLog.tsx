@@ -19,6 +19,7 @@ export function AdminAuditLog() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<Paginated<AuditEntry> | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const page = Number(searchParams.get('page') ?? '1')
   const action = searchParams.get('action') ?? ''
@@ -33,8 +34,8 @@ export function AdminAuditLog() {
       date_to: dateTo !== '' ? dateTo : undefined,
       page,
     })
-      .then((d) => { if (!cancelled) setData(d) })
-      .catch(() => {})
+      .then((d) => { if (!cancelled) { setData(d); setError(null) } })
+      .catch(() => { if (!cancelled) setError('Failed to load audit log.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [page, action, dateFrom, dateTo])
@@ -61,6 +62,8 @@ export function AdminAuditLog() {
       <AuditFilters action={action} dateFrom={dateFrom} dateTo={dateTo} onFilter={setFilter} />
       {loading ? (
         <p className="text-text-secondary">Loading...</p>
+      ) : error !== null ? (
+        <p data-testid="admin-audit-error" className="text-sm text-danger">{error}</p>
       ) : !data || data.items.length === 0 ? (
         <p data-testid="admin-audit-empty" className="text-text-secondary">No audit entries.</p>
       ) : (

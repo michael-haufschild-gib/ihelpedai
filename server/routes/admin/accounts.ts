@@ -105,6 +105,10 @@ export async function adminAccountRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const body = deactivateSchema.safeParse(request.body)
+    if (!body.success) {
+      reply.status(400).send({ error: 'invalid_input' })
+      return
+    }
     await store.updateAdminStatus(target.id, 'deactivated')
     await store.deleteAdminSessions(target.id)
     await store.insertAuditEntry(
@@ -112,7 +116,7 @@ export async function adminAccountRoutes(app: FastifyInstance): Promise<void> {
       'deactivate_admin',
       target.id,
       'admin',
-      body.success ? (body.data.reason ?? null) : null,
+      body.data.reason ?? null,
     )
 
     reply.status(200).send({ status: 'ok' })

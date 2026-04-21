@@ -277,10 +277,13 @@ export interface Store {
    * exists but the usage counter is stale — a client retry would otherwise
    * duplicate the report.
    */
-  insertAgentReport(input: NewReport, keyHash: string): Promise<Report>
+  insertAgentReport(input: NewReport, keyHash: string, initialStatus?: EntryStatus): Promise<Report>
 
   /** Count rows in a given table, optionally filtered to a specific status. */
   countEntries(table: CountableTable, status?: EntryStatus): Promise<number>
+
+  /** Count rows with the same filters as the list endpoints (query + source). */
+  countFilteredEntries(table: 'posts' | 'reports', opts?: { query?: string; source?: ReportSourceFilter; status?: EntryStatus }): Promise<number>
 
   /**
    * Toggle an IP's vote on an entry. If the vote exists it is removed and
@@ -452,7 +455,7 @@ export interface Store {
   /** Update takedown fields. */
   updateTakedown(
     id: string,
-    fields: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string },
+    fields: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null },
   ): Promise<void>
 
   /** Get an admin setting by key. */

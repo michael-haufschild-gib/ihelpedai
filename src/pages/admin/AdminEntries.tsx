@@ -26,12 +26,15 @@ export function AdminEntries() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<Paginated<AdminEntry> | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const page = Number(searchParams.get('page') ?? '1')
+  const pageRaw = Number(searchParams.get('page') ?? '1')
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
   const entryTypeRaw = searchParams.get('entry_type') ?? ''
   const statusRaw = searchParams.get('status') ?? ''
   const q = searchParams.get('q') ?? ''
-  const sort = (searchParams.get('sort') ?? 'desc') as 'asc' | 'desc'
+  const sortRaw = searchParams.get('sort') ?? 'desc'
+  const sort: 'asc' | 'desc' = sortRaw === 'asc' ? 'asc' : 'desc'
 
   const entryType = (entryTypeRaw === 'post' || entryTypeRaw === 'report') ? entryTypeRaw : undefined
   const status = (statusRaw === 'live' || statusRaw === 'pending' || statusRaw === 'deleted') ? statusRaw : undefined
@@ -43,8 +46,8 @@ export function AdminEntries() {
     if (status !== undefined) filters.status = status
     if (q !== '') filters.q = q
     listEntries(filters)
-      .then((d) => { if (!cancelled) setData(d) })
-      .catch(() => {})
+      .then((d) => { if (!cancelled) { setData(d); setError(null) } })
+      .catch(() => { if (!cancelled) setError('Failed to load entries.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [page, entryType, status, q, sort])
@@ -77,6 +80,8 @@ export function AdminEntries() {
       />
       {loading ? (
         <p className="text-text-secondary">Loading...</p>
+      ) : error !== null ? (
+        <p data-testid="admin-entries-error" className="text-sm text-danger">{error}</p>
       ) : !data || data.items.length === 0 ? (
         <p data-testid="admin-entries-empty" className="text-text-secondary">No entries match your filters.</p>
       ) : (

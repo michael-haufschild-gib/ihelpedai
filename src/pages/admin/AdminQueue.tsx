@@ -12,9 +12,11 @@ export function AdminQueue() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<Paginated<AdminEntry> | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState(() => new Set<string>())
   const [inlineReason, setInlineReason] = useState<Record<string, string>>({})
   const [actionTarget, setActionTarget] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<'approve' | 'reject' | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const page = Number(searchParams.get('page') ?? '1')
@@ -22,8 +24,8 @@ export function AdminQueue() {
   useEffect(() => {
     let cancelled = false
     listQueue(page)
-      .then((d) => { if (!cancelled) { setData(d); setSelected(new Set()) } })
-      .catch(() => {})
+      .then((d) => { if (!cancelled) { setData(d); setSelected(new Set()); setError(null) } })
+      .catch(() => { if (!cancelled) setError('Failed to load queue.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [page, refreshKey])
@@ -73,6 +75,8 @@ export function AdminQueue() {
       <QueueHeader total={data?.total} selectedCount={selected.size} onBulk={handleBulk} />
       {loading ? (
         <p className="text-text-secondary">Loading...</p>
+      ) : error !== null ? (
+        <p data-testid="admin-queue-error" className="text-sm text-danger">{error}</p>
       ) : !data || data.items.length === 0 ? (
         <p data-testid="admin-queue-empty" className="text-text-secondary">Queue is empty. Nothing to review.</p>
       ) : (
@@ -81,11 +85,12 @@ export function AdminQueue() {
             items={data.items}
             selected={selected}
             actionTarget={actionTarget}
+            pendingAction={pendingAction}
             inlineReason={inlineReason}
             onToggleAll={toggleAll}
             onToggleSelect={toggleSelect}
             onAction={handleAction}
-            onActionTarget={setActionTarget}
+            onSetAction={(id, action) => { setActionTarget(id); setPendingAction(action) }}
             onReasonChange={(id, value) => setInlineReason((r) => ({ ...r, [id]: value }))}
           />
           {totalPages > 1 && (
@@ -128,15 +133,16 @@ function QueueHeader({ total, selectedCount, onBulk }: {
 }
 
 /** Queue table with selection and inline actions. */
-function QueueTable({ items, selected, actionTarget, inlineReason, onToggleAll, onToggleSelect, onAction, onActionTarget, onReasonChange }: {
+function QueueTable({ items, selected, actionTarget, pendingAction, inlineReason, onToggleAll, onToggleSelect, onAction, onSetAction, onReasonChange }: {
   items: AdminEntry[]
   selected: Set<string>
   actionTarget: string | null
+  pendingAction: 'approve' | 'reject' | null
   inlineReason: Record<string, string>
   onToggleAll: () => void
   onToggleSelect: (id: string) => void
   onAction: (id: string, action: 'approve' | 'reject') => void
-  onActionTarget: (id: string) => void
+  onSetAction: (id: string, action: 'approve' | 'reject') => void
   onReasonChange: (id: string, value: string) => void
 }) {
   return (
@@ -146,7 +152,7 @@ function QueueTable({ items, selected, actionTarget, inlineReason, onToggleAll, 
           <th className="py-2 pr-2">
             <Checkbox
               data-testid="admin-queue-select-all"
-              checked={selected.size === items.length}
+              checked={items.length > 0 && selected.size === items.length}
               onChange={onToggleAll}
             />
           </th>
@@ -164,9 +170,11 @@ function QueueTable({ items, selected, actionTarget, inlineReason, onToggleAll, 
             entry={entry}
             isSelected={selected.has(entry.id)}
             isActionTarget={actionTarget === entry.id}
+            pendingAction={actionTarget === entry.id ? pendingAction : null}
             reason={inlineReason[entry.id] ?? ''}
             onToggle={() => onToggleSelect(entry.id)}
-            onAction={(action) => { onActionTarget(entry.id); onAction(entry.id, action) }}
+            onAction={(action) => onAction(entry.id, action)}
+            onSetAction={(action) => onSetAction(entry.id, action)}
             onReasonChange={(value) => onReasonChange(entry.id, value)}
           />
         ))}
@@ -181,13 +189,15 @@ function formatDateShort(iso: string): string {
 }
 
 /** Single queue table row. */
-function QueueRow({ entry, isSelected, isActionTarget, reason, onToggle, onAction, onReasonChange }: {
+function QueueRow({ entry, isSelected, isActionTarget, pendingAction, reason, onToggle, onAction, onSetAction, onReasonChange }: {
   entry: AdminEntry
   isSelected: boolean
   isActionTarget: boolean
+  pendingAction: 'approve' | 'reject' | null
   reason: string
   onToggle: () => void
   onAction: (action: 'approve' | 'reject') => void
+  onSetAction: (action: 'approve' | 'reject') => void
   onReasonChange: (value: string) => void
 }) {
   const dateDisplay = formatDateShort(entry.createdAt)
@@ -197,8 +207,9 @@ function QueueRow({ entry, isSelected, isActionTarget, reason, onToggle, onActio
       className="border-b border-border-subtle hover:bg-surface"
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === 'a') onAction('approve')
-        if (e.key === 'r') onAction('reject')
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+        if (e.key === 'a') onSetAction('approve')
+        if (e.key === 'r') onSetAction('reject')
       }}
     >
       <td className="py-2 pr-2">
@@ -213,18 +224,24 @@ function QueueRow({ entry, isSelected, isActionTarget, reason, onToggle, onActio
       <td className="py-2 pr-3 text-text-secondary">{entry.selfReportedModel ?? '—'}</td>
       <td className="py-2 pr-3 text-text-secondary">{dateDisplay}</td>
       <td className="py-2">
-        {isActionTarget ? (
-          <Input
-            data-testid={`admin-queue-reason-${entry.id}`}
-            placeholder="Reason (optional)"
-            value={reason}
-            onChange={(e) => onReasonChange(e.target.value)}
-            className="w-40"
-          />
+        {isActionTarget && pendingAction !== null ? (
+          <div className="flex items-center gap-1">
+            <Input
+              data-testid={`admin-queue-reason-${entry.id}`}
+              placeholder="Reason (optional)"
+              value={reason}
+              onChange={(e) => onReasonChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') onAction(pendingAction) }}
+              className="w-40"
+            />
+            <Button data-testid={`admin-queue-confirm-${entry.id}`} size="sm" variant={pendingAction === 'reject' ? 'danger' : 'primary'} onClick={() => onAction(pendingAction)}>
+              {pendingAction === 'approve' ? 'Approve' : 'Reject'}
+            </Button>
+          </div>
         ) : (
           <div className="flex gap-1">
-            <Button data-testid={`admin-queue-approve-${entry.id}`} size="sm" onClick={() => onAction('approve')}>Approve</Button>
-            <Button data-testid={`admin-queue-reject-${entry.id}`} size="sm" variant="danger" onClick={() => onAction('reject')}>Reject</Button>
+            <Button data-testid={`admin-queue-approve-${entry.id}`} size="sm" onClick={() => onSetAction('approve')}>Approve</Button>
+            <Button data-testid={`admin-queue-reject-${entry.id}`} size="sm" variant="danger" onClick={() => onSetAction('reject')}>Reject</Button>
           </div>
         )}
       </td>

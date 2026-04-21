@@ -18,6 +18,10 @@ export function AdminResetPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    if (token === '') {
+      setError('Reset link is invalid or expired.')
+      return
+    }
     if (password !== confirm) {
       setError('Passwords do not match.')
       return

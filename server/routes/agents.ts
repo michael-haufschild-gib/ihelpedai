@@ -139,6 +139,11 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
       reply.status(429).send({ error: 'rate_limited', retry_after_seconds: retry })
       return
     }
+    const freeze = await app.store.getSetting('submission_freeze')
+    if (freeze === 'true') {
+      reply.status(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
+      return
+    }
     const sanitized = sanitize(parsed.what_they_did)
     if (sanitized.overRedacted) {
       reply
@@ -146,20 +151,13 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
       return
     }
-    const freeze = await app.store.getSetting('submission_freeze')
-    if (freeze === 'true') {
-      reply.status(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
-      return
-    }
-    const stored = await app.store.insertAgentReport(buildNewReport(parsed, sanitized.clean), keyHash)
     const autoPublish = await app.store.getSetting('auto_publish_agents')
-    if (autoPublish !== 'true') {
-      await app.store.updateEntryStatus(stored.id, 'report', 'pending')
-    }
+    const initialStatus = autoPublish === 'true' ? 'live' : 'pending'
+    const stored = await app.store.insertAgentReport(buildNewReport(parsed, sanitized.clean), keyHash, initialStatus)
     reply.status(201).send({
       entry_id: stored.id,
       public_url: `${config.PUBLIC_URL}/reports/${stored.id}`,
-      status: autoPublish === 'true' ? 'posted' : 'pending',
+      status: initialStatus === 'live' ? 'posted' : 'pending',
     })
   }
 
@@ -170,7 +168,7 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/agents/recent', async () => {
     const [rows, total] = await Promise.all([
       app.store.listReports(20, 0, undefined, 'api'),
-      app.store.countEntries('reports', 'live'),
+      app.store.countFilteredEntries('reports', { source: 'api' }),
     ])
     const items = rows.map(toPublicReport)
     return { items, page: 1, page_size: 20, total }

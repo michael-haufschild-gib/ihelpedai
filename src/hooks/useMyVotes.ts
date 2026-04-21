@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { fetchMyVotes } from '@/lib/api'
+
+const EMPTY_SET = new Set<string>()
 
 /**
  * Fetch which of the given entry slugs this viewer has already voted on.
@@ -8,7 +10,7 @@ import { fetchMyVotes } from '@/lib/api'
  * useEffect). Tolerates fetch errors — un-voted state until the user clicks.
  */
 export function useMyVotes(kind: 'post' | 'report', slugsKey: string): Set<string> {
-  const [voted, setVoted] = useState<Set<string>>(() => new Set())
+  const [voted, setVoted] = useState<Set<string>>(EMPTY_SET)
   useEffect(() => {
     if (slugsKey === '') return undefined
     const slugs = slugsKey.split(',')
@@ -18,11 +20,11 @@ export function useMyVotes(kind: 'post' | 'report', slugsKey: string): Set<strin
         if (!cancelled) setVoted(new Set(r.voted))
       })
       .catch(() => {
-        /* tolerate — buttons render as un-voted until the user clicks */
+        if (!cancelled) setVoted(EMPTY_SET)
       })
     return () => {
       cancelled = true
     }
   }, [kind, slugsKey])
-  return voted
+  return useMemo(() => (slugsKey === '' ? EMPTY_SET : voted), [slugsKey, voted])
 }

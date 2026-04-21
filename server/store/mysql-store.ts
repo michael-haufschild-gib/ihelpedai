@@ -97,12 +97,19 @@ export class MysqlStore implements Store {
     return NOT_IMPL('incrementApiKeyUsage')
   }
 
-  async insertAgentReport(_input: NewReport, _keyHash: string): Promise<Report> {
+  async insertAgentReport(_input: NewReport, _keyHash: string, _initialStatus?: EntryStatus): Promise<Report> {
     return NOT_IMPL('insertAgentReport')
   }
 
   async countEntries(_table: CountableTable, _status?: EntryStatus): Promise<number> {
     return NOT_IMPL('countEntries')
+  }
+
+  async countFilteredEntries(
+    _table: 'posts' | 'reports',
+    _opts?: { query?: string; source?: ReportSourceFilter; status?: EntryStatus },
+  ): Promise<number> {
+    return NOT_IMPL('countFilteredEntries')
   }
 
   async toggleVote(
@@ -154,7 +161,7 @@ export class MysqlStore implements Store {
   async listTakedowns(_l: number, _o: number, _s?: TakedownStatus): Promise<Takedown[]> { return NOT_IMPL('listTakedowns') }
   async countTakedowns(_s?: TakedownStatus): Promise<number> { return NOT_IMPL('countTakedowns') }
   async getTakedown(_id: string): Promise<Takedown | null> { return NOT_IMPL('getTakedown') }
-  async updateTakedown(_id: string, _f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string }): Promise<void> { return NOT_IMPL('updateTakedown') }
+  async updateTakedown(_id: string, _f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null }): Promise<void> { return NOT_IMPL('updateTakedown') }
   async getSetting(_k: string): Promise<string | null> { return NOT_IMPL('getSetting') }
   async setSetting(_k: string, _v: string): Promise<void> { return NOT_IMPL('setSetting') }
   async listSettings(): Promise<AdminSetting[]> { return NOT_IMPL('listSettings') }

@@ -33,12 +33,14 @@ CREATE TABLE IF NOT EXISTS reports (
   status                TEXT NOT NULL DEFAULT 'live',
   source                TEXT NOT NULL DEFAULT 'form',
   client_ip_hash        TEXT,
+  api_key_hash          TEXT,
   dislike_count         INTEGER NOT NULL DEFAULT 0,
   created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_reports_source     ON reports (source);
+CREATE INDEX IF NOT EXISTS idx_reports_created_at   ON reports (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_source        ON reports (source);
+CREATE INDEX IF NOT EXISTS idx_reports_api_key_hash  ON reports (api_key_hash);
 CREATE INDEX IF NOT EXISTS idx_reports_status     ON reports (status);
 
 CREATE TABLE IF NOT EXISTS agent_keys (
@@ -120,7 +122,7 @@ CREATE TABLE IF NOT EXISTS takedowns (
   notes           TEXT NOT NULL DEFAULT '',
   status          TEXT NOT NULL DEFAULT 'open',
   disposition     TEXT,
-  closed_by       TEXT,
+  closed_by       TEXT REFERENCES admins(id),
   date_received   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))

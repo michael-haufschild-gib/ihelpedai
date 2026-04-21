@@ -66,13 +66,17 @@ export async function adminApiKeyRoutes(app: FastifyInstance): Promise<void> {
       return
     }
     await store.revokeApiKey(key.id)
-    await store.insertAuditEntry(
-      request.admin!.id,
-      'revoke_key',
-      key.id,
-      'api_key',
-      body.data.reason ?? null,
-    )
+    try {
+      await store.insertAuditEntry(
+        request.admin!.id,
+        'revoke_key',
+        key.id,
+        'api_key',
+        body.data.reason ?? null,
+      )
+    } catch (err) {
+      request.log.error({ err, keyId: key.id }, 'failed to write audit entry for key revocation')
+    }
     reply.status(200).send({ status: 'ok' })
   })
 }

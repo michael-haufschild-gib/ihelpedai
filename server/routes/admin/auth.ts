@@ -24,6 +24,9 @@ const resetRequestInput = z.object({
 const WEAK_PASSWORDS = new Set([
   'password1234', 'password12345', '123456789012',
   'qwertyuiopas', 'admin1234567', 'changeme1234',
+  'adminadmin12', 'welcome12345', 'letmein123456',
+  'iloveyou1234', 'sunshine12345', 'trustno11234',
+  'ihelpedai123', 'ihelpedadmin',
 ])
 
 const resetPasswordInput = z.object({

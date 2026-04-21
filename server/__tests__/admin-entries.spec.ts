@@ -22,7 +22,9 @@ async function setupTestApp(): Promise<TestCtx> {
     url: '/api/admin/login',
     payload: { email: 'admin@test.ai', password: 'testpassword12' },
   })
+  expect(login.statusCode).toBe(200)
   const raw = login.headers['set-cookie']
+  expect(typeof raw === 'string' || Array.isArray(raw)).toBe(true)
   const cookie = typeof raw === 'string' ? raw : (raw as string[])[0]
   await app.store.insertPost({
     firstName: 'Alice',
@@ -92,7 +94,21 @@ describe('admin entries', () => {
   it('records audit log entries for actions', async () => {
     const list = await ctx.app.inject({ method: 'GET', url: '/api/admin/entries', headers: { cookie: ctx.cookie } })
     const entryId = list.json().items[0].id
+    await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/entries/${entryId}/action`,
+      headers: { cookie: ctx.cookie },
+      payload: { action: 'delete', reason: 'audit-test' },
+    })
     const detail = await ctx.app.inject({ method: 'GET', url: `/api/admin/entries/${entryId}`, headers: { cookie: ctx.cookie } })
-    expect(detail.json().audit_log.length).toBeGreaterThanOrEqual(1)
+    const auditLog = detail.json().audit_log
+    expect(auditLog.length).toBeGreaterThanOrEqual(1)
+    expect(auditLog.some((e: { action: string }) => e.action === 'delete')).toBe(true)
+    await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/entries/${entryId}/action`,
+      headers: { cookie: ctx.cookie },
+      payload: { action: 'restore' },
+    })
   })
 })

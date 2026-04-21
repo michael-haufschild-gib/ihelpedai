@@ -15,6 +15,7 @@ export function AdminAccounts() {
   const [email, setEmail] = useState('')
   const [deactivateTarget, setDeactivateTarget] = useState<AdminAccount | null>(null)
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const currentAdmin = useAdminStore((s) => s.admin)
 
@@ -22,13 +23,14 @@ export function AdminAccounts() {
     let cancelled = false
     listAdmins()
       .then((r) => { if (!cancelled) setAdmins(r.items) })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setError('Failed to load accounts.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [refreshKey])
 
   const handleInvite = async () => {
     setError('')
+    setSaving(true)
     try {
       await inviteAdmin(email)
       setShowInvite(false)
@@ -36,6 +38,8 @@ export function AdminAccounts() {
       setRefreshKey((k) => k + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -82,6 +86,7 @@ export function AdminAccounts() {
         <InviteModal
           email={email}
           error={error}
+          saving={saving}
           onEmailChange={setEmail}
           onInvite={handleInvite}
           onClose={() => setShowInvite(false)}
@@ -142,9 +147,10 @@ function AccountsTable({ admins, currentAdminId, onDeactivate }: {
 }
 
 /** Modal for inviting a new admin. */
-function InviteModal({ email, error, onEmailChange, onInvite, onClose }: {
+function InviteModal({ email, error, saving, onEmailChange, onInvite, onClose }: {
   email: string
   error: string
+  saving: boolean
   onEmailChange: (v: string) => void
   onInvite: () => void
   onClose: () => void
@@ -161,7 +167,7 @@ function InviteModal({ email, error, onEmailChange, onInvite, onClose }: {
           onChange={(e) => onEmailChange(e.target.value)}
         />
         <div className="flex gap-2">
-          <Button data-testid="admin-invite-submit" disabled={email === ''} onClick={onInvite}>Invite</Button>
+          <Button data-testid="admin-invite-submit" disabled={email === '' || saving} onClick={onInvite}>{saving ? 'Inviting...' : 'Invite'}</Button>
           <Button data-testid="admin-invite-cancel" variant="ghost" onClick={onClose}>Cancel</Button>
         </div>
       </div>
