@@ -22,7 +22,7 @@ export function AdminAccounts() {
   useEffect(() => {
     let cancelled = false
     listAdmins()
-      .then((r) => { if (!cancelled) setAdmins(r.items) })
+      .then((r) => { if (!cancelled) { setAdmins(r.items); setError('') } })
       .catch(() => { if (!cancelled) setError('Failed to load accounts.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -126,7 +126,7 @@ function AccountsTable({ admins, currentAdminId, onDeactivate }: {
             <td className="py-2 pr-3 text-text-secondary">{admin.lastLoginAt !== null ? new Date(admin.lastLoginAt).toLocaleString() : '—'}</td>
             <td className="py-2 pr-3 text-text-secondary">{new Date(admin.createdAt).toLocaleDateString()}</td>
             <td className="py-2">
-              {admin.status === 'active' && admin.id !== currentAdminId && (
+              {admin.status === 'active' && currentAdminId !== undefined && admin.id !== currentAdminId && (
                 <Button
                   data-testid={`admin-account-deactivate-${admin.id}`}
                   size="sm"

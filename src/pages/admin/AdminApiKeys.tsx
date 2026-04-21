@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import type { AdminApiKey, Paginated } from '@/lib/adminApi'
 import { listApiKeys, revokeApiKey } from '@/lib/adminApi'
+import { showToast } from '@/stores/toastStore'
 
 /** Admin API key management page (Story 7). */
 export function AdminApiKeys() {
@@ -17,10 +18,13 @@ export function AdminApiKeys() {
   const [revokeTarget, setRevokeTarget] = useState<AdminApiKey | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [reason, setReason] = useState('')
+  const [revoking, setRevoking] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const page = Number(searchParams.get('page') ?? '1')
-  const statusFilter = (searchParams.get('status') ?? '') as 'active' | 'revoked' | ''
+  const pageRaw = Number(searchParams.get('page') ?? '1')
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
+  const statusRaw = searchParams.get('status') ?? ''
+  const statusFilter = (statusRaw === 'active' || statusRaw === 'revoked') ? statusRaw : ''
 
   useEffect(() => {
     let cancelled = false
@@ -32,17 +36,17 @@ export function AdminApiKeys() {
   }, [page, statusFilter, refreshKey])
 
   const handleRevoke = () => {
-    if (!revokeTarget) return
+    if (!revokeTarget || revoking) return; setRevoking(true)
     revokeApiKey(revokeTarget.id, reason !== '' ? reason : undefined)
       .then(() => { setRevokeTarget(null); setConfirmation(''); setReason(''); setRefreshKey((k) => k + 1) })
-      .catch(() => undefined)
+      .catch(() => { showToast('Failed to revoke key.') }).finally(() => setRevoking(false))
   }
 
   const setFilter = (key: string, value: string) => {
-    const next = new URLSearchParams(searchParams)
-    if (value !== '') next.set(key, value); else next.delete(key)
-    next.set('page', '1')
-    setSearchParams(next)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value !== '') next.set(key, value); else next.delete(key); next.set('page', '1'); return next
+    })
   }
 
   const setPage = (p: number) => {
@@ -87,6 +91,7 @@ export function AdminApiKeys() {
           target={revokeTarget}
           confirmation={confirmation}
           reason={reason}
+          revoking={revoking}
           onConfirmationChange={setConfirmation}
           onReasonChange={setReason}
           onRevoke={handleRevoke}
@@ -140,10 +145,11 @@ function ApiKeysTable({ items, onRevoke }: { items: AdminApiKey[]; onRevoke: (ke
 }
 
 /** Modal for revoking an API key. */
-function RevokeModal({ target, confirmation, reason, onConfirmationChange, onReasonChange, onRevoke, onClose }: {
+function RevokeModal({ target, confirmation, reason, revoking, onConfirmationChange, onReasonChange, onRevoke, onClose }: {
   target: AdminApiKey
   confirmation: string
   reason: string
+  revoking: boolean
   onConfirmationChange: (v: string) => void
   onReasonChange: (v: string) => void
   onRevoke: () => void
@@ -166,8 +172,8 @@ function RevokeModal({ target, confirmation, reason, onConfirmationChange, onRea
           placeholder="Reason (optional)"
         />
         <div className="flex gap-2">
-          <Button data-testid="admin-revoke-confirm" variant="danger" disabled={confirmation !== 'REVOKE'} onClick={onRevoke}>
-            Revoke
+          <Button data-testid="admin-revoke-confirm" variant="danger" disabled={confirmation !== 'REVOKE' || revoking} onClick={onRevoke}>
+            {revoking ? 'Revoking...' : 'Revoke'}
           </Button>
           <Button data-testid="admin-revoke-cancel" variant="ghost" onClick={onClose}>
             Cancel

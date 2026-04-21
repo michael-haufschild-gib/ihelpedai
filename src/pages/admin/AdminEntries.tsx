@@ -53,17 +53,16 @@ export function AdminEntries() {
   }, [page, entryType, status, q, sort])
 
   const setFilter = (key: string, value: string) => {
-    const next = new URLSearchParams(searchParams)
-    if (value !== '') next.set(key, value)
-    else next.delete(key)
-    next.set('page', '1')
-    setSearchParams(next)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value !== '') next.set(key, value); else next.delete(key)
+      next.set('page', '1')
+      return next
+    })
   }
 
   const setPage = (p: number) => {
-    const next = new URLSearchParams(searchParams)
-    next.set('page', String(p))
-    setSearchParams(next)
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next })
   }
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0

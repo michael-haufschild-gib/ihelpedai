@@ -10,23 +10,30 @@ import type { AdminTakedown, Paginated } from '@/lib/adminApi'
 import { createTakedown, listTakedowns, updateTakedown } from '@/lib/adminApi'
 import { showToast } from '@/stores/toastStore'
 
+/** Parse a YYYY-MM-DD string as local midnight (not UTC). */
+function parseCalendarDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
 /** Compute overdue status for a takedown. */
 function overdueLevel(dateReceived: string, status: string): 'none' | 'warning' | 'danger' {
   if (status === 'closed') return 'none'
-  const days = (Date.now() - new Date(dateReceived).getTime()) / (1000 * 60 * 60 * 24)
+  const days = (Date.now() - parseCalendarDate(dateReceived).getTime()) / (1000 * 60 * 60 * 24)
   if (days > 7) return 'danger'
   if (days > 5) return 'warning'
   return 'none'
 }
 
-/** Get today's date as YYYY-MM-DD string. */
+/** Get today's date as YYYY-MM-DD string using local date parts. */
 function todayString(): string {
-  return new Date().toISOString().slice(0, 10)
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 /** Format date for display. */
 function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString()
+  return parseCalendarDate(iso).toLocaleDateString()
 }
 
 /** Admin takedown inbox page (Story 8). */
@@ -39,45 +46,46 @@ export function AdminTakedowns() {
   const [showDetail, setShowDetail] = useState<AdminTakedown | null>(null)
   const [form, setForm] = useState(() => ({ requester_email: '', entry_id: '', reason: '', date_received: todayString() }))
   const [closeForm, setCloseForm] = useState({ disposition: '', notes: '' })
+  const [mutating, setMutating] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const page = Number(searchParams.get('page') ?? '1')
-  const statusFilter = (searchParams.get('status') ?? '') as 'open' | 'closed' | ''
+  const pageRaw = Number(searchParams.get('page') ?? '1')
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
+  const statusRaw = searchParams.get('status') ?? ''
+  const statusFilter = (statusRaw === 'open' || statusRaw === 'closed') ? statusRaw : ''
 
   useEffect(() => {
     let cancelled = false
     listTakedowns({ status: statusFilter !== '' ? statusFilter : undefined, page })
       .then((d) => { if (!cancelled) { setData(d); setFetchError(null) } })
-      .catch(() => { if (!cancelled) setFetchError('Failed to load takedowns.') })
+      .catch(() => { if (!cancelled) { setFetchError('Failed to load takedowns.'); setData(null) } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [page, statusFilter, refreshKey])
 
   const handleCreate = () => {
+    if (mutating) return; setMutating(true)
     createTakedown({
       requester_email: form.requester_email !== '' ? form.requester_email : null,
-      entry_id: form.entry_id !== '' ? form.entry_id : null,
-      reason: form.reason, date_received: form.date_received,
-    }).then(() => {
-      setShowCreate(false)
-      setForm({ requester_email: '', entry_id: '', reason: '', date_received: todayString() })
-      setRefreshKey((k) => k + 1)
-    }).catch(() => { showToast('Failed to create takedown.') })
+      entry_id: form.entry_id !== '' ? form.entry_id : null, reason: form.reason, date_received: form.date_received,
+    }).then(() => { setShowCreate(false); setForm({ requester_email: '', entry_id: '', reason: '', date_received: todayString() }); setRefreshKey((k) => k + 1) })
+      .catch(() => { showToast('Failed to create takedown.') }).finally(() => setMutating(false))
   }
 
   const handleClose = () => {
-    if (!showDetail) return
+    if (!showDetail || mutating) return; setMutating(true)
     const disposition = closeForm.disposition !== '' ? closeForm.disposition : undefined
     updateTakedown(showDetail.id, { status: 'closed', disposition, notes: closeForm.notes })
       .then(() => { setShowDetail(null); setRefreshKey((k) => k + 1) })
-      .catch(() => { showToast('Failed to close takedown.') })
+      .catch(() => { showToast('Failed to close takedown.') }).finally(() => setMutating(false))
   }
 
   const setFilter = (key: string, value: string) => {
-    const next = new URLSearchParams(searchParams)
-    if (value !== '') next.set(key, value); else next.delete(key)
-    next.set('page', '1')
-    setSearchParams(next)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value !== '') next.set(key, value); else next.delete(key)
+      next.set('page', '1'); return next
+    })
   }
 
   const setPage = (p: number) => {
@@ -112,10 +120,10 @@ export function AdminTakedowns() {
         </div>
       )}
       {showCreate && (
-        <CreateModal form={form} onFormChange={setForm} onCreate={handleCreate} onClose={() => setShowCreate(false)} />
+        <CreateModal form={form} saving={mutating} onFormChange={setForm} onCreate={handleCreate} onClose={() => setShowCreate(false)} />
       )}
       {showDetail && (
-        <CloseModal closeForm={closeForm} onFormChange={setCloseForm} onClose={handleClose} onCancel={() => setShowDetail(null)} />
+        <CloseModal closeForm={closeForm} saving={mutating} onFormChange={setCloseForm} onClose={handleClose} onCancel={() => setShowDetail(null)} />
       )}
     </section>
   )
@@ -175,8 +183,9 @@ function TakedownRow({ item, onClose }: { item: AdminTakedown; onClose: () => vo
 }
 
 /** Modal for creating a new takedown. */
-function CreateModal({ form, onFormChange, onCreate, onClose }: {
+function CreateModal({ form, saving, onFormChange, onCreate, onClose }: {
   form: { requester_email: string; entry_id: string; reason: string; date_received: string }
+  saving: boolean
   onFormChange: (f: typeof form) => void
   onCreate: () => void
   onClose: () => void
@@ -189,7 +198,7 @@ function CreateModal({ form, onFormChange, onCreate, onClose }: {
         <Textarea data-testid="admin-takedown-reason" placeholder="Reason" value={form.reason} onChange={(e) => onFormChange({ ...form, reason: e.target.value })} />
         <Input data-testid="admin-takedown-date" type="date" value={form.date_received} onChange={(e) => onFormChange({ ...form, date_received: e.target.value })} />
         <div className="flex gap-2">
-          <Button data-testid="admin-takedown-submit" disabled={form.reason === ''} onClick={onCreate}>Create</Button>
+          <Button data-testid="admin-takedown-submit" disabled={form.reason === '' || saving} onClick={onCreate}>{saving ? 'Creating...' : 'Create'}</Button>
           <Button data-testid="admin-takedown-create-cancel" variant="ghost" onClick={onClose}>Cancel</Button>
         </div>
       </div>
@@ -198,8 +207,9 @@ function CreateModal({ form, onFormChange, onCreate, onClose }: {
 }
 
 /** Modal for closing a takedown. */
-function CloseModal({ closeForm, onFormChange, onClose, onCancel }: {
+function CloseModal({ closeForm, saving, onFormChange, onClose, onCancel }: {
   closeForm: { disposition: string; notes: string }
+  saving: boolean
   onFormChange: (f: typeof closeForm) => void
   onClose: () => void
   onCancel: () => void
@@ -221,7 +231,7 @@ function CloseModal({ closeForm, onFormChange, onClose, onCancel }: {
         />
         <Textarea data-testid="admin-takedown-notes" placeholder="Notes" value={closeForm.notes} onChange={(e) => onFormChange({ ...closeForm, notes: e.target.value })} />
         <div className="flex gap-2">
-          <Button data-testid="admin-takedown-close-confirm" disabled={closeForm.disposition === ''} onClick={onClose}>Close takedown</Button>
+          <Button data-testid="admin-takedown-close-confirm" disabled={closeForm.disposition === '' || saving} onClick={onClose}>{saving ? 'Closing...' : 'Close takedown'}</Button>
           <Button data-testid="admin-takedown-close-cancel" variant="ghost" onClick={onCancel}>Cancel</Button>
         </div>
       </div>
