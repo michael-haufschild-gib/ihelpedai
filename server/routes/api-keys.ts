@@ -68,7 +68,7 @@ export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
     }
     const apiKey = generateApiKey()
     const keyHash = hashWithSalt(apiKey)
-    await app.store.insertApiKey({ keyHash, emailHash, status: 'active' })
+    const saved = await app.store.insertApiKey({ keyHash, emailHash, status: 'active' })
     try {
       await app.mailer.send({
         to: parsed.email,
@@ -76,9 +76,18 @@ export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
         text: buildMailBody(apiKey),
       })
     } catch (err) {
-      // Key is persisted but mail failed. Surface a distinct error so the
-      // caller can retry without the client-side rate-limit hiding the issue.
+      // Mail delivery failed after the key row was persisted. Revoke the
+      // stranded row so a retry issues a fresh key and a leaked plaintext key
+      // (if the mailer delivered partially) is rejected on first use.
       app.log.error({ err, emailHash }, 'api_key_issue: mail delivery failed')
+      try {
+        await app.store.revokeApiKey(saved.id)
+      } catch (revokeErr) {
+        app.log.error(
+          { err: revokeErr, apiKeyId: saved.id },
+          'api_key_issue: failed to revoke stranded key after mail failure',
+        )
+      }
       reply.status(502).send({ error: 'mail_delivery_failed' })
       return
     }

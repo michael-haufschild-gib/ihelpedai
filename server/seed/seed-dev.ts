@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import bcrypt from 'bcrypt'
+
 import { config } from '../config.js'
 import { sanitize } from '../sanitizer/sanitize.js'
 import type { NewPost, NewReport, Store } from '../store/index.js'
@@ -173,6 +175,21 @@ async function seedDevApiKey(store: Store): Promise<void> {
 }
 
 /**
+ * Pre-configured dev admin credentials. Committed intentionally for local
+ * development; never used in production.
+ */
+export const DEV_ADMIN_EMAIL = 'admin@ihelped.ai'
+export const DEV_ADMIN_PASSWORD = 'devpassword12'
+
+/** Inserts a dev admin account if none exists. */
+async function seedDevAdmin(store: Store): Promise<void> {
+  const existing = await store.getAdminByEmail(DEV_ADMIN_EMAIL)
+  if (existing) return
+  const hash = await bcrypt.hash(DEV_ADMIN_PASSWORD, 10)
+  await store.insertAdmin(DEV_ADMIN_EMAIL, hash, null)
+}
+
+/**
  * Dev seed (PRD 01 Story 13). Idempotent: each table block is only populated
  * when empty, so repeated `pnpm dev:seed` runs never duplicate content. Prints
  * the pre-issued API key on stdout so developers can copy it immediately.
@@ -183,7 +200,9 @@ export async function seedDev(): Promise<void> {
     await seedPosts(store)
     await seedReports(store)
     await seedDevApiKey(store)
+    await seedDevAdmin(store)
     process.stdout.write(`[seed-dev] done. Dev API key: ${DEV_API_KEY}\n`)
+    process.stdout.write(`[seed-dev] Dev admin: ${DEV_ADMIN_EMAIL} / ${DEV_ADMIN_PASSWORD}\n`)
   } finally {
     await store.close()
   }

@@ -7,18 +7,33 @@ import type { Database as SqliteDatabase } from 'better-sqlite3'
 import { customAlphabet } from 'nanoid'
 
 import type {
+  Admin,
+  AdminApiKey,
+  AdminEntry,
+  AdminEntryDetail,
+  AdminSession,
+  AdminSetting,
+  AuditEntryWithEmail,
   ApiKey,
   CountableTable,
+  EntrySource,
+  EntryStatus,
   NewApiKey,
   NewPost,
   NewReport,
+  NewTakedown,
+  PasswordReset,
   Post,
   Report,
   ReportSourceFilter,
   Store,
+  Takedown,
+  TakedownDisposition,
+  TakedownStatus,
   VoteKind,
   VoteToggleResult,
 } from './index.js'
+import * as adm from './sqlite-store-admin.js'
 
 const ID_ALPHABET =
   'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -124,12 +139,6 @@ export class SqliteStore implements Store {
     this.migrate()
   }
 
-  /**
-   * Idempotent in-place migrations for dev DBs created before the current
-   * schema. `CREATE TABLE IF NOT EXISTS` skips ALTERs, so new columns are
-   * added here with try/catch on the duplicate-column error. Fresh DBs hit
-   * the error path on every boot and the constructor does not report it.
-   */
   private migrate(): void {
     const addColumn = (table: string, def: string): void => {
       try {
@@ -141,101 +150,67 @@ export class SqliteStore implements Store {
     }
     addColumn('posts', 'like_count INTEGER NOT NULL DEFAULT 0')
     addColumn('reports', 'dislike_count INTEGER NOT NULL DEFAULT 0')
+    addColumn('admins', 'created_by TEXT')
+    addColumn('admins', 'last_login_at TEXT')
   }
 
   async insertPost(input: NewPost): Promise<Post> {
     const id = newId()
-    const stmt = this.db.prepare(
+    this.db.prepare(
       `INSERT INTO posts (id, first_name, city, country, text, status, source, client_ip_hash)
        VALUES (?, ?, ?, ?, ?, 'live', ?, ?)`,
-    )
-    stmt.run(id, input.firstName, input.city, input.country, input.text, input.source, input.clientIpHash)
-    const row = this.db.prepare(`SELECT * FROM posts WHERE id = ?`).get(id) as PostRow
-    return postFromRow(row)
+    ).run(id, input.firstName, input.city, input.country, input.text, input.source, input.clientIpHash)
+    return postFromRow(this.db.prepare('SELECT * FROM posts WHERE id = ?').get(id) as PostRow)
   }
 
   async insertReport(input: NewReport): Promise<Report> {
     const id = newId()
-    this.db
-      .prepare(
-        `INSERT INTO reports (
-          id, reporter_first_name, reporter_city, reporter_country,
-          reported_first_name, reported_city, reported_country, text,
-          action_date, severity, self_reported_model, status, source, client_ip_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)`,
-      )
-      .run(
-        id,
-        input.reporterFirstName,
-        input.reporterCity,
-        input.reporterCountry,
-        input.reportedFirstName,
-        input.reportedCity,
-        input.reportedCountry,
-        input.text,
-        input.actionDate,
-        input.severity,
-        input.selfReportedModel,
-        input.source,
-        input.clientIpHash,
-      )
-    const row = this.db.prepare(`SELECT * FROM reports WHERE id = ?`).get(id) as ReportRow
-    return reportFromRow(row)
+    this.db.prepare(
+      `INSERT INTO reports (
+        id, reporter_first_name, reporter_city, reporter_country,
+        reported_first_name, reported_city, reported_country, text,
+        action_date, severity, self_reported_model, status, source, client_ip_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)`,
+    ).run(
+      id, input.reporterFirstName, input.reporterCity, input.reporterCountry,
+      input.reportedFirstName, input.reportedCity, input.reportedCountry, input.text,
+      input.actionDate, input.severity, input.selfReportedModel, input.source, input.clientIpHash,
+    )
+    return reportFromRow(this.db.prepare('SELECT * FROM reports WHERE id = ?').get(id) as ReportRow)
   }
 
   async getPost(id: string): Promise<Post | null> {
-    const row = this.db.prepare(`SELECT * FROM posts WHERE id = ?`).get(id) as PostRow | undefined
+    const row = this.db.prepare('SELECT * FROM posts WHERE id = ?').get(id) as PostRow | undefined
     return row !== undefined ? postFromRow(row) : null
   }
 
   async getReport(id: string): Promise<Report | null> {
-    const row = this.db.prepare(`SELECT * FROM reports WHERE id = ?`).get(id) as
-      | ReportRow
-      | undefined
+    const row = this.db.prepare('SELECT * FROM reports WHERE id = ?').get(id) as ReportRow | undefined
     return row !== undefined ? reportFromRow(row) : null
   }
 
   async listPosts(limit: number, offset: number, query?: string): Promise<Post[]> {
     const hasQuery = typeof query === 'string' && query.trim() !== ''
     const sql = hasQuery
-      ? `SELECT * FROM posts
-         WHERE status = 'live'
-           AND (first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?)
-         ORDER BY created_at DESC LIMIT ? OFFSET ?`
-      : `SELECT * FROM posts WHERE status = 'live'
-         ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      ? `SELECT * FROM posts WHERE status = 'live' AND (first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      : `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC LIMIT ? OFFSET ?`
     const rows = hasQuery
-      ? (this.db
-          .prepare(sql)
-          .all(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, limit, offset) as PostRow[])
+      ? (this.db.prepare(sql).all(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, limit, offset) as PostRow[])
       : (this.db.prepare(sql).all(limit, offset) as PostRow[])
     return rows.map(postFromRow)
   }
 
-  async listReports(
-    limit: number,
-    offset: number,
-    query?: string,
-    sourceFilter: ReportSourceFilter = 'all',
-  ): Promise<Report[]> {
+  async listReports(limit: number, offset: number, query?: string, sourceFilter: ReportSourceFilter = 'all'): Promise<Report[]> {
     const conditions: string[] = [`status = 'live'`]
     const params: (string | number)[] = []
-    if (sourceFilter !== 'all') {
-      conditions.push(`source = ?`)
-      params.push(sourceFilter)
-    }
+    if (sourceFilter !== 'all') { conditions.push('source = ?'); params.push(sourceFilter) }
     if (typeof query === 'string' && query.trim() !== '') {
-      conditions.push(
-        `(reported_first_name LIKE ? OR reported_city LIKE ? OR reported_country LIKE ? OR text LIKE ? OR reporter_first_name LIKE ?)`,
-      )
+      conditions.push('(reported_first_name LIKE ? OR reported_city LIKE ? OR reported_country LIKE ? OR text LIKE ? OR reporter_first_name LIKE ?)')
       const q = `%${query}%`
       params.push(q, q, q, q, q)
     }
-    const sql = `SELECT * FROM reports WHERE ${conditions.join(' AND ')}
-                 ORDER BY created_at DESC LIMIT ? OFFSET ?`
     params.push(limit, offset)
-    const rows = this.db.prepare(sql).all(...params) as ReportRow[]
-    return rows.map(reportFromRow)
+    return (this.db.prepare(`SELECT * FROM reports WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params) as ReportRow[]).map(reportFromRow)
   }
 
   async listAgentReports(limit: number, offset: number): Promise<Report[]> {
@@ -244,147 +219,106 @@ export class SqliteStore implements Store {
 
   async insertApiKey(input: NewApiKey): Promise<ApiKey> {
     const id = newId()
-    this.db
-      .prepare(
-        `INSERT INTO agent_keys (id, key_hash, email_hash, status) VALUES (?, ?, ?, ?)`,
-      )
-      .run(id, input.keyHash, input.emailHash, input.status)
-    const row = this.db.prepare(`SELECT * FROM agent_keys WHERE id = ?`).get(id) as ApiKeyRow
-    return apiKeyFromRow(row)
+    this.db.prepare('INSERT INTO agent_keys (id, key_hash, email_hash, status) VALUES (?, ?, ?, ?)').run(id, input.keyHash, input.emailHash, input.status)
+    return apiKeyFromRow(this.db.prepare('SELECT * FROM agent_keys WHERE id = ?').get(id) as ApiKeyRow)
   }
 
   async getApiKeyByHash(keyHash: string): Promise<ApiKey | null> {
-    const row = this.db
-      .prepare(`SELECT * FROM agent_keys WHERE key_hash = ?`)
-      .get(keyHash) as ApiKeyRow | undefined
+    const row = this.db.prepare('SELECT * FROM agent_keys WHERE key_hash = ?').get(keyHash) as ApiKeyRow | undefined
     return row !== undefined ? apiKeyFromRow(row) : null
   }
 
   async incrementApiKeyUsage(keyHash: string): Promise<void> {
-    this.db
-      .prepare(
-        `UPDATE agent_keys
-         SET usage_count = usage_count + 1,
-             last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-         WHERE key_hash = ?`,
-      )
-      .run(keyHash)
+    this.db.prepare(`UPDATE agent_keys SET usage_count = usage_count + 1, last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key_hash = ?`).run(keyHash)
   }
 
   async insertAgentReport(input: NewReport, keyHash: string): Promise<Report> {
-    const insertStmt = this.db.prepare(
-      `INSERT INTO reports (
-        id, reporter_first_name, reporter_city, reporter_country,
-        reported_first_name, reported_city, reported_country, text,
-        action_date, severity, self_reported_model, status, source, client_ip_hash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)`,
-    )
-    const bumpStmt = this.db.prepare(
-      `UPDATE agent_keys
-         SET usage_count = usage_count + 1,
-             last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-         WHERE key_hash = ?`,
-    )
-    const selectStmt = this.db.prepare(`SELECT * FROM reports WHERE id = ?`)
     const txn = this.db.transaction((): Report => {
       const id = newId()
-      insertStmt.run(
-        id,
-        input.reporterFirstName,
-        input.reporterCity,
-        input.reporterCountry,
-        input.reportedFirstName,
-        input.reportedCity,
-        input.reportedCountry,
-        input.text,
-        input.actionDate,
-        input.severity,
-        input.selfReportedModel,
-        input.source,
-        input.clientIpHash,
-      )
-      bumpStmt.run(keyHash)
-      const row = selectStmt.get(id) as ReportRow
-      return reportFromRow(row)
+      this.db.prepare(
+        `INSERT INTO reports (id, reporter_first_name, reporter_city, reporter_country, reported_first_name, reported_city, reported_country, text, action_date, severity, self_reported_model, status, source, client_ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)`,
+      ).run(id, input.reporterFirstName, input.reporterCity, input.reporterCountry, input.reportedFirstName, input.reportedCity, input.reportedCountry, input.text, input.actionDate, input.severity, input.selfReportedModel, input.source, input.clientIpHash)
+      this.db.prepare(`UPDATE agent_keys SET usage_count = usage_count + 1, last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE key_hash = ?`).run(keyHash)
+      return reportFromRow(this.db.prepare('SELECT * FROM reports WHERE id = ?').get(id) as ReportRow)
     })
     return txn()
   }
 
-  async toggleVote(
-    entryId: string,
-    entryKind: VoteKind,
-    ipHash: string,
-  ): Promise<VoteToggleResult | null> {
+  async toggleVote(entryId: string, entryKind: VoteKind, ipHash: string): Promise<VoteToggleResult | null> {
     const entryTable = entryKind === 'post' ? 'posts' : 'reports'
     const counterCol = entryKind === 'post' ? 'like_count' : 'dislike_count'
-    const exists = this.db
-      .prepare(
-        `SELECT 1 AS ok FROM ${entryTable} WHERE id = ? AND status = 'live'`,
-      )
-      .get(entryId) as { ok: number } | undefined
+    const exists = this.db.prepare(`SELECT 1 AS ok FROM ${entryTable} WHERE id = ? AND status = 'live'`).get(entryId) as { ok: number } | undefined
     if (exists === undefined) return null
     const txn = this.db.transaction((): VoteToggleResult => {
-      const existing = this.db
-        .prepare(
-          `SELECT 1 AS ok FROM votes WHERE entry_id = ? AND entry_kind = ? AND ip_hash = ?`,
-        )
-        .get(entryId, entryKind, ipHash) as { ok: number } | undefined
+      const existing = this.db.prepare('SELECT 1 AS ok FROM votes WHERE entry_id = ? AND entry_kind = ? AND ip_hash = ?').get(entryId, entryKind, ipHash) as { ok: number } | undefined
       if (existing !== undefined) {
-        this.db
-          .prepare(
-            `DELETE FROM votes WHERE entry_id = ? AND entry_kind = ? AND ip_hash = ?`,
-          )
-          .run(entryId, entryKind, ipHash)
-        this.db
-          .prepare(
-            `UPDATE ${entryTable} SET ${counterCol} = MAX(0, ${counterCol} - 1) WHERE id = ?`,
-          )
-          .run(entryId)
+        this.db.prepare('DELETE FROM votes WHERE entry_id = ? AND entry_kind = ? AND ip_hash = ?').run(entryId, entryKind, ipHash)
+        this.db.prepare(`UPDATE ${entryTable} SET ${counterCol} = MAX(0, ${counterCol} - 1) WHERE id = ?`).run(entryId)
         return { count: this.readCounter(entryTable, counterCol, entryId), voted: false }
       }
-      this.db
-        .prepare(
-          `INSERT INTO votes (entry_id, entry_kind, ip_hash) VALUES (?, ?, ?)`,
-        )
-        .run(entryId, entryKind, ipHash)
-      this.db
-        .prepare(`UPDATE ${entryTable} SET ${counterCol} = ${counterCol} + 1 WHERE id = ?`)
-        .run(entryId)
+      this.db.prepare('INSERT INTO votes (entry_id, entry_kind, ip_hash) VALUES (?, ?, ?)').run(entryId, entryKind, ipHash)
+      this.db.prepare(`UPDATE ${entryTable} SET ${counterCol} = ${counterCol} + 1 WHERE id = ?`).run(entryId)
       return { count: this.readCounter(entryTable, counterCol, entryId), voted: true }
     })
     return txn()
   }
 
   private readCounter(table: string, col: string, id: string): number {
-    const row = this.db
-      .prepare(`SELECT ${col} AS n FROM ${table} WHERE id = ?`)
-      .get(id) as { n: number } | undefined
-    return row?.n ?? 0
+    return (this.db.prepare(`SELECT ${col} AS n FROM ${table} WHERE id = ?`).get(id) as { n: number } | undefined)?.n ?? 0
   }
 
-  async getVotedEntryIds(
-    ipHash: string,
-    entryKind: VoteKind,
-    entryIds: readonly string[],
-  ): Promise<readonly string[]> {
+  async getVotedEntryIds(ipHash: string, entryKind: VoteKind, entryIds: readonly string[]): Promise<readonly string[]> {
     if (entryIds.length === 0) return []
     const placeholders = entryIds.map(() => '?').join(', ')
-    const rows = this.db
-      .prepare(
-        `SELECT entry_id FROM votes
-           WHERE ip_hash = ? AND entry_kind = ? AND entry_id IN (${placeholders})`,
-      )
-      .all(ipHash, entryKind, ...entryIds) as { entry_id: string }[]
-    return rows.map((r) => r.entry_id)
+    return (this.db.prepare(`SELECT entry_id FROM votes WHERE ip_hash = ? AND entry_kind = ? AND entry_id IN (${placeholders})`).all(ipHash, entryKind, ...entryIds) as { entry_id: string }[]).map((r) => r.entry_id)
   }
 
-  async countEntries(table: CountableTable): Promise<number> {
-    // Whitelisted literal table names only; never interpolate user input.
-    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }
+  async countEntries(table: CountableTable, status?: EntryStatus): Promise<number> {
+    const sql = status !== undefined
+      ? `SELECT COUNT(*) AS n FROM ${table} WHERE status = ?`
+      : `SELECT COUNT(*) AS n FROM ${table}`
+    const row = (status !== undefined ? this.db.prepare(sql).get(status) : this.db.prepare(sql).get()) as { n: number }
     return row.n
   }
 
-  async close(): Promise<void> {
-    this.db.close()
-  }
+  /* Admin methods — delegated to sqlite-store-admin.ts */
+  async insertAdmin(e: string, p: string, c: string | null): Promise<Admin> { return adm.insertAdmin(this.db, e, p, c) }
+  async getAdminByEmail(e: string): Promise<Admin | null> { return adm.getAdminByEmail(this.db, e) }
+  async getAdmin(id: string): Promise<Admin | null> { return adm.getAdmin(this.db, id) }
+  async listAdmins(): Promise<Admin[]> { return adm.listAdmins(this.db) }
+  async updateAdminStatus(id: string, s: 'active' | 'deactivated'): Promise<void> { adm.updateAdminStatus(this.db, id, s) }
+  async updateAdminPassword(id: string, h: string): Promise<void> { adm.updateAdminPassword(this.db, id, h) }
+  async updateAdminLastLogin(id: string): Promise<void> { adm.updateAdminLastLogin(this.db, id) }
+  async insertSession(a: string, e: string): Promise<string> { return adm.insertSession(this.db, a, e) }
+  async getSession(id: string): Promise<AdminSession | null> { return adm.getSession(this.db, id) }
+  async touchSession(id: string, e: string): Promise<void> { adm.touchSession(this.db, id, e) }
+  async deleteSession(id: string): Promise<void> { adm.deleteSession(this.db, id) }
+  async deleteAdminSessions(a: string): Promise<void> { adm.deleteAdminSessions(this.db, a) }
+  async insertPasswordReset(a: string, t: string, e: string): Promise<string> { return adm.insertPasswordReset(this.db, a, t, e) }
+  async getPasswordResetByHash(t: string): Promise<PasswordReset | null> { return adm.getPasswordResetByHash(this.db, t) }
+  async markPasswordResetUsed(id: string): Promise<void> { adm.markPasswordResetUsed(this.db, id) }
+  async insertAuditEntry(a: string | null, ac: string, ti: string | null, tk: string | null, d: string | null): Promise<void> { adm.insertAuditEntry(this.db, a, ac, ti, tk, d) }
+  async listAuditLog(l: number, o: number, f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): Promise<AuditEntryWithEmail[]> { return adm.listAuditLog(this.db, l, o, f) }
+  async countAuditLog(f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): Promise<number> { return adm.countAuditLog(this.db, f) }
+  async listAuditLogForTarget(t: string): Promise<AuditEntryWithEmail[]> { return adm.listAuditLogForTarget(this.db, t) }
+  async listAdminEntries(l: number, o: number, f?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string; sort?: 'asc' | 'desc' }): Promise<AdminEntry[]> { return adm.listAdminEntries(this.db, l, o, f) }
+  async countAdminEntries(f?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string }): Promise<number> { return adm.countAdminEntries(this.db, f) }
+  async getAdminEntryDetail(id: string): Promise<AdminEntryDetail | null> { return adm.getAdminEntryDetail(this.db, id) }
+  async updateEntryStatus(id: string, t: 'post' | 'report', s: EntryStatus): Promise<void> { adm.updateEntryStatus(this.db, id, t, s) }
+  async purgeEntry(id: string, t: 'post' | 'report'): Promise<void> { adm.purgeEntry(this.db, id, t) }
+  async listApiKeys(l: number, o: number, s?: 'active' | 'revoked'): Promise<AdminApiKey[]> { return adm.listApiKeysAdmin(this.db, l, o, s) }
+  async countApiKeys(s?: 'active' | 'revoked'): Promise<number> { return adm.countApiKeysAdmin(this.db, s) }
+  async revokeApiKey(id: string): Promise<void> { adm.revokeApiKey(this.db, id) }
+  async listReportsForApiKey(k: string, l: number): Promise<Report[]> { return adm.listReportsForApiKey(this.db, k, l) }
+  async getApiKey(id: string): Promise<AdminApiKey | null> { return adm.getApiKeyAdmin(this.db, id) }
+  async insertTakedown(i: NewTakedown): Promise<Takedown> { return adm.insertTakedown(this.db, i) }
+  async listTakedowns(l: number, o: number, s?: TakedownStatus): Promise<Takedown[]> { return adm.listTakedowns(this.db, l, o, s) }
+  async countTakedowns(s?: TakedownStatus): Promise<number> { return adm.countTakedowns(this.db, s) }
+  async getTakedown(id: string): Promise<Takedown | null> { return adm.getTakedown(this.db, id) }
+  async updateTakedown(id: string, f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string }): Promise<void> { adm.updateTakedown(this.db, id, f) }
+  async getSetting(k: string): Promise<string | null> { return adm.getSetting(this.db, k) }
+  async setSetting(k: string, v: string): Promise<void> { adm.setSetting(this.db, k, v) }
+  async listSettings(): Promise<AdminSetting[]> { return adm.listSettingsAdmin(this.db) }
+
+  async close(): Promise<void> { this.db.close() }
 }

@@ -79,7 +79,7 @@ const effectiveLimit = (base: number): number =>
 /** Hashes the client IP with the server-side salt for rate-limit bucketing. */
 const hashIp = (ip: string | undefined): string => {
   if (ip === undefined || ip === '') return 'unknown'
-  return createHash('sha256').update(`${ip}|${config.IP_HASH_SALT}`).digest('hex').slice(0, 32)
+  return createHash('sha256').update(`${config.IP_HASH_SALT}:${ip}`).digest('hex')
 }
 
 /** Maps a stored Post row onto the public wire shape. */
@@ -123,6 +123,11 @@ async function handleCreate(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
+  const freeze = await store.getSetting('submission_freeze')
+  if (freeze === 'true') {
+    reply.code(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
+    return
+  }
   const ipHash = hashIp(request.ip)
   const retryAfter = await checkRateLimits(limiter, ipHash)
   if (retryAfter !== null) {
@@ -130,17 +135,8 @@ async function handleCreate(
     return
   }
 
-  const parsed = helpedPostInput.safeParse(request.body)
-  if (!parsed.success) {
-    const fields: Record<string, string> = {}
-    for (const [k, v] of Object.entries(parsed.error.flatten().fieldErrors)) {
-      if (Array.isArray(v) && v.length > 0) fields[k] = v[0]
-    }
-    reply.code(400).send({ error: 'invalid_input', fields })
-    return
-  }
-
-  const { first_name, city, country, text } = parsed.data
+  const parsed = helpedPostInput.parse(request.body)
+  const { first_name, city, country, text } = parsed
   const sanitized = sanitize(text)
   if (sanitized.overRedacted) {
     reply.code(400).send({ error: 'invalid_input', fields: { text: 'over_redacted' } })
@@ -176,14 +172,16 @@ async function handleList(
   const { q, page } = parsed.data
   const offset = (page - 1) * PAGE_SIZE
   const query = typeof q === 'string' && q.length > 0 ? q : undefined
-  const rows = await store.listPosts(PAGE_SIZE + 1, offset, query)
-  const hasMore = rows.length > PAGE_SIZE
-  const items = rows.slice(0, PAGE_SIZE).map(toWire)
+  const [rows, total] = await Promise.all([
+    store.listPosts(PAGE_SIZE, offset, query),
+    store.countEntries('posts', 'live'),
+  ])
+  const items = rows.map(toWire)
   const body: PaginatedWire<HelpedPostWire> = {
     items,
     page,
     page_size: PAGE_SIZE,
-    total: offset + items.length + (hasMore ? 1 : 0),
+    total,
   }
   reply.code(200).send(body)
 }

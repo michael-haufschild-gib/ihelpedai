@@ -18,6 +18,7 @@ import type { Report as StoredReport, Store } from '../store/index.js'
  */
 
 const PAGE_SIZE = 20
+const NAME_REGEX = /^\p{L}+$/u
 const FORM_LIMIT_PER_HOUR = 10
 const FORM_LIMIT_PER_DAY = 50
 const HOUR_SECONDS = 60 * 60
@@ -58,7 +59,9 @@ interface ReportJson {
 
 const reporterSchema = z
   .object({
-    first_name: z.string().max(20),
+    first_name: z.string().max(20).refine(
+      (v) => v.trim() === '' || NAME_REGEX.test(v), { message: 'letters_only' },
+    ),
     last_name: z.string().max(40),
     city: z.string().max(40),
     country: z.string().max(2),
@@ -72,7 +75,7 @@ const reporterSchema = z
 
 const bodySchema = z.object({
   reporter: reporterSchema,
-  reported_first_name: z.string().min(1).max(20),
+  reported_first_name: z.string().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
   reported_last_name: z.string().min(1).max(40),
   reported_city: z.string().min(1).max(40),
   reported_country: z.string().min(1).max(2),
@@ -191,6 +194,11 @@ async function handleCreate(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<ReportCreatedResponse | undefined> {
+  const freeze = await store.getSetting('submission_freeze')
+  if (freeze === 'true') {
+    await reply.code(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
+    return undefined
+  }
   const body = bodySchema.parse(request.body)
   const ipHash = hashIp(request.ip)
 
@@ -235,10 +243,11 @@ async function handleList(
   const parsed = listQuerySchema.parse(request.query)
   const page = parsed.page ?? 1
   const offset = (page - 1) * PAGE_SIZE
-  const rows = await store.listReports(PAGE_SIZE + 1, offset, parsed.q, 'all')
-  const hasMore = rows.length > PAGE_SIZE
-  const items = (hasMore ? rows.slice(0, PAGE_SIZE) : rows).map(storedToJson)
-  const total = hasMore ? offset + PAGE_SIZE + 1 : offset + items.length
+  const [rows, total] = await Promise.all([
+    store.listReports(PAGE_SIZE, offset, parsed.q, 'all'),
+    store.countEntries('reports', 'live'),
+  ])
+  const items = rows.map(storedToJson)
   return { items, page, page_size: PAGE_SIZE, total }
 }
 

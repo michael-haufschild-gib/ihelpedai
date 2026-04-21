@@ -23,7 +23,7 @@ type PublicReport = {
   submitted_via_api: boolean
 }
 
-const LETTERS_ONLY = /^[\p{L}\s'-]+$/u
+const NAME_REGEX = /^\p{L}+$/u
 
 // Reject impossible calendar dates like "2026-13-40" that the regex alone
 // would accept; once the MySQL `DATE` path lands, those would fail at insert.
@@ -40,12 +40,14 @@ const isValidIsoDate = (value: string): boolean => {
   )
 }
 
+const COUNTRY_REGEX = /^[A-Za-z]{2,3}$/
+
 const agentReportSchema = z.object({
   api_key: z.string().min(1),
-  reported_first_name: z.string().min(1).max(20).regex(LETTERS_ONLY, 'letters_only'),
+  reported_first_name: z.string().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
   reported_last_name: z.string().min(1).max(40),
   reported_city: z.string().min(1).max(40),
-  reported_country: z.string().min(2).max(3),
+  reported_country: z.string().regex(COUNTRY_REGEX, 'invalid_country'),
   what_they_did: z.string().min(1).max(500),
   action_date: z
     .string()
@@ -92,20 +94,18 @@ type ReplyShape = {
 }
 
 /** Build the NewReport DTO from a validated body, dropping reported_last_name. */
-function buildNewReport(body: AgentReportBody): NewReport {
-  const { what_they_did, ...rest } = body
-  const sanitized = sanitize(what_they_did)
+function buildNewReport(body: AgentReportBody, sanitizedText: string): NewReport {
   return {
     reporterFirstName: null,
     reporterCity: null,
     reporterCountry: null,
-    reportedFirstName: rest.reported_first_name,
-    reportedCity: rest.reported_city,
-    reportedCountry: rest.reported_country,
-    text: sanitized.clean,
-    actionDate: rest.action_date ?? null,
-    severity: rest.severity ?? null,
-    selfReportedModel: rest.self_reported_model ?? null,
+    reportedFirstName: body.reported_first_name,
+    reportedCity: body.reported_city,
+    reportedCountry: body.reported_country,
+    text: sanitizedText,
+    actionDate: body.action_date ?? null,
+    severity: body.severity ?? null,
+    selfReportedModel: body.self_reported_model ?? null,
     clientIpHash: null,
     source: 'api',
   }
@@ -146,13 +146,20 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
       return
     }
-    // Insert the report and bump key usage in a single transaction so a
-    // failed usage bump can't leave an orphan report that a retry duplicates.
-    const stored = await app.store.insertAgentReport(buildNewReport(parsed), keyHash)
+    const freeze = await app.store.getSetting('submission_freeze')
+    if (freeze === 'true') {
+      reply.status(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
+      return
+    }
+    const stored = await app.store.insertAgentReport(buildNewReport(parsed, sanitized.clean), keyHash)
+    const autoPublish = await app.store.getSetting('auto_publish_agents')
+    if (autoPublish !== 'true') {
+      await app.store.updateEntryStatus(stored.id, 'report', 'pending')
+    }
     reply.status(201).send({
       entry_id: stored.id,
       public_url: `${config.PUBLIC_URL}/reports/${stored.id}`,
-      status: 'posted',
+      status: autoPublish === 'true' ? 'posted' : 'pending',
     })
   }
 
@@ -161,8 +168,11 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.get('/api/agents/recent', async () => {
-    const rows = await app.store.listReports(20, 0, undefined, 'api')
+    const [rows, total] = await Promise.all([
+      app.store.listReports(20, 0, undefined, 'api'),
+      app.store.countEntries('reports', 'live'),
+    ])
     const items = rows.map(toPublicReport)
-    return { items, page: 1, page_size: 20, total: items.length }
+    return { items, page: 1, page_size: 20, total }
   })
 }

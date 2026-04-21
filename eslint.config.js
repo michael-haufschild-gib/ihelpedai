@@ -143,7 +143,19 @@ export default defineConfig([
       ],
     },
   },
-  // Test files
+  // Server integration specs (node env). Pick up the shallow-assertion custom
+  // rule without dragging in the testing-library/* react-oriented rules.
+  {
+    files: ['server/**/*.spec.ts'],
+    rules: {
+      'max-lines-per-function': 'off',
+      'sonarjs/cognitive-complexity': 'off',
+      'max-depth': 'off',
+      '@typescript-eslint/strict-boolean-expressions': 'off',
+      'custom-rules/no-shallow-assertions': 'error',
+    },
+  },
+  // Test files (React component tests)
   {
     files: ['**/*.test.ts', '**/*.test.tsx', 'src/test/**/*.{ts,tsx}'],
     plugins: { 'testing-library': testingLibrary },
