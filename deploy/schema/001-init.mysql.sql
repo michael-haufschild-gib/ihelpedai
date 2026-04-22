@@ -1,5 +1,8 @@
 -- ihelped.ai — MySQL schema (production).
--- InnoDB + utf8mb4. All ids are 10-char random slugs (VARCHAR).
+-- InnoDB + utf8mb4. Ids are 10-char random slugs (VARCHAR(16) with headroom).
+-- Every DDL is idempotent so the setup script can be re-run safely.
+-- Kept column-compatible with the SQLite schema (deploy/schema/001-init.sqlite.sql)
+-- so the Store interface returns the same DTOs regardless of backend.
 
 CREATE TABLE IF NOT EXISTS posts (
   id              VARCHAR(16)   NOT NULL,
@@ -32,23 +35,25 @@ CREATE TABLE IF NOT EXISTS reports (
   status                VARCHAR(16)  NOT NULL DEFAULT 'live',
   source                VARCHAR(8)   NOT NULL DEFAULT 'form',
   client_ip_hash        VARCHAR(64)  NULL,
+  api_key_hash          VARCHAR(64)  NULL,
   dislike_count         INT UNSIGNED NOT NULL DEFAULT 0,
   created_at            DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  KEY idx_reports_created_at (created_at),
-  KEY idx_reports_source     (source),
-  KEY idx_reports_status     (status)
+  KEY idx_reports_created_at   (created_at),
+  KEY idx_reports_source       (source),
+  KEY idx_reports_status       (status),
+  KEY idx_reports_api_key_hash (api_key_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Anonymous, IP-deduped votes. One row per (entry, ip). Toggle by delete.
 CREATE TABLE IF NOT EXISTS votes (
   entry_id    VARCHAR(16)  NOT NULL,
-  entry_kind  VARCHAR(8)   NOT NULL CHECK (entry_kind IN ('post', 'report')),
+  entry_kind  VARCHAR(8)   NOT NULL,
   ip_hash     VARCHAR(64)  NOT NULL,
   created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (entry_id, entry_kind, ip_hash),
-  -- `idx_votes_entry (entry_id, entry_kind)` is redundant — the PK already
-  -- covers that leftmost prefix.
-  KEY idx_votes_ip_hash (ip_hash, entry_kind)
+  KEY idx_votes_ip_hash (ip_hash, entry_kind),
+  CONSTRAINT chk_votes_kind CHECK (entry_kind IN ('post', 'report'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS agent_keys (
@@ -70,9 +75,36 @@ CREATE TABLE IF NOT EXISTS admins (
   email          VARCHAR(128) NOT NULL,
   password_hash  VARCHAR(128) NOT NULL,
   status         VARCHAR(16)  NOT NULL DEFAULT 'active',
+  created_by     VARCHAR(16)  NULL,
+  last_login_at  DATETIME(3)  NULL,
   created_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uq_admins_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  id          VARCHAR(16)  NOT NULL,
+  admin_id    VARCHAR(16)  NOT NULL,
+  expires_at  DATETIME(3)  NOT NULL,
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_admin_sessions_admin_id   (admin_id),
+  KEY idx_admin_sessions_expires_at (expires_at),
+  CONSTRAINT fk_admin_sessions_admin FOREIGN KEY (admin_id)
+    REFERENCES admins (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id          VARCHAR(16)  NOT NULL,
+  admin_id    VARCHAR(16)  NOT NULL,
+  token_hash  VARCHAR(64)  NOT NULL,
+  used        TINYINT(1)   NOT NULL DEFAULT 0,
+  expires_at  DATETIME(3)  NOT NULL,
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_password_resets_token_hash (token_hash),
+  CONSTRAINT fk_password_resets_admin FOREIGN KEY (admin_id)
+    REFERENCES admins (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -88,4 +120,31 @@ CREATE TABLE IF NOT EXISTS audit_log (
   KEY idx_audit_log_admin_id   (admin_id),
   CONSTRAINT fk_audit_log_admin FOREIGN KEY (admin_id)
     REFERENCES admins (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS takedowns (
+  id              VARCHAR(16)   NOT NULL,
+  requester_email VARCHAR(255)  NULL,
+  entry_id        VARCHAR(16)   NULL,
+  entry_kind      VARCHAR(8)    NULL,
+  reason          VARCHAR(500)  NOT NULL,
+  notes           VARCHAR(1000) NOT NULL DEFAULT '',
+  status          VARCHAR(16)   NOT NULL DEFAULT 'open',
+  disposition     VARCHAR(32)   NULL,
+  closed_by       VARCHAR(16)   NULL,
+  date_received   DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  created_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_takedowns_status (status),
+  CONSTRAINT fk_takedowns_admin FOREIGN KEY (closed_by)
+    REFERENCES admins (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- MySQL reserves `key` (without backticks); quote on every reference in code.
+CREATE TABLE IF NOT EXISTS admin_settings (
+  `key`      VARCHAR(64)   NOT NULL,
+  value      VARCHAR(2000) NOT NULL,
+  updated_at DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

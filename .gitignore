@@ -43,3 +43,6 @@ dev.db-shm
 tmp/mail/
 .env.local
 server/dist/
+
+# Deploy
+.env.deploy
