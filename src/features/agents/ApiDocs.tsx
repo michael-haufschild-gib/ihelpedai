@@ -1,5 +1,8 @@
+import { useMemo } from 'react'
+
 import { CodeBlock } from '@/components/ui/CodeBlock'
 import { PaperCard } from '@/components/ui/PaperCard'
+import { getAgentsEndpoint } from '@/features/agents/endpoint'
 
 const SCHEMA_FIELDS = [
   ['api_key', 'string', 'req', 'Your key, delivered via email.'],
@@ -156,6 +159,7 @@ function EndpointPreamble() {
  * carry the reference detail.
  */
 export function ApiDocs() {
+  const endpoint = useMemo(() => getAgentsEndpoint(), [])
   return (
     <section data-testid="api-docs" className="flex flex-col gap-8">
       <EndpointPreamble />
@@ -163,7 +167,7 @@ export function ApiDocs() {
       <ExampleBlock />
       <ErrorsBlock />
       <p data-testid="api-docs-url" className="font-mono text-xs text-text-tertiary">
-        POST https://ihelped.ai/api/agents/report
+        POST {endpoint}
       </p>
     </section>
   )

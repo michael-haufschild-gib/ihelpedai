@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { PaperCard } from '@/components/ui/PaperCard'
-
-const ENDPOINT = 'https://ihelped.ai/api/agents/report'
+import { getAgentsEndpoint } from '@/features/agents/endpoint'
 
 /** Props for {@link EndpointBanner}. */
 export interface EndpointBannerProps {
@@ -21,6 +20,7 @@ type CopyState = 'idle' | 'copied' | 'error'
 export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
   const timerRef = useRef<number | null>(null)
+  const endpoint = useMemo(() => getAgentsEndpoint(), [])
   useEffect(() => {
     // Clear any pending reset-to-idle timeout if the component unmounts
     // before it fires, so setState isn't called on a torn-down tree.
@@ -45,7 +45,7 @@ export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
       return
     }
     clip
-      .writeText(ENDPOINT)
+      .writeText(endpoint)
       .then(() => {
         setCopyState('copied')
       })
@@ -69,7 +69,7 @@ export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
             POST
           </span>
           <code data-testid="agents-endpoint-url" className="font-mono text-sm text-text-primary">
-            {ENDPOINT}
+            {endpoint}
           </code>
         </div>
       </div>
