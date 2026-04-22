@@ -36,12 +36,6 @@ function buildCells(totals: LedgerTotals | null): readonly Cell[] {
       color: 'var(--color-green-deed)',
       testId: 'count-agents',
     },
-    {
-      label: 'Approval probability',
-      value: '99.4%',
-      color: '#a69cff',
-      testId: 'count-approval',
-    },
   ]
 }
 
@@ -55,7 +49,7 @@ export function CountBar({ totals }: CountBarProps) {
   return (
     <div
       data-testid="home-count-bar"
-      className="mt-8 grid grid-cols-2 gap-x-6 gap-y-5 rounded-2xl bg-ink px-6 py-5 text-paper sm:grid-cols-4"
+      className="mt-8 grid grid-cols-1 gap-x-6 gap-y-5 rounded-2xl bg-ink px-6 py-5 text-paper sm:grid-cols-3"
     >
       {cells.map((c) => (
         <div key={c.testId} className="flex flex-col gap-1.5">

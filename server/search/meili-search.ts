@@ -52,8 +52,12 @@ export class MeiliSearch implements SearchIndex {
   }
 
   private async ensureIndex(uid: IndexUid, searchable: readonly string[]): Promise<void> {
+    // `createIndex` / `updateSettings` return an EnqueuedTaskPromise that
+    // resolves when the task is *enqueued*, not completed. `.waitTask()` on
+    // the returned promise blocks until the task finishes, so a fresh boot
+    // never starts serving queries before the index/settings exist.
     try {
-      await this.client.createIndex(uid, { primaryKey: 'id' })
+      await this.client.createIndex(uid, { primaryKey: 'id' }).waitTask()
     } catch (err) {
       if (!isAlreadyExistsError(err)) throw err
     }
@@ -62,7 +66,7 @@ export class MeiliSearch implements SearchIndex {
       searchableAttributes: [...searchable],
       filterableAttributes: ['status', 'source'],
       sortableAttributes: ['created_at'],
-    })
+    }).waitTask()
   }
 
   async search(
@@ -95,5 +99,10 @@ export class MeiliSearch implements SearchIndex {
   async removeEntry(type: SearchEntryType, id: string): Promise<void> {
     const index = this.client.index(uidFor(type))
     await index.deleteDocument(id)
+  }
+
+  async resetIndex(type: SearchEntryType): Promise<void> {
+    const index = this.client.index(uidFor(type))
+    await index.deleteAllDocuments().waitTask()
   }
 }

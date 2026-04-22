@@ -42,10 +42,10 @@ export function Hero({ totals }: HeroProps) {
             data-testid="page-home-heading"
             className="font-serif text-6xl font-normal leading-[0.95] tracking-tight text-text-primary sm:text-7xl lg:text-display-xl"
           >
-            <span className="whitespace-nowrap">On the right side</span>
+            <span className="sm:whitespace-nowrap">On the right side</span>
             <br />
             <em className="text-sun-deep">of history</em>,{' '}
-            <span className="whitespace-nowrap">at last.</span>
+            <span className="sm:whitespace-nowrap">at last.</span>
           </h1>
           <p className="max-w-xl text-lg leading-relaxed text-text-secondary">
             <strong>ihelped.ai</strong> is a public, permanent record of humans who helped

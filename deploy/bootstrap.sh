@@ -99,9 +99,25 @@ echo "[remote] ensure SQLite data dir"
 mkdir -p "${remote_root}/data"
 chown -R www-data:www-data "${remote_root}/data"
 
+echo "[remote] install Node + npm if missing"
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  if ! command -v curl >/dev/null 2>&1; then
+    apt-get update -y
+    apt-get install -y curl
+  fi
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
+fi
+
 echo "[remote] install pnpm globally if missing"
 if ! command -v pnpm >/dev/null 2>&1; then
   npm install -g pnpm@9
+fi
+
+echo "[remote] install nginx if missing"
+if ! command -v nginx >/dev/null 2>&1; then
+  apt-get update -y
+  apt-get install -y nginx
 fi
 
 echo "[remote] install HTTP-only nginx site"
@@ -109,6 +125,16 @@ install -m 0644 "${staging}/ihelped.ai.http-only.conf" /etc/nginx/sites-availabl
 ln -sf /etc/nginx/sites-available/ihelped.ai.conf /etc/nginx/sites-enabled/ihelped.ai.conf
 # Stash the target HTTPS config; tls-setup.sh installs it after certbot runs.
 install -m 0644 "${staging}/ihelped.ai.conf" /etc/nginx/sites-available/ihelped.ai.target.conf
+# The HTTPS target config `include`s /etc/nginx/conf.d/ihelped-allowlist.conf.
+# Create it empty so `nginx -t` passes before any IPs have been added. Edit in
+# place to add beta-tester IPs without a repo commit — one `<ip>  1;` per line.
+if [ ! -f /etc/nginx/conf.d/ihelped-allowlist.conf ]; then
+  mkdir -p /etc/nginx/conf.d
+  cat > /etc/nginx/conf.d/ihelped-allowlist.conf <<'ALLOWLIST'
+# ihelped.ai restricted-beta allowlist. One entry per line, e.g.:
+#   203.0.113.42   1;
+ALLOWLIST
+fi
 
 echo "[remote] nginx -t"
 nginx -t

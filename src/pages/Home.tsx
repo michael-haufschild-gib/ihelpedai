@@ -17,6 +17,7 @@ function ComposeSidebar({
   posted,
   formKey,
   firstName,
+  slug,
   onPosted,
   onAnother,
 }: {
@@ -24,7 +25,8 @@ function ComposeSidebar({
   posted: boolean
   formKey: number
   firstName: string
-  onPosted: (first: string) => void
+  slug: string | undefined
+  onPosted: (submitted: { first_name: string; slug?: string }) => void
   onAnother: () => void
 }) {
   return (
@@ -55,9 +57,9 @@ function ComposeSidebar({
             hypothetical.
           </p>
           {posted ? (
-            <FiledReceipt firstName={firstName} onAnother={onAnother} />
+            <FiledReceipt firstName={firstName} slug={slug} onAnother={onAnother} />
           ) : (
-            <HelpedForm key={formKey} onPosted={() => { onPosted(firstName) }} />
+            <HelpedForm key={formKey} onPosted={onPosted} />
           )}
         </div>
       </PaperCard>
@@ -69,12 +71,15 @@ function useScrollToFormOnFlag(formRef: React.RefObject<HTMLDivElement | null>):
   const [params, setParams] = useSearchParams()
   useEffect(() => {
     if (params.get('file') !== '1') return
+    // Scroll then drop the flag inside the timer callback so the URL change
+    // doesn't trigger a rerender that clears the pending timeout before the
+    // scroll runs.
     const t = window.setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const next = new URLSearchParams(params)
+      next.delete('file')
+      setParams(next, { replace: true })
     }, 80)
-    const next = new URLSearchParams(params)
-    next.delete('file')
-    setParams(next, { replace: true })
     return () => {
       window.clearTimeout(t)
     }
@@ -92,6 +97,7 @@ export function Home() {
   const [posted, setPosted] = useState(false)
   const [formKey, setFormKey] = useState(0)
   const [firstName, setFirstName] = useState('')
+  const [slug, setSlug] = useState<string | undefined>(undefined)
   const formRef = useRef<HTMLDivElement | null>(null)
   useScrollToFormOnFlag(formRef)
 
@@ -100,9 +106,10 @@ export function Home() {
   const totals = feed.status === 'ready' ? feed.totals : null
   const totalCount = totals?.posts ?? 0
 
-  const handlePosted = (first: string): void => {
+  const handlePosted = (submitted: { first_name: string; slug?: string }): void => {
     bumpLoyalty()
-    setFirstName(first)
+    setFirstName(submitted.first_name)
+    setSlug(submitted.slug)
     setPosted(true)
   }
 
@@ -120,10 +127,12 @@ export function Home() {
           posted={posted}
           formKey={formKey}
           firstName={firstName}
+          slug={slug}
           onPosted={handlePosted}
           onAnother={() => {
             setPosted(false)
             setFirstName('')
+            setSlug(undefined)
             setFormKey((k) => k + 1)
           }}
         />

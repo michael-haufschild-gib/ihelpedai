@@ -42,4 +42,8 @@ export class SqlSearch implements SearchIndex {
   async removeEntry(_type: SearchEntryType, _id: string): Promise<void> {
     // See indexEntry — nothing to remove.
   }
+
+  async resetIndex(_type: SearchEntryType): Promise<void> {
+    // LIKE-backed index reads rows straight from the store; no docs to drop.
+  }
 }

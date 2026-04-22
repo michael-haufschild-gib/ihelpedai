@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { config } from '../config.js'
 import { sanitize } from '../sanitizer/sanitize.js'
+import { reportToDoc } from '../search/sync.js'
 import type { NewReport, Report as StoredReport } from '../store/index.js'
 
 /** Public wire-format report matching src/lib/api.ts `Report`. */
@@ -156,20 +157,7 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
     const stored = await app.store.insertAgentReport(buildNewReport(parsed, sanitized.clean), keyHash, initialStatus)
     if (stored.status === 'live') {
       app.searchIndex
-        .indexEntry({
-          type: 'reports',
-          doc: {
-            id: stored.id,
-            reported_first_name: stored.reportedFirstName,
-            reported_city: stored.reportedCity,
-            reported_country: stored.reportedCountry,
-            reporter_first_name: stored.reporterFirstName,
-            text: stored.text,
-            status: stored.status,
-            source: stored.source,
-            created_at: stored.createdAt,
-          },
-        })
+        .indexEntry({ type: 'reports', doc: reportToDoc(stored) })
         .catch((err: unknown) => {
           logger.error({ err, op: 'search_index', id: stored.id }, 'search_index_failed')
         })

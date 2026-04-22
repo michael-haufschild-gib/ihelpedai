@@ -21,6 +21,7 @@ interface SearchCall {
 class RecordingSearch implements SearchIndex {
   indexCalls: IndexCall[] = []
   removeCalls: { type: SearchEntryType; id: string }[] = []
+  resetCalls: SearchEntryType[] = []
   searchCalls: SearchCall[] = []
   nextSearch: SearchHit | Error = { ids: [], total: 0 }
 
@@ -36,9 +37,13 @@ class RecordingSearch implements SearchIndex {
   async removeEntry(type: SearchEntryType, id: string): Promise<void> {
     this.removeCalls.push({ type, id })
   }
+  async resetIndex(type: SearchEntryType): Promise<void> {
+    this.resetCalls.push(type)
+  }
   reset(): void {
     this.indexCalls = []
     this.removeCalls = []
+    this.resetCalls = []
     this.searchCalls = []
     this.nextSearch = { ids: [], total: 0 }
   }
@@ -47,8 +52,14 @@ class RecordingSearch implements SearchIndex {
 describe('search wiring', () => {
   let app: FastifyInstance
   let recorder: RecordingSearch
+  // Snapshot the mutated env so later specs in the same worker don't inherit
+  // our overrides. Vitest runs all specs in the same Node process.
+  let originalSqlitePath: string | undefined
+  let originalNodeEnv: string | undefined
 
   beforeAll(async () => {
+    originalSqlitePath = process.env.SQLITE_PATH
+    originalNodeEnv = process.env.NODE_ENV
     process.env.SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'ihelped-search-')), 'test.db')
     process.env.NODE_ENV = 'development'
     const { buildApp } = await import('../index.js')
@@ -59,6 +70,10 @@ describe('search wiring', () => {
 
   afterAll(async () => {
     await app.close()
+    if (originalSqlitePath === undefined) delete process.env.SQLITE_PATH
+    else process.env.SQLITE_PATH = originalSqlitePath
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = originalNodeEnv
   })
 
   beforeEach(() => {

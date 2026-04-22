@@ -73,9 +73,11 @@ ssh "${HOST}" 'sudo systemctl restart ihelped-api && sudo nginx -s reload'
 # Default verifies through nginx at HTTPS, pinning the SNI/Host to localhost so
 # it does not depend on public DNS. Override before certbot has been run with:
 #   IHELPED_HEALTH_URL=http://127.0.0.1:3001/api/health
-HEALTH_URL="${IHELPED_HEALTH_URL:---resolve ihelped.ai:443:127.0.0.1 https://ihelped.ai/api/health}"
+#   IHELPED_HEALTH_CURL_OPTS=''    # unset the default --resolve flag when pre-TLS
+HEALTH_URL="${IHELPED_HEALTH_URL:-https://ihelped.ai/api/health}"
+HEALTH_CURL_OPTS="${IHELPED_HEALTH_CURL_OPTS:---resolve ihelped.ai:443:127.0.0.1}"
 echo "[deploy] verifying health endpoint: ${HEALTH_URL}"
-# shellcheck disable=SC2029  # intentional: expand HEALTH_URL locally
-ssh "${HOST}" "curl --fail --silent --show-error --max-time 5 --retry 5 --retry-delay 1 --retry-all-errors ${HEALTH_URL} >/dev/null"
+# shellcheck disable=SC2029  # intentional: expand variables locally
+ssh "${HOST}" "curl --fail --silent --show-error --max-time 5 --retry 5 --retry-delay 1 --retry-all-errors ${HEALTH_CURL_OPTS} ${HEALTH_URL} >/dev/null"
 
 echo "[deploy] done"

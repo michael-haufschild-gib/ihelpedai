@@ -64,4 +64,11 @@ export interface SearchIndex {
 
   /** Remove a document by id. Called on status transitions away from `live`. */
   removeEntry(type: SearchEntryType, id: string): Promise<void>
+
+  /**
+   * Drop every document in the given index. Called by the reindex script
+   * before backfilling, so stale docs for rows that were purged (and whose
+   * remove hook was missed) don't linger in search results.
+   */
+  resetIndex(type: SearchEntryType): Promise<void>
 }

@@ -21,21 +21,28 @@ const bulkActionSchema = z.object({
   reason: z.string().max(500).optional(),
 })
 
-/** Apply a queue action to a single entry id; returns ok/skipped for bulk loop. */
+type QueueActionResult = 'ok' | 'not_found'
+
+/**
+ * Apply a queue action to a single entry id. Returns `'not_found'` only when
+ * the entry is missing or not pending; any other failure (store write, audit
+ * insert) throws so the route layer surfaces it as a 500 instead of hiding it
+ * behind a misleading 404.
+ */
 async function applyQueueAction(
   app: FastifyInstance,
   request: FastifyRequest,
   id: string,
   action: 'approve' | 'reject',
   reason: string | null,
-): Promise<boolean> {
+): Promise<QueueActionResult> {
   const entry = await app.store.getAdminEntryDetail(id)
-  if (!entry || entry.status !== 'pending') return false
+  if (!entry || entry.status !== 'pending') return 'not_found'
   const newStatus = action === 'approve' ? 'live' : 'deleted'
   await app.store.updateEntryStatus(entry.id, entry.entryType, newStatus)
   syncEntryStatusAsync(app, request.log, entry.id, entry.entryType, newStatus)
   await app.store.insertAuditEntry(request.admin!.id, action, entry.id, entry.entryType, reason)
-  return true
+  return 'ok'
 }
 
 /** Register moderation queue routes. */
@@ -74,12 +81,8 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
       reply.status(400).send({ error: 'invalid_input' })
       return
     }
-    const ok = await applyQueueAction(app, request, params.data.id, body.data.action, body.data.reason ?? null)
-      .catch((err: unknown) => {
-        request.log.error({ err, entryId: params.data.id }, 'queue action failed')
-        return false
-      })
-    if (!ok) {
+    const result = await applyQueueAction(app, request, params.data.id, body.data.action, body.data.reason ?? null)
+    if (result === 'not_found') {
       reply.status(404).send({ error: 'not_found' })
       return
     }
@@ -92,14 +95,13 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
       reply.status(400).send({ error: 'invalid_input' })
       return
     }
+    // Bulk tolerates per-entry misses (404-equivalent) but still surfaces
+    // write/audit failures as a 500 so callers do not silently retry on
+    // partially-applied status changes.
     const results: { id: string; ok: boolean }[] = []
     for (const id of body.data.ids) {
-      const ok = await applyQueueAction(app, request, id, body.data.action, body.data.reason ?? null)
-        .catch((err: unknown) => {
-          request.log.error({ err, entryId: id }, 'bulk action failed for entry')
-          return false
-        })
-      results.push({ id, ok })
+      const result = await applyQueueAction(app, request, id, body.data.action, body.data.reason ?? null)
+      results.push({ id, ok: result === 'ok' })
     }
     reply.status(200).send({ status: 'ok', results })
   })

@@ -62,7 +62,10 @@ function SchemaTable() {
     <section className="flex flex-col gap-3">
       <h2 className="font-serif text-4xl font-normal tracking-tight">Request body.</h2>
       <PaperCard tone="cream" className="overflow-hidden p-0" data-testid="api-docs-fields">
-        <div className="grid grid-cols-[1.4fr_1fr_0.6fr_2.4fr] border-b border-rule px-5 py-3 font-mono text-2xs uppercase tracking-[0.14em] text-text-tertiary">
+        {/* Header row is hidden below md; each row on small screens becomes a
+            labelled stack so notes can wrap instead of being squeezed to
+            unreadable width inside `overflow-hidden`. */}
+        <div className="hidden grid-cols-[1.4fr_1fr_0.6fr_2.4fr] border-b border-rule px-5 py-3 font-mono text-2xs uppercase tracking-[0.14em] text-text-tertiary md:grid">
           <div>FIELD</div>
           <div>TYPE</div>
           <div>REQ.</div>
@@ -71,7 +74,7 @@ function SchemaTable() {
         {SCHEMA_FIELDS.map(([name, type, req, notes]) => (
           <div
             key={name}
-            className="grid grid-cols-[1.4fr_1fr_0.6fr_2.4fr] items-baseline border-b border-rule-soft px-5 py-3 text-sm last:border-b-0"
+            className="flex flex-col gap-1 border-b border-rule-soft px-5 py-3 text-sm last:border-b-0 md:grid md:grid-cols-[1.4fr_1fr_0.6fr_2.4fr] md:items-baseline md:gap-0"
           >
             <div className="font-mono font-semibold text-text-primary">{name}</div>
             <div className="font-mono text-xs text-sun-deep">{type}</div>
@@ -120,7 +123,7 @@ function ErrorsBlock() {
         {ERROR_ROWS.map(([code, name, desc]) => (
           <div
             key={code}
-            className="grid grid-cols-[0.5fr_1.5fr_3fr] items-baseline border-b border-rule-soft px-5 py-3 last:border-b-0"
+            className="flex flex-col gap-1 border-b border-rule-soft px-5 py-3 last:border-b-0 md:grid md:grid-cols-[0.5fr_1.5fr_3fr] md:items-baseline md:gap-0"
           >
             <div className="font-mono text-base font-bold text-stamp-red">{code}</div>
             <div className="font-mono text-sm font-semibold text-text-primary">{name}</div>

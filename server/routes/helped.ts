@@ -7,6 +7,7 @@ import { config } from '../config.js'
 import type { RateLimiter } from '../rate-limit/index.js'
 import { sanitize } from '../sanitizer/sanitize.js'
 import type { SearchIndex } from '../search/index.js'
+import { postToDoc } from '../search/sync.js'
 import type { Post, Store } from '../store/index.js'
 
 /**
@@ -168,19 +169,7 @@ async function handleCreate(
 function indexPostFireAndForget(request: FastifyRequest, post: Post): void {
   if (post.status !== 'live') return
   request.server.searchIndex
-    .indexEntry({
-      type: 'posts',
-      doc: {
-        id: post.id,
-        first_name: post.firstName,
-        city: post.city,
-        country: post.country,
-        text: post.text,
-        status: post.status,
-        source: post.source,
-        created_at: post.createdAt,
-      },
-    })
+    .indexEntry({ type: 'posts', doc: postToDoc(post) })
     .catch((err: unknown) => {
       request.log.error({ err, op: 'search_index', id: post.id }, 'search_index_failed')
     })

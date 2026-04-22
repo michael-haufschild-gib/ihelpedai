@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { PaperCard } from '@/components/ui/PaperCard'
@@ -11,18 +11,41 @@ export interface EndpointBannerProps {
   onRequestKey: () => void
 }
 
+type CopyState = 'idle' | 'copied' | 'error'
+
 /**
  * Endpoint URL banner with a colour-coded verb, the full URL, a Copy URL
  * button, and a Request API key button. Copy feedback resets after a short
  * delay so callers don't need to manage a tooltip.
  */
 export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<CopyState>('idle')
+  const timerRef = useRef<number | null>(null)
+  useEffect(() => {
+    // Clear any pending reset-to-idle timeout if the component unmounts
+    // before it fires, so setState isn't called on a torn-down tree.
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+    }
+  }, [])
   const copy = (): void => {
-    void navigator.clipboard.writeText(ENDPOINT).then(() => {
-      setCopied(true)
-      window.setTimeout(() => { setCopied(false) }, 1400)
-    })
+    navigator.clipboard
+      .writeText(ENDPOINT)
+      .then(() => {
+        setCopyState('copied')
+      })
+      .catch(() => {
+        // Insecure contexts and denied permissions reject the promise — surface
+        // an error tag on the button so the user isn't left staring at nothing.
+        setCopyState('error')
+      })
+      .finally(() => {
+        if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+        timerRef.current = window.setTimeout(() => {
+          setCopyState('idle')
+          timerRef.current = null
+        }, 1400)
+      })
   }
   return (
     <PaperCard tone="white" className="flex flex-wrap items-center justify-between gap-4 p-5" data-testid="agents-endpoint">
@@ -46,7 +69,7 @@ export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
           data-testid="agents-copy-url"
           onClick={copy}
         >
-          {copied ? '✓ Copied' : 'Copy URL'}
+          {copyState === 'copied' ? '✓ Copied' : copyState === 'error' ? 'Copy failed' : 'Copy URL'}
         </Button>
         <Button
           variant="primary"

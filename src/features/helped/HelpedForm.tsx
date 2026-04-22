@@ -21,8 +21,12 @@ import { PreviewCard } from './PreviewCard'
 
 /** Props for the "I helped" submission form. */
 export interface HelpedFormProps {
-  /** Called after the server confirms the post has been stored. */
-  onPosted: () => void
+  /**
+   * Called after the server confirms the post has been stored. Receives the
+   * submitted values so the caller (e.g. the home receipt) can echo them
+   * back without having to mirror the form state externally.
+   */
+  onPosted: (submitted: { first_name: string; slug?: string }) => void
 }
 
 type FormValues = HelpedFormValues
@@ -243,13 +247,15 @@ function PreviewStep({
 }
 
 /** Submission side-effect: maps API errors into a user-facing string. */
-async function submitPost(input: HelpedPostInput): Promise<string | null> {
+async function submitPost(
+  input: HelpedPostInput,
+): Promise<{ ok: true; slug: string } | { ok: false; message: string }> {
   try {
-    await createHelpedPost(input)
-    return null
+    const res = await createHelpedPost(input)
+    return { ok: true, slug: res.slug }
   } catch (err) {
-    if (err instanceof ApiError) return formatApiError(err)
-    return 'Something went wrong. Try again.'
+    if (err instanceof ApiError) return { ok: false, message: formatApiError(err) }
+    return { ok: false, message: 'Something went wrong. Try again.' }
   }
 }
 
@@ -284,9 +290,9 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      const err = await submitPost(values)
-      if (err === null) onPosted()
-      else setSubmitError(err)
+      const result = await submitPost(values)
+      if (result.ok) onPosted({ first_name: values.first_name, slug: result.slug })
+      else setSubmitError(result.message)
     } finally {
       submitLatchRef.current = false
       setSubmitting(false)

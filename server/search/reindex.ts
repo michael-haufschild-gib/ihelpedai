@@ -51,6 +51,12 @@ async function main(): Promise<void> {
 
   await search.ensureSetup()
 
+  // Clear each index before backfilling. Without this, any previously-indexed
+  // doc whose remove hook was dropped survives the rebuild and keeps drifting
+  // totalHits / pagination, defeating the point of a reindex.
+  await search.resetIndex('posts')
+  await search.resetIndex('reports')
+
   let posted = 0
   let offset = 0
   while (true) {

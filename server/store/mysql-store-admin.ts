@@ -150,7 +150,13 @@ function buildEntryFilter(
   if (filters?.status !== undefined) { conditions.push('status = ?'); params.push(filters.status) }
   if (filters?.source !== undefined) { conditions.push('source = ?'); params.push(filters.source) }
   if (filters?.dateFrom !== undefined) { conditions.push('created_at >= ?'); params.push(filters.dateFrom) }
-  if (filters?.dateTo !== undefined) { conditions.push('created_at <= ?'); params.push(filters.dateTo) }
+  // dateTo is a `YYYY-MM-DD` string; a DATETIME compared to the bare string
+  // treats it as midnight, which drops entries created later on that same day.
+  // Use an exclusive upper bound on the next calendar day instead.
+  if (filters?.dateTo !== undefined) {
+    conditions.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)')
+    params.push(filters.dateTo)
+  }
   if (filters?.query !== undefined && filters.query !== '') {
     const q = `%${filters.query}%`
     if (type === 'post') {
@@ -171,7 +177,10 @@ function buildAuditFilters(
   if (filters?.adminId !== undefined) { conditions.push('al.admin_id = ?'); params.push(filters.adminId) }
   if (filters?.action !== undefined) { conditions.push('al.action = ?'); params.push(filters.action) }
   if (filters?.dateFrom !== undefined) { conditions.push('al.created_at >= ?'); params.push(filters.dateFrom) }
-  if (filters?.dateTo !== undefined) { conditions.push('al.created_at <= ?'); params.push(filters.dateTo) }
+  if (filters?.dateTo !== undefined) {
+    conditions.push('al.created_at < DATE_ADD(?, INTERVAL 1 DAY)')
+    params.push(filters.dateTo)
+  }
   return { conditions, params }
 }
 

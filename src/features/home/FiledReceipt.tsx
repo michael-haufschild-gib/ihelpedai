@@ -67,7 +67,7 @@ export function FiledReceipt({ firstName, slug, onAnother }: FiledReceiptProps) 
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <Link
-            to="/feed"
+            to={slug !== undefined ? `/feed/${slug}` : '/feed'}
             data-testid="home-success-see-feed"
             className="text-sm underline decoration-dotted underline-offset-4 hover:text-text-primary"
           >

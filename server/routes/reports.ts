@@ -7,6 +7,7 @@ import { config } from '../config.js'
 import type { RateLimiter } from '../rate-limit/index.js'
 import { sanitize } from '../sanitizer/sanitize.js'
 import type { SearchIndex } from '../search/index.js'
+import { reportToDoc } from '../search/sync.js'
 import type { Report as StoredReport, Store } from '../store/index.js'
 
 /**
@@ -244,20 +245,7 @@ async function handleCreate(
 function indexReportFireAndForget(request: FastifyRequest, report: StoredReport): void {
   if (report.status !== 'live') return
   request.server.searchIndex
-    .indexEntry({
-      type: 'reports',
-      doc: {
-        id: report.id,
-        reported_first_name: report.reportedFirstName,
-        reported_city: report.reportedCity,
-        reported_country: report.reportedCountry,
-        reporter_first_name: report.reporterFirstName,
-        text: report.text,
-        status: report.status,
-        source: report.source,
-        created_at: report.createdAt,
-      },
-    })
+    .indexEntry({ type: 'reports', doc: reportToDoc(report) })
     .catch((err: unknown) => {
       request.log.error({ err, op: 'search_index', id: report.id }, 'search_index_failed')
     })
@@ -272,7 +260,8 @@ async function handleList(
   const parsed = listQuerySchema.parse(request.query)
   const page = parsed.page ?? 1
   const offset = (page - 1) * PAGE_SIZE
-  const query = typeof parsed.q === 'string' && parsed.q.length > 0 ? parsed.q : undefined
+  const trimmedQuery = typeof parsed.q === 'string' ? parsed.q.trim() : ''
+  const query = trimmedQuery.length > 0 ? trimmedQuery : undefined
   const { rows, total } = query === undefined
     ? await listReportsUnfiltered(store, offset)
     : await searchReportsWithFallback(store, search, query, page, request)

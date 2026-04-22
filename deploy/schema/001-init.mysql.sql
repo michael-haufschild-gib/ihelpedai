@@ -79,7 +79,10 @@ CREATE TABLE IF NOT EXISTS admins (
   last_login_at  DATETIME(3)  NULL,
   created_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  UNIQUE KEY uq_admins_email (email)
+  UNIQUE KEY uq_admins_email (email),
+  KEY idx_admins_created_by (created_by),
+  CONSTRAINT fk_admins_created_by FOREIGN KEY (created_by)
+    REFERENCES admins (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -137,6 +140,8 @@ CREATE TABLE IF NOT EXISTS takedowns (
   updated_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   KEY idx_takedowns_status (status),
+  CONSTRAINT chk_takedowns_kind
+    CHECK (entry_kind IS NULL OR entry_kind IN ('post', 'report')),
   CONSTRAINT fk_takedowns_admin FOREIGN KEY (closed_by)
     REFERENCES admins (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

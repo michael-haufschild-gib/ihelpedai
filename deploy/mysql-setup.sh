@@ -55,6 +55,9 @@ case "${DB_NAME}" in
   ''|mysql|information_schema|performance_schema|sys)
     echo "[mysql-setup] refusing: database name '${DB_NAME}' is empty or a system schema" >&2; exit 1 ;;
 esac
+if ! [[ "${DB_NAME}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  echo "[mysql-setup] refusing: database '${DB_NAME}' contains characters other than [A-Za-z0-9_-]" >&2; exit 1
+fi
 if ! [[ "${DB_USER}" =~ ^[A-Za-z0-9_-]+$ ]]; then
   echo "[mysql-setup] refusing: user '${DB_USER}' contains characters other than [A-Za-z0-9_-]" >&2; exit 1
 fi
@@ -62,12 +65,17 @@ if [[ "${DB_PASS}" == *"'"* ]]; then
   echo "[mysql-setup] refusing: password contains a single-quote (would break IDENTIFIED BY quoting)" >&2; exit 1
 fi
 
-echo "[mysql-setup] provisioning ${DB_USER}@${DB_HOST}/${DB_NAME} on ${HOST}"
+# Provision grants for both 'localhost' (Unix socket) and '127.0.0.1' (TCP) so
+# whichever MYSQL_URL host the app ends up using resolves to a real account.
+echo "[mysql-setup] provisioning ${DB_USER}@{localhost,127.0.0.1}/${DB_NAME} on ${HOST}"
 ssh "${HOST}" sudo mysql <<SQL
 CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
 ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
+CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASS}';
+ALTER USER '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASS}';
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
 
@@ -88,8 +96,10 @@ mysql_url="$2"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 # Strip any existing STORE / MYSQL_URL / SQLITE_PATH lines; keep everything
-# else as-is (IP_HASH_SALT, ADMIN_SESSION_SECRET, APP_VERSION, …).
-grep -v -E '^(STORE|MYSQL_URL|SQLITE_PATH)=' "$env_file" > "$tmp"
+# else as-is (IP_HASH_SALT, ADMIN_SESSION_SECRET, APP_VERSION, …). Use awk so
+# this succeeds even if the env file only contained the filtered keys (grep -v
+# with zero survivors would return 1 and abort under set -e).
+awk '!/^(STORE|MYSQL_URL|SQLITE_PATH)=/' "$env_file" > "$tmp"
 {
   printf 'STORE=mysql\n'
   printf 'MYSQL_URL=%s\n' "$mysql_url"

@@ -192,8 +192,10 @@ export class SqliteStore implements Store {
   async getPostsByIds(ids: readonly string[]): Promise<Post[]> {
     if (ids.length === 0) return []
     const placeholders = ids.map(() => '?').join(',')
+    // Enforce `status = 'live'` to match listPosts — the search index may lag
+    // status transitions, so an id could still point at a pending/deleted row.
     const rows = this.db
-      .prepare(`SELECT * FROM posts WHERE id IN (${placeholders})`)
+      .prepare(`SELECT * FROM posts WHERE status = 'live' AND id IN (${placeholders})`)
       .all(...ids) as PostRow[]
     const byId = new Map<string, Post>()
     for (const row of rows) byId.set(row.id, postFromRow(row))
@@ -204,7 +206,7 @@ export class SqliteStore implements Store {
     if (ids.length === 0) return []
     const placeholders = ids.map(() => '?').join(',')
     const rows = this.db
-      .prepare(`SELECT * FROM reports WHERE id IN (${placeholders})`)
+      .prepare(`SELECT * FROM reports WHERE status = 'live' AND id IN (${placeholders})`)
       .all(...ids) as ReportRow[]
     const byId = new Map<string, Report>()
     for (const row of rows) byId.set(row.id, reportFromRow(row))

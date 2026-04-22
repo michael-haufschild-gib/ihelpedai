@@ -229,8 +229,10 @@ export class MysqlStore implements Store {
 
   async getPostsByIds(ids: readonly string[]): Promise<Post[]> {
     if (ids.length === 0) return []
+    // Enforce `status = 'live'` to match listPosts — the search index may lag
+    // a status transition, so ids can point at pending/deleted rows.
     const [rows] = await this.pool.query<PostRow[]>(
-      'SELECT * FROM posts WHERE id IN (?)',
+      "SELECT * FROM posts WHERE status = 'live' AND id IN (?)",
       [ids],
     )
     const byId = new Map<string, Post>()
@@ -241,7 +243,7 @@ export class MysqlStore implements Store {
   async getReportsByIds(ids: readonly string[]): Promise<Report[]> {
     if (ids.length === 0) return []
     const [rows] = await this.pool.query<ReportRow[]>(
-      'SELECT * FROM reports WHERE id IN (?)',
+      "SELECT * FROM reports WHERE status = 'live' AND id IN (?)",
       [ids],
     )
     const byId = new Map<string, Report>()
@@ -251,16 +253,19 @@ export class MysqlStore implements Store {
 
   async listPosts(limit: number, offset: number, query?: string): Promise<Post[]> {
     const hasQuery = typeof query === 'string' && query.trim() !== ''
+    // `id DESC` as a deterministic tie-breaker. Without it, rows sharing the
+    // same millisecond `created_at` can reshuffle between pages and produce
+    // duplicates/skips across LIMIT/OFFSET requests.
     const [rows] = hasQuery
       ? await this.pool.query<PostRow[]>(
           `SELECT * FROM posts
            WHERE status = 'live'
              AND (first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?)
-           ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+           ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
           [`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, limit, offset],
         )
       : await this.pool.query<PostRow[]>(
-          `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+          `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
           [limit, offset],
         )
     return rows.map(postFromRow)
@@ -285,7 +290,7 @@ export class MysqlStore implements Store {
     }
     params.push(limit, offset)
     const [rows] = await this.pool.query<ReportRow[]>(
-      `SELECT * FROM reports WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM reports WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       params,
     )
     return rows.map(reportFromRow)
@@ -326,6 +331,18 @@ export class MysqlStore implements Store {
     initialStatus: EntryStatus = 'live',
   ): Promise<Report> {
     return this.withTx(async (conn) => {
+      // Re-check the key inside the transaction so a revocation that lands
+      // between the route-layer auth and this write aborts the insert rather
+      // than silently landing a report + usage update on a dead key.
+      const [keyRows] = await conn.query<RowDataPacket[]>(
+        'SELECT status FROM agent_keys WHERE key_hash = ? FOR UPDATE',
+        [keyHash],
+      )
+      const keyStatus = (keyRows[0] as { status?: string } | undefined)?.status
+      if (keyStatus !== 'active') {
+        throw new Error('insertAgentReport: api key is not active')
+      }
+
       const id = newId()
       await conn.execute(
         `INSERT INTO reports (

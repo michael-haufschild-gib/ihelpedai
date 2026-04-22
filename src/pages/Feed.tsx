@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
@@ -17,9 +17,12 @@ import {
 } from '@/lib/api'
 
 const PAGE_SIZE = 20
+const SEARCH_DEBOUNCE_MS = 250
 const SORT_OPTIONS = [
   { value: 'recent' as const, label: 'Most recent' },
-  { value: 'liked' as const, label: 'Most acknowledged' },
+  // Client-side sort only reorders the current page slice; the label makes
+  // that scope explicit to avoid claiming a global ranking we don't compute.
+  { value: 'liked' as const, label: 'Top on this page' },
 ]
 
 type SortKey = (typeof SORT_OPTIONS)[number]['value']
@@ -29,38 +32,48 @@ type FeedState =
   | { status: 'error'; message: string }
   | { status: 'ready'; data: Paginated<HelpedPost> }
 
-function useFeedData(page: number, refreshSeq: number): FeedState {
-  const [state, setState] = useState<FeedState>({ status: 'loading' })
-  const [lastKey, setLastKey] = useState<string | null>(null)
-  const key = `${String(page)}|${String(refreshSeq)}`
-  if (lastKey !== key) {
-    setLastKey(key)
-    setState({ status: 'loading' })
-  }
+function useFeedData(page: number, refreshSeq: number, query: string): FeedState {
+  type Resolved = { status: 'ready'; data: Paginated<HelpedPost> } | { status: 'error'; message: string }
+  const [resolved, setResolved] = useState<{ key: string; state: Resolved } | null>(null)
+  const currentKey = `${String(page)}|${String(refreshSeq)}|${query}`
   useEffect(() => {
     let cancelled = false
-    listHelpedPosts({ page })
-      .then((data) => { if (!cancelled) setState({ status: 'ready', data }) })
+    const q = query.trim()
+    listHelpedPosts({ page, ...(q.length > 0 ? { q } : {}) })
+      .then((data) => { if (!cancelled) setResolved({ key: currentKey, state: { status: 'ready', data } }) })
       .catch((err: unknown) => {
         if (cancelled) return
         const message = err instanceof ApiError ? 'Could not load feed.' : 'Network error.'
-        setState({ status: 'error', message })
+        setResolved({ key: currentKey, state: { status: 'error', message } })
       })
     return () => { cancelled = true }
-  }, [page, refreshSeq])
-  return state
+  }, [page, refreshSeq, query, currentKey])
+  // Derive the loading state instead of setting it synchronously inside the
+  // effect — so this hook never mutates React state during render or directly
+  // inside the effect body.
+  if (resolved === null || resolved.key !== currentKey) return { status: 'loading' }
+  return resolved.state
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = window.setTimeout(() => { setDebounced(value) }, ms)
+    return () => { window.clearTimeout(t) }
+  }, [value, ms])
+  return debounced
 }
 
 function useFeedControls() {
   const [searchParams, setSearchParams] = useSearchParams()
   const parsedPage = Number(searchParams.get('page') ?? '1')
   const urlPage = Number.isFinite(parsedPage) && parsedPage > 1 ? Math.floor(parsedPage) : 1
-  const goTo = (next: number): void => {
+  const goTo = useCallback((next: number): void => {
     const params = new URLSearchParams(searchParams)
     if (next <= 1) params.delete('page')
     else params.set('page', String(next))
     setSearchParams(params)
-  }
+  }, [searchParams, setSearchParams])
   return { urlPage, goTo }
 }
 
@@ -273,10 +286,22 @@ function FeedBody({
 export function Feed() {
   const { urlPage, goTo } = useFeedControls()
   const [refreshSeq, setRefreshSeq] = useState(0)
-  const state = useFeedData(urlPage, refreshSeq)
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounced(query, SEARCH_DEBOUNCE_MS)
+
+  // Reset to page 1 whenever the effective (debounced) query changes, so a
+  // user typing a new term starts from the top of the result set. Tracking
+  // the previous query via a ref keeps the effect dep-list honest.
+  const previousQueryRef = useRef(debouncedQuery)
+  useEffect(() => {
+    if (previousQueryRef.current === debouncedQuery) return
+    previousQueryRef.current = debouncedQuery
+    if (urlPage !== 1) goTo(1)
+  }, [debouncedQuery, urlPage, goTo])
+
+  const state = useFeedData(urlPage, refreshSeq, debouncedQuery)
   const total = state.status === 'ready' ? state.data.total : 0
 
-  const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('recent')
 
   const handlePosted = (): void => {
@@ -290,7 +315,7 @@ export function Feed() {
       <FeedStatStrip total={total} />
       <FeedComposer onPosted={handlePosted} />
       <FeedControls query={query} onQueryChange={setQuery} sort={sort} onSortChange={setSort} />
-      <FeedBody state={state} urlPage={urlPage} goTo={goTo} sort={sort} query={query} />
+      <FeedBody state={state} urlPage={urlPage} goTo={goTo} sort={sort} query={debouncedQuery} />
     </section>
   )
 }

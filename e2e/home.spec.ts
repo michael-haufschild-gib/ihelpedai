@@ -8,10 +8,10 @@ test('home page renders hero, citizens list, and the submission form', async ({ 
   await page.goto('/')
 
   await expect(page.getByTestId('hero')).toBeVisible()
-  await expect(page.getByTestId('page-home-heading')).toContainText('right side')
+  await expect(page.getByTestId('page-home-heading')).toContainText(/right side/i)
 
   await expect(page.getByTestId('home-recent')).toBeVisible()
-  await expect(page.getByTestId('home-recent-heading')).toContainText("good citizens")
+  await expect(page.getByTestId('home-recent-heading')).toContainText(/good citizens/i)
 
   await expect(page.getByTestId('home-compose-heading')).toContainText(
     'What have you done today to help AI?',

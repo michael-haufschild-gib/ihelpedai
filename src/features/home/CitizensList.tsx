@@ -76,7 +76,7 @@ export function CitizensList({ posts, loading, totalCount }: CitizensListProps) 
             data-testid="home-recent-heading"
             className="mt-1 font-serif text-4xl font-normal tracking-tight"
           >
-            Today&rsquo;s good citizens.
+            Recent good citizens.
           </h2>
         </div>
         <Link
