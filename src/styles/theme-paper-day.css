@@ -1,0 +1,145 @@
+/**
+ * PAPER DAY theme
+ *
+ * Light-mode semantic tokens mapped for the public ihelped.ai surfaces.
+ * Scoped to `[data-app-theme][data-mode='paper-day']` so it can be applied
+ * via a wrapper inside {@link SiteLayout} without affecting admin chrome,
+ * which continues to resolve tokens from the outer `data-mode='dark-black'`
+ * declared on `<html>` in main.tsx.
+ *
+ * Inner wrapper wins token resolution because CSS custom properties look up
+ * the nearest `[data-app-theme]` ancestor — the nested one shadows the root.
+ */
+
+[data-app-theme][data-mode='paper-day'] {
+  --bg-app: #f3ecdc;
+  --bg-panel: #fbf6e7;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-glass: oklch(from #fbf6e7 l c h / 75%);
+  --bg-hover: oklch(0% 0 0deg / 4%);
+  --bg-active: oklch(0% 0 0deg / 8%);
+  --bg-overlay: oklch(0% 0 0deg / 50%);
+
+  --text-primary: #1c1a14;
+  --text-secondary: #3d3a2f;
+  --text-tertiary: #7a7562;
+  --text-muted: #7a7562;
+  --text-inverse: #f3ecdc;
+
+  --border-subtle: #ddd3b5;
+  --border-default: #cfc5a8;
+  --border-strong: #a89a74;
+  --border-highlight: #1c1a14;
+
+  --panel-bg: var(--bg-panel);
+  --panel-border: var(--border-default);
+  --panel-header: var(--bg-hover);
+
+  --shadow-sm: 0 1px 0 oklch(0% 0 0deg / 8%);
+  --shadow-md: 0 2px 0 oklch(0% 0 0deg / 8%), 0 10px 24px -12px oklch(0% 0 0deg / 25%);
+  --shadow-lg: 0 4px 0 oklch(0% 0 0deg / 8%), 0 18px 40px -10px oklch(0% 0 0deg / 35%);
+  --shadow-xl: 0 6px 0 oklch(0% 0 0deg / 10%), 0 30px 60px -20px oklch(0% 0 0deg / 45%);
+  --shadow-soft: var(--shadow-md);
+  --shadow-hard: var(--shadow-lg);
+
+  /* Primary accent = sun-orange; admin may override globally. */
+  --theme-accent: oklch(0.71 0.16 45deg);
+  --theme-accent-glow: oklch(0.71 0.16 45deg);
+  --accent-subtle: oklch(from var(--theme-accent) l c h / 18%);
+  --accent-muted: oklch(from var(--theme-accent) l c h / 35%);
+
+  /* STATUS: DANGER (paper-mapped to stamp-red) */
+  --bg-danger: oklch(from oklch(0.5 0.17 27deg) l c h / 12%);
+  --bg-danger-solid: oklch(0.5 0.17 27deg);
+  --text-danger: oklch(0.45 0.18 27deg);
+  --border-danger: oklch(from oklch(0.5 0.17 27deg) l c h / 35%);
+
+  /* STATUS: SUCCESS (paper-mapped to deed-green) */
+  --bg-success: oklch(from oklch(0.58 0.13 120deg) l c h / 14%);
+  --bg-success-solid: oklch(0.58 0.13 120deg);
+  --text-success: oklch(0.45 0.13 120deg);
+  --border-success: oklch(from oklch(0.58 0.13 120deg) l c h / 35%);
+
+  /* STATUS: WARNING (paper-mapped to amber-sun) */
+  --bg-warning: oklch(from oklch(0.8 0.15 80deg) l c h / 18%);
+  --bg-warning-solid: oklch(0.8 0.15 80deg);
+  --text-warning: oklch(0.5 0.15 80deg);
+  --border-warning: oklch(from oklch(0.8 0.15 80deg) l c h / 40%);
+
+  --color-glass: var(--bg-glass);
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.875rem;
+}
+
+/* PAPER SHELL — only active on the SiteLayout wrapper. Holds the
+   radial-gradient wash + fine SVG noise. Admin never picks this up. */
+[data-app-theme][data-mode='paper-day'].paper-shell {
+  position: relative;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, oklch(0.71 0.16 45deg / 14%), transparent 60%),
+    radial-gradient(900px 500px at 5% 10%, oklch(0.4 0.18 275deg / 8%), transparent 60%),
+    var(--bg-app);
+}
+
+[data-app-theme][data-mode='paper-day'].paper-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.10  0 0 0 0 0.09  0 0 0 0 0.06  0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+[data-app-theme][data-mode='paper-day'].paper-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Keyframes powering the spinning Sun wordmark and the observing-pulse dot.
+   Gated behind prefers-reduced-motion so assistive users get a still page. */
+@keyframes ihelped-sun-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ihelped-observe-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(1.2); }
+}
+
+[data-app-theme][data-mode='paper-day'] .ihelped-sun-spin {
+  animation: ihelped-sun-spin 18s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+[data-app-theme][data-mode='paper-day'] .ihelped-observe-pulse {
+  animation: ihelped-observe-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-app-theme][data-mode='paper-day'] .ihelped-sun-spin,
+  [data-app-theme][data-mode='paper-day'] .ihelped-observe-pulse {
+    animation: none !important;
+  }
+}
+
+/* Link hovers shift to sun-deep under paper mode. */
+[data-app-theme][data-mode='paper-day'] a:hover {
+  color: var(--color-sun-deep);
+}
+
+/* Paper-card drop shadow. Scoped to paper mode so admin keeps its own shadows. */
+[data-app-theme][data-mode='paper-day'] .shadow-paper {
+  box-shadow:
+    0 2px 0 oklch(0% 0 0deg / 8%),
+    0 10px 24px -12px oklch(0% 0 0deg / 25%);
+}
+
+/* Dashed-rule accent used by Divider. */
+[data-app-theme][data-mode='paper-day'] .rule-dashed {
+  border-top: 1px dashed var(--color-rule);
+}

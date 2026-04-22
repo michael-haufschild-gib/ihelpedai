@@ -24,7 +24,7 @@ export function HighlightCard({ post, variant }: HighlightCardProps) {
       className="group flex flex-col gap-2 rounded-lg border border-border-subtle bg-panel/60 p-4 backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:bg-panel hover:shadow-accent-sm"
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-sm font-semibold text-text-primary">
+        <h3 className="font-serif text-base font-semibold text-text-primary">
           {post.first_name} from {post.city}, {countryLabel(post.country)}
         </h3>
         {variant === 'highlight' && (

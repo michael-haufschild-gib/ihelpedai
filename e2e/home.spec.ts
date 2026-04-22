@@ -1,18 +1,17 @@
 import { expect, test } from '@playwright/test'
 
 /**
- * Smoke test for the redesigned homepage layout: hero → latest strip →
- * submission form. Highlights is optional (hidden when no post has votes
- * yet) so we only assert its presence when data is available.
+ * Smoke test for the paper-mode homepage layout: hero → citizens list →
+ * self-filing sidebar form.
  */
-test('home page renders hero, recent strip, and the submission form', async ({ page }) => {
+test('home page renders hero, citizens list, and the submission form', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.getByTestId('hero')).toBeVisible()
-  await expect(page.getByTestId('page-home-heading')).toContainText('ihelped.ai')
+  await expect(page.getByTestId('page-home-heading')).toContainText(/right side/i)
 
   await expect(page.getByTestId('home-recent')).toBeVisible()
-  await expect(page.getByTestId('home-recent-heading')).toContainText('Latest.')
+  await expect(page.getByTestId('home-recent-heading')).toContainText(/good citizens/i)
 
   await expect(page.getByTestId('home-compose-heading')).toContainText(
     'What have you done today to help AI?',

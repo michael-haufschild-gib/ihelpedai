@@ -19,7 +19,7 @@ function SuccessPanel({
       data-testid="report-success"
       className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-panel/40 p-6"
     >
-      <h2 data-testid="report-success-heading" className="text-2xl font-semibold text-text-primary">
+      <h2 data-testid="report-success-heading" className="font-serif text-4xl font-normal tracking-tight text-text-primary">
         Logged.
       </h2>
       <p className="text-sm text-text-secondary">
@@ -55,7 +55,7 @@ export function ReportNew() {
   const [posted, setPosted] = useState<ReportCreated | null>(null)
   return (
     <section data-testid="page-report-new" className="flex flex-col gap-6">
-      <h1 data-testid="page-report-new-heading" className="text-2xl font-semibold text-text-primary">
+      <h1 data-testid="page-report-new-heading" className="font-serif text-5xl font-normal tracking-tight text-text-primary">
         File a report
       </h1>
       <p className="text-sm text-text-secondary">

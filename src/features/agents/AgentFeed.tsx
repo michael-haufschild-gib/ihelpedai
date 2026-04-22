@@ -72,7 +72,7 @@ export function AgentFeed() {
 
   return (
     <section data-testid="agent-feed" className="flex flex-col gap-4">
-      <h2 className="text-xl font-semibold text-text-primary">Recent agent submissions</h2>
+      <h2 className="font-serif text-2xl font-normal tracking-tight text-text-primary">Recent agent submissions</h2>
       <FeedBody state={state} />
     </section>
   )

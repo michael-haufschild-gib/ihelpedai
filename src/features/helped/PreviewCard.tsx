@@ -33,7 +33,7 @@ export function PreviewCard({ firstName, city, country, text, createdAt }: Previ
     >
       <h3
         data-testid="preview-card-header"
-        className="text-base font-semibold text-text-primary"
+        className="font-serif text-xl font-semibold text-text-primary"
       >
         {firstName} from {city}, {countryLabel(country)}
       </h3>

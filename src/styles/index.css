@@ -11,6 +11,7 @@
 @import './theme-dark-blue.css';
 @import './theme-dark-brown.css';
 @import './theme-dark-black.css';
+@import './theme-paper-day.css';
 
 /* GLASSMORPHISM UTILITIES */
 [data-app-theme] .glass-panel {
@@ -453,21 +454,26 @@
 [data-app-theme] {
   /* Tailwind border utilities expect this variable to exist in v4. */
   --tw-border-style: solid;
-  font-family:
-    Roboto,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-[data-app-theme] h1,
-[data-app-theme] h2,
-[data-app-theme] h3,
-[data-app-theme] h4 {
+/* Default heading family. Admin (dark-black) inherits body sans; paper-day
+   defaults every h1–h4 to the Instrument Serif display face per the design
+   handoff. Keeps specificity at the element level so utility classes like
+   .font-mono can still override per-heading when needed. */
+[data-app-theme][data-mode='dark-black'] h1,
+[data-app-theme][data-mode='dark-black'] h2,
+[data-app-theme][data-mode='dark-black'] h3,
+[data-app-theme][data-mode='dark-black'] h4 {
   font-family: inherit;
+}
+
+[data-app-theme][data-mode='paper-day'] h1,
+[data-app-theme][data-mode='paper-day'] h2,
+[data-app-theme][data-mode='paper-day'] h3,
+[data-app-theme][data-mode='paper-day'] h4 {
+  font-family: var(--font-serif);
 }
 
 /* SIDEBAR NAVIGATION ITEMS */

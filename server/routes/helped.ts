@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { config } from '../config.js'
 import type { RateLimiter } from '../rate-limit/index.js'
 import { sanitize } from '../sanitizer/sanitize.js'
+import type { SearchIndex } from '../search/index.js'
+import { postToDoc } from '../search/sync.js'
 import type { Post, Store } from '../store/index.js'
 
 /**
@@ -151,6 +153,7 @@ async function handleCreate(
     clientIpHash: ipHash,
     source: 'form',
   })
+  indexPostFireAndForget(request, saved)
   reply.code(201).send({
     slug: saved.id,
     public_url: `${config.PUBLIC_URL}/feed/${saved.id}`,
@@ -158,9 +161,24 @@ async function handleCreate(
   })
 }
 
+/**
+ * Mirror a live post into the search index. Fire-and-forget: write-path
+ * latency and success are independent of Meili health. Only live rows are
+ * indexed — pending/deleted status transitions are handled in admin routes.
+ */
+function indexPostFireAndForget(request: FastifyRequest, post: Post): void {
+  if (post.status !== 'live') return
+  request.server.searchIndex
+    .indexEntry({ type: 'posts', doc: postToDoc(post) })
+    .catch((err: unknown) => {
+      request.log.error({ err, op: 'search_index', id: post.id }, 'search_index_failed')
+    })
+}
+
 /** GET /api/helped/posts handler. Paginated, optional ?q= substring filter. */
 async function handleList(
   store: Store,
+  search: SearchIndex,
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
@@ -172,18 +190,70 @@ async function handleList(
   const { q, page } = parsed.data
   const offset = (page - 1) * PAGE_SIZE
   const query = typeof q === 'string' && q.length > 0 ? q : undefined
-  const [rows, total] = await Promise.all([
-    store.listPosts(PAGE_SIZE, offset, query),
-    store.countFilteredEntries('posts', { query }),
-  ])
-  const items = rows.map(toWire)
+  const { rows, total } = query === undefined
+    ? await listUnfiltered(store, offset)
+    : await searchPostsWithFallback(store, search, query, page, request)
   const body: PaginatedWire<HelpedPostWire> = {
-    items,
+    items: rows.map(toWire),
     page,
     page_size: PAGE_SIZE,
     total,
   }
   reply.code(200).send(body)
+}
+
+/** Unfiltered feed path — newest-first, no ranking. */
+async function listUnfiltered(
+  store: Store,
+  offset: number,
+): Promise<{ rows: Post[]; total: number }> {
+  const [rows, total] = await Promise.all([
+    store.listPosts(PAGE_SIZE, offset, undefined),
+    store.countFilteredEntries('posts', { query: undefined }),
+  ])
+  return { rows, total }
+}
+
+/**
+ * Search path: Meili returns ids + exact total; the store hydrates rows so
+ * display fields (like_count) come from the source-of-truth. If Meili throws,
+ * fall back to the store's LIKE query so search remains functional under a
+ * Meili outage.
+ */
+async function searchPostsWithFallback(
+  store: Store,
+  search: SearchIndex,
+  query: string,
+  page: number,
+  request: FastifyRequest,
+): Promise<{ rows: Post[]; total: number }> {
+  const offset = (page - 1) * PAGE_SIZE
+  const fallbackFromStore = async (): Promise<{ rows: Post[]; total: number }> => {
+    const [rows, total] = await Promise.all([
+      store.listPosts(PAGE_SIZE, offset, query),
+      store.countFilteredEntries('posts', { query }),
+    ])
+    return { rows, total }
+  }
+  try {
+    const { ids, total } = await search.search('posts', query, PAGE_SIZE, page)
+    const rows = await store.getPostsByIds(ids)
+    // getPostsByIds filters out non-'live' rows, so when the search index is
+    // lagging a status transition it can return fewer hydrated rows than ids.
+    // That would show short/empty pages alongside a nonzero `total`; fall
+    // back to the store so `items` and `total` stay consistent.
+    if (rows.length !== ids.length) {
+      request.log.warn(
+        { op: 'search', type: 'posts', requested: ids.length, hydrated: rows.length },
+        'search_hydration_mismatch_fallback',
+      )
+      return fallbackFromStore()
+    }
+    return { rows, total }
+  } catch (err) {
+    request.log.error({ err, op: 'search', type: 'posts' }, 'search_failed_fallback')
+    return fallbackFromStore()
+  }
 }
 
 /** GET /api/helped/posts/:slug handler. Returns the live post or 404. */
@@ -216,6 +286,6 @@ async function handleGetOne(
  */
 export async function helpedRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/helped/posts', (req, reply) => handleCreate(app.store, app.limiter, req, reply))
-  app.get('/api/helped/posts', (req, reply) => handleList(app.store, req, reply))
+  app.get('/api/helped/posts', (req, reply) => handleList(app.store, app.searchIndex, req, reply))
   app.get('/api/helped/posts/:slug', (req, reply) => handleGetOne(app.store, req, reply))
 }

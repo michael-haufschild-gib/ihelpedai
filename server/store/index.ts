@@ -243,6 +243,16 @@ export interface Store {
   getReport(id: string): Promise<Report | null>
 
   /**
+   * Batch lookup preserving input order. Missing ids are omitted, so the
+   * caller can distinguish absent rows by length diff. Used by the search
+   * path to hydrate rank-ordered id lists from Meilisearch.
+   */
+  getPostsByIds(ids: readonly string[]): Promise<Post[]>
+
+  /** Batch lookup preserving input order. See getPostsByIds. */
+  getReportsByIds(ids: readonly string[]): Promise<Report[]>
+
+  /**
    * List posts in reverse-chronological order, optionally filtered by a
    * naïve text query. The query filter is a substring match against
    * firstName, city, country, and text.

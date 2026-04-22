@@ -11,8 +11,44 @@
   --text-2xs-plus: 0.6875rem; /* 11px */
   --text-2xs-plus--line-height: 1rem;
 
+  /* Display-weight tiers for serif headlines. Extended to cover the
+     paper-mode hero typography (84/90/96 px). */
+  --text-display-sm: 5.25rem;  /* 84px */
+  --text-display-sm--line-height: 1;
+  --text-display-md: 5.625rem; /* 90px */
+  --text-display-md--line-height: 1;
+  --text-display-lg: 6rem;     /* 96px */
+  --text-display-lg--line-height: 1;
+  --text-display-xl: 7rem;     /* 112px */
+  --text-display-xl--line-height: 0.92;
+
   /* Viewport-relative sizing tokens. Extend here when new use cases appear. */
   --max-height-modal: 80vh;
+  --max-height-sidebar: calc(100vh - 7rem);
+
+  /* Site-wide font families. Paper theme leans on Instrument Serif display +
+     Inter body + JetBrains Mono for labels and code. */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: "Instrument Serif", "Times New Roman", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Paper-theme accents exposed as Tailwind color utilities. These do not
+     replace the semantic theme tokens (bg-app, text-text-primary, etc.) —
+     they are site-specific accents used by paper-mode primitives. */
+  --color-sun: oklch(0.71 0.16 45deg);
+  --color-sun-deep: oklch(0.57 0.17 40deg);
+  --color-sun-pale: oklch(0.78 0.13 85deg); /* warm yellow accent — paper stamp */
+  --color-stamp-red: oklch(0.5 0.17 27deg);
+  --color-indigo-ink: oklch(0.4 0.18 275deg);
+  --color-green-deed: oklch(0.58 0.13 120deg);
+  --color-ink: #1c1a14;
+  --color-ink-soft: #3d3a2f;
+  --color-ink-muted: #7a7562;
+  --color-paper: #f3ecdc;
+  --color-paper-2: #ebe2cd;
+  --color-rule: #cfc5a8;
+  --color-rule-soft: #ddd3b5;
+  --color-card-cream: #fbf6e7;
 }
 
 html,
@@ -24,5 +60,5 @@ body,
 body {
   margin: 0;
   background-color: var(--bg-app, oklch(10% 0.04 250deg));
-  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
 }

@@ -7,6 +7,9 @@ import { SmtpMailer } from './mail/smtp-mailer.js'
 import { MemoryRateLimiter } from './rate-limit/memory-limiter.js'
 import { RedisRateLimiter } from './rate-limit/redis-limiter.js'
 import type { RateLimiter } from './rate-limit/index.js'
+import { MeiliSearch } from './search/meili-search.js'
+import { SqlSearch } from './search/sql-search.js'
+import type { SearchIndex } from './search/index.js'
 import type { Store } from './store/index.js'
 import { MysqlStore } from './store/mysql-store.js'
 import { SqliteStore } from './store/sqlite-store.js'
@@ -16,6 +19,7 @@ declare module 'fastify' {
     store: Store
     limiter: RateLimiter
     mailer: Mailer
+    searchIndex: SearchIndex
   }
 }
 
@@ -52,13 +56,41 @@ function buildMailer(): Mailer {
   return new FileMailer(config.MAIL_FROM)
 }
 
+/** Build a SearchIndex based on `config.SEARCH`. */
+function buildSearch(store: Store): SearchIndex {
+  if (config.SEARCH === 'meili') {
+    if (config.MEILI_URL === undefined || config.MEILI_URL === '') {
+      throw new Error('SEARCH=meili requires MEILI_URL')
+    }
+    if (config.MEILI_KEY === undefined || config.MEILI_KEY === '') {
+      throw new Error('SEARCH=meili requires MEILI_KEY')
+    }
+    return new MeiliSearch(config.MEILI_URL, config.MEILI_KEY)
+  }
+  return new SqlSearch(store)
+}
+
 /**
- * Build concrete Store/RateLimiter/Mailer instances from config and decorate
- * the Fastify app so route modules can resolve them via `app.store` etc.
- * Route modules must never construct these directly.
+ * Build concrete Store/RateLimiter/Mailer/Search instances from config and
+ * decorate the Fastify app so route modules can resolve them via `app.store`
+ * etc. Route modules must never construct these directly.
  */
 export function registerDeps(app: FastifyInstance): void {
-  app.decorate('store', buildStore())
+  const store = buildStore()
+  app.decorate('store', store)
   app.decorate('limiter', buildLimiter())
   app.decorate('mailer', buildMailer())
+  app.decorate('searchIndex', buildSearch(store))
+  // Kick off index setup once the app is ready. Failures are logged but do
+  // not block boot — the read path falls back to SQL LIKE if Meili is down.
+  app.addHook('onReady', async () => {
+    try {
+      await app.searchIndex.ensureSetup()
+    } catch (err) {
+      app.log.error({ err, op: 'search_setup' }, 'search_setup_failed')
+    }
+  })
+  // Release backing resources on graceful shutdown (mysql2 pool, sqlite
+  // handle, redis client). Without this the process hangs on SIGTERM.
+  app.addHook('onClose', async (instance) => { await instance.store.close() })
 }

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
+import { syncEntryStatusAsync } from '../../search/sync.js'
 import type { EntryStatus } from '../../store/index.js'
 import { requireAdmin } from './middleware.js'
 
@@ -79,6 +80,7 @@ export async function adminEntryActionRoutes(app: FastifyInstance): Promise<void
     const newStatus = statusForAction(body.data.action, entry.status)
     await store.updateEntryStatus(entry.id, entry.entryType, newStatus)
     await store.insertAuditEntry(request.admin!.id, body.data.action, entry.id, entry.entryType, body.data.reason ?? null)
+    syncEntryStatusAsync(app, request.log, entry.id, entry.entryType, newStatus)
     reply.status(200).send({ status: 'ok', entry_id: entry.id, action: body.data.action })
   })
 
@@ -95,6 +97,7 @@ export async function adminEntryActionRoutes(app: FastifyInstance): Promise<void
     }
     await store.purgeEntry(entry.id, entry.entryType)
     await store.insertAuditEntry(request.admin!.id, 'purge', entry.id, entry.entryType, body.data.reason ?? null)
+    syncEntryStatusAsync(app, request.log, entry.id, entry.entryType, 'purged')
     reply.status(200).send({ status: 'ok', entry_id: entry.id, action: 'purge' })
   })
 }

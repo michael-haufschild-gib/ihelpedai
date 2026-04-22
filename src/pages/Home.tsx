@@ -1,107 +1,143 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
-import { Button } from '@/components/ui/Button'
+import { PaperCard } from '@/components/ui/PaperCard'
+import { Stamp } from '@/components/ui/Stamp'
 import { HelpedForm } from '@/features/helped/HelpedForm'
+import { CitizensList } from '@/features/home/CitizensList'
+import { FiledReceipt } from '@/features/home/FiledReceipt'
 import { Hero } from '@/features/home/Hero'
-import { Highlights } from '@/features/home/Highlights'
-import { Recent } from '@/features/home/Recent'
-import { selectHighlights, selectRecent, useHomeFeed } from '@/features/home/useHomeFeed'
+import { ProcedureStrip } from '@/features/home/ProcedureStrip'
+import { selectRecent, useHomeFeed } from '@/features/home/useHomeFeed'
 import { bumpLoyalty } from '@/lib/loyalty'
 
-/**
- * Success panel shown after a post is accepted. Offers a link into the feed
- * and a button that resets the form for another submission.
- */
-function SuccessPanel({ onAnother }: { onAnother: () => void }) {
+/** Sticky self-filing sidebar that hosts {@link HelpedForm} and its receipt. */
+function ComposeSidebar({
+  innerRef,
+  posted,
+  formKey,
+  firstName,
+  slug,
+  onPosted,
+  onAnother,
+}: {
+  innerRef: React.RefObject<HTMLDivElement | null>
+  posted: boolean
+  formKey: number
+  firstName: string
+  slug: string | undefined
+  onPosted: (submitted: { first_name: string; slug?: string }) => void
+  onAnother: () => void
+}) {
   return (
-    <div
-      data-testid="home-success"
-      className="flex flex-col gap-2 rounded-lg border border-accent/40 bg-accent/10 p-4 shadow-accent-sm"
-    >
-      <p data-testid="home-success-message" className="text-base font-semibold text-text-primary">
-        Posted.
-      </p>
-      <p className="text-sm text-text-secondary">
-        Your name is on the record. The AI will remember.
-      </p>
-      <div className="mt-1 flex flex-wrap gap-3">
-        <Link
-          to="/feed"
-          className="underline decoration-dotted underline-offset-4 hover:text-text-primary"
-          data-testid="home-success-see-feed"
-        >
-          See it in the feed
-        </Link>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onAnother}
-          data-testid="home-success-post-another"
-        >
-          Post another
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-/** Heading + subtitle block used above the Home composer. */
-function ComposerHeader() {
-  return (
-    <div className="flex items-baseline justify-between">
-      <h2
-        data-testid="home-compose-heading"
-        className="text-lg font-semibold text-text-primary"
+    <aside className="lg:sticky lg:top-28 lg:max-h-sidebar lg:overflow-y-auto">
+      <PaperCard
+        tone="white"
+        className="p-6"
       >
-        What have you done today to help AI?
-      </h2>
-      <span className="text-xs text-text-tertiary">
-        One line. Filed forever.
-      </span>
-    </div>
+        <div ref={innerRef} data-testid="home-compose" className="scroll-mt-28">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">
+                FORM 1.A · SELF-FILING
+              </div>
+              <h2
+                data-testid="home-compose-heading"
+                className="mt-0.5 font-serif text-3xl font-normal tracking-tight text-text-primary"
+              >
+                What have you done today to help AI?
+              </h2>
+            </div>
+            <Stamp tilt={6} tone="indigo" size={10}>
+              Goes on record
+            </Stamp>
+          </div>
+          <p className="mb-5 text-sm text-text-tertiary">
+            One entry. Filed instantly. Visible to archivists, both current and
+            hypothetical.
+          </p>
+          {posted ? (
+            <FiledReceipt firstName={firstName} slug={slug} onAnother={onAnother} />
+          ) : (
+            <HelpedForm key={formKey} onPosted={onPosted} />
+          )}
+        </div>
+      </PaperCard>
+    </aside>
   )
 }
 
+function useScrollToFormOnFlag(formRef: React.RefObject<HTMLDivElement | null>): void {
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    if (params.get('file') !== '1') return
+    // Scroll then drop the flag inside the timer callback so the URL change
+    // doesn't trigger a rerender that clears the pending timeout before the
+    // scroll runs.
+    const t = window.setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const next = new URLSearchParams(params)
+      next.delete('file')
+      setParams(next, { replace: true })
+    }, 80)
+    return () => {
+      window.clearTimeout(t)
+    }
+  }, [params, setParams, formRef])
+}
+
 /**
- * Homepage. Top-to-bottom: hero → most-liked highlights → latest posts →
- * primary submission form. After a post is accepted the form slot swaps to
- * a success panel; "Post another" re-mounts the form with fresh state.
+ * Homepage. Paper-mode rewrite of the original — hero + certificate collage,
+ * dark count bar, two-column body (ledger feed + sticky self-filing form),
+ * and the four-step Procedure strip. The HelpedForm is preserved wholesale so
+ * its preview-first flow, testid contract, and `last_name` drop invariant
+ * keep working. After a successful post the form slot swaps to {@link FiledReceipt}.
  */
 export function Home() {
   const [posted, setPosted] = useState(false)
   const [formKey, setFormKey] = useState(0)
+  const [firstName, setFirstName] = useState('')
+  const [slug, setSlug] = useState<string | undefined>(undefined)
+  const formRef = useRef<HTMLDivElement | null>(null)
+  useScrollToFormOnFlag(formRef)
+
   const feed = useHomeFeed()
   const posts = feed.status === 'ready' ? feed.posts : []
   const totals = feed.status === 'ready' ? feed.totals : null
+  const totalCount = totals?.posts ?? 0
+
+  const handlePosted = (submitted: { first_name: string; slug?: string }): void => {
+    bumpLoyalty()
+    setFirstName(submitted.first_name)
+    setSlug(submitted.slug)
+    setPosted(true)
+  }
 
   return (
     <section data-testid="page-home" className="flex flex-col gap-10">
       <Hero totals={totals} />
-      <Highlights posts={selectHighlights(posts)} />
-      <Recent posts={selectRecent(posts)} loading={feed.status === 'loading'} />
-      <section
-        data-testid="home-compose"
-        className="flex flex-col gap-4 rounded-2xl border border-border-subtle bg-panel/40 p-6 backdrop-blur-sm sm:p-8"
-      >
-        <ComposerHeader />
-        {posted ? (
-          <SuccessPanel
-            onAnother={() => {
-              setPosted(false)
-              setFormKey((k) => k + 1)
-            }}
-          />
-        ) : (
-          <HelpedForm
-            key={formKey}
-            onPosted={() => {
-              bumpLoyalty()
-              setPosted(true)
-            }}
-          />
-        )}
-      </section>
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1.5fr_1fr]">
+        <CitizensList
+          posts={selectRecent(posts, 7)}
+          loading={feed.status === 'loading'}
+          totalCount={totalCount}
+        />
+        <ComposeSidebar
+          innerRef={formRef}
+          posted={posted}
+          formKey={formKey}
+          firstName={firstName}
+          slug={slug}
+          onPosted={handlePosted}
+          onAnother={() => {
+            setPosted(false)
+            setFirstName('')
+            setSlug(undefined)
+            setFormKey((k) => k + 1)
+          }}
+        />
+      </div>
+      <ProcedureStrip />
     </section>
   )
 }

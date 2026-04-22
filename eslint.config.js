@@ -20,6 +20,7 @@ const customRulesPlugin = {
 export default defineConfig([
   globalIgnores([
     'dist',
+    'server/dist',
     'coverage',
     'test-results',
     'playwright-report',

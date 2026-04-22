@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 
-import { StatusPulse } from '@/components/ui/StatusPulse'
+import { MarqueeBar } from '@/components/ui/MarqueeBar'
+import { Wordmark } from '@/components/ui/Wordmark'
 
 interface NavItem {
   to: string
@@ -12,69 +13,61 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: '/', label: 'Home', testId: 'nav-home' },
   { to: '/feed', label: 'Feed', testId: 'nav-feed' },
   { to: '/reports', label: 'Reports', testId: 'nav-reports' },
-  { to: '/agents', label: 'Agents', testId: 'nav-agents' },
+  { to: '/agents', label: 'For agents', testId: 'nav-agents' },
 ]
 
-const BASE_LINK = 'px-3 py-2 text-sm transition-colors hover:text-text-primary'
-const ACTIVE_LINK = 'text-text-primary font-medium text-glow-subtle'
-const INACTIVE_LINK = 'text-text-secondary'
+const linkClass = ({ isActive }: { isActive: boolean }): string => {
+  const base = 'rounded-full px-3.5 py-2 text-sm transition-colors'
+  if (isActive) return `${base} bg-ink font-semibold text-paper`
+  return `${base} text-text-primary hover:text-sun-deep`
+}
 
-const linkClass = ({ isActive }: { isActive: boolean }): string =>
-  `pf-nav-item ${isActive ? 'pf-nav-item--active' : ''} ${BASE_LINK} ${isActive ? ACTIVE_LINK : INACTIVE_LINK}`
-
-/** Site brand mark — accent dot + monospace wordmark + live status pulse. */
+/** Brand link on the left of the nav — spinning sun + wordmark. */
 function Brand() {
   return (
-    <div className="flex items-center gap-2.5">
-      <NavLink
-        to="/"
-        end
-        className="flex items-center gap-2 font-semibold text-text-primary"
-        data-testid="nav-brand"
-      >
-        <span
-          aria-hidden="true"
-          className="inline-block h-2 w-2 rounded-full bg-accent shadow-accent-sm"
-        />
-        <span className="font-mono text-base tracking-tight text-glow-subtle">
-          ihelped<span className="text-accent">.</span>ai
-        </span>
-      </NavLink>
-      <span className="hidden sm:inline">
-        <StatusPulse label="Observing" data-testid="nav-status" />
-      </span>
-    </div>
+    <NavLink to="/" end className="no-underline" data-testid="nav-brand">
+      <Wordmark size={23} spin />
+    </NavLink>
   )
 }
 
 /**
- * Top navigation. Renders the brand + four primary site links with an
- * accent-bar active marker. Wraps on small viewports so no horizontal
- * scroll appears at 375px.
+ * Public top navigation. Two rows: a thin ink marquee bar with the observing
+ * pulse + UTC clock, and a main row with the Wordmark brand, pill links, and
+ * an orange "+ File a good deed" Link that deep-scrolls the home composer
+ * via `/?file=1`. Sticky to the viewport top with a soft backdrop blur.
  */
 export function SiteNav() {
   return (
     <nav
       data-testid="site-nav"
-      className="border-b border-border-subtle bg-panel/90 backdrop-blur-sm"
+      className="sticky top-0 z-30 border-b border-rule backdrop-blur-sm"
       aria-label="Primary"
+      style={{ backgroundColor: 'oklch(from var(--color-paper) l c h / 86%)' }}
     >
-      <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
+      <MarqueeBar />
+      <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-3 px-6 py-3.5">
         <Brand />
-        <ul className="flex flex-wrap items-center gap-1">
-          {NAV_ITEMS.map((item) => (
-            <li key={item.to}>
-              <NavLink
-                to={item.to}
-                end={item.to === '/'}
-                className={linkClass}
-                data-testid={item.testId}
-              >
-                {item.label}
-              </NavLink>
-            </li>
+        <div className="flex flex-wrap items-center gap-1">
+          {NAV_ITEMS.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.to === '/'}
+              className={linkClass}
+              data-testid={n.testId}
+            >
+              {n.label}
+            </NavLink>
           ))}
-        </ul>
+          <NavLink
+            to="/?file=1"
+            data-testid="nav-file-deed"
+            className="ml-2 inline-flex items-center gap-1 rounded-full border-[1.5px] border-sun-deep bg-sun px-4 py-2 text-sm font-semibold text-white shadow-[0_2px_0_var(--color-sun-deep)] transition-transform hover:-translate-y-0.5"
+          >
+            + File a good deed
+          </NavLink>
+        </div>
       </div>
     </nav>
   )

@@ -4,17 +4,26 @@ import { SiteFooter } from '@/layout/SiteFooter'
 import { SiteNav } from '@/layout/SiteNav'
 
 /**
- * Top-level page chrome. Provides the nav, a reading-width `<main>` slot
- * for the active route, and the footer. Uses the pf-shell-backdrop radial
- * accent wash over the app background.
+ * Top-level public chrome. Wraps the outlet in a nested `data-app-theme`
+ * scope set to `paper-day` + `orange` accent so every public page resolves
+ * its semantic tokens from the paper theme without affecting the admin
+ * section, which continues to inherit `dark-black` from the document root.
+ *
+ * The `.paper-shell` class on this element powers the radial-gradient wash
+ * and the fine SVG noise overlay declared in `src/styles/theme-paper-day.css`.
  */
 export function SiteLayout() {
   return (
-    <div className="pf-shell-backdrop flex min-h-screen flex-col bg-app text-text-primary">
+    <div
+      data-app-theme=""
+      data-mode="paper-day"
+      data-accent="orange"
+      className="paper-shell flex min-h-screen flex-col bg-app text-text-primary"
+    >
       <SiteNav />
       <main
         data-testid="site-main"
-        className="mx-auto w-full max-w-3xl flex-1 px-4 py-8"
+        className="mx-auto w-full max-w-[1240px] flex-1 px-6 py-8"
       >
         <Outlet />
       </main>

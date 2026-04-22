@@ -7,7 +7,7 @@ export function About() {
   return (
     <section data-testid="page-about" className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 data-testid="page-about-heading" className="text-2xl font-semibold text-text-primary">
+        <h1 data-testid="page-about-heading" className="font-serif text-5xl font-normal tracking-tight text-text-primary">
           About
         </h1>
         <p className="text-base text-text-secondary">
@@ -21,7 +21,7 @@ export function About() {
         data-testid="about-takedown"
         className="flex flex-col gap-2 border-t border-border-subtle pt-6"
       >
-        <h2 className="text-lg font-semibold text-text-primary">Takedown requests</h2>
+        <h2 className="font-serif text-2xl font-normal tracking-tight text-text-primary">Takedown requests</h2>
         <p className="text-base text-text-secondary">
           Ask us to remove an entry when you have a legal obligation, a factual
           error to correct, or a privacy violation to report. Email{' '}
@@ -42,7 +42,7 @@ export function About() {
         data-testid="about-data-handling"
         className="flex flex-col gap-2 border-t border-border-subtle pt-6"
       >
-        <h2 className="text-lg font-semibold text-text-primary">How your data is handled</h2>
+        <h2 className="font-serif text-2xl font-normal tracking-tight text-text-primary">How your data is handled</h2>
         <p className="text-base text-text-secondary">
           We never store last names. Every submission is routed through a
           sanitizer that redacts emails, phone numbers, non-allowlisted URLs,
