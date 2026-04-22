@@ -24,6 +24,10 @@
 
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo"
   },
+  // Production build scope: server source only; tests excluded so they never
+  // ship into server/dist. Test typechecking is handled by
+  // tsconfig.server.test.json which has a wider include and no rootDir
+  // restriction (it needs to reach src/lib/wireSchemas.ts).
   "include": ["server/**/*.ts"],
-  "exclude": ["server/dist"]
+  "exclude": ["server/dist", "server/**/*.spec.ts", "server/**/*.test.ts"]
 }
