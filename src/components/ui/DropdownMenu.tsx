@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useId } from 'react'
 import { m, AnimatePresence } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
-import { soundManager } from '@/lib/audio/SoundManager'
 import { useDropdownStore } from '@/stores/dropdownStore'
 import { sx } from '@/lib/sx'
 import { MenuItems } from './DropdownMenuItems'
@@ -190,11 +189,6 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
         ref={triggerRef}
         data-dropdown-trigger={dropdownId}
         onClick={(e) => {
-          if (isOpen) {
-            soundManager.playClick()
-          } else {
-            soundManager.playSwish()
-          }
           toggleDropdown(dropdownId)
           e.stopPropagation()
         }}

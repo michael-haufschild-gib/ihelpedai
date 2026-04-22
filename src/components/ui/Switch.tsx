@@ -1,6 +1,5 @@
 import type React from 'react'
 import { m } from 'motion/react'
-import { soundManager } from '@/lib/audio/SoundManager'
 
 /** Props for the Switch toggle component. */
 export interface SwitchProps {
@@ -72,9 +71,6 @@ export const Switch: React.FC<SwitchProps> = ({
   return (
     <label
       className={`flex items-center gap-3 cursor-pointer select-none group/switch relative ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
-      onMouseEnter={() => {
-        if (!disabled) soundManager.playHover()
-      }}
       data-testid={dataTestId}
     >
       <div className="relative isolate w-11 h-6">
@@ -83,10 +79,7 @@ export const Switch: React.FC<SwitchProps> = ({
           className="sr-only"
           checked={checked}
           onChange={(e) => {
-            if (!disabled) {
-              onCheckedChange(e.target.checked)
-              soundManager.playClick()
-            }
+            if (!disabled) onCheckedChange(e.target.checked)
           }}
           disabled={disabled}
           role="switch"

@@ -19,9 +19,17 @@ export function AdminNav() {
   const location = useLocation()
 
   useEffect(() => {
+    let cancelled = false
     getQueueCount()
-      .then((r) => setQueueCount(r.count))
-      .catch(() => {})
+      .then((r) => { if (!cancelled) setQueueCount(r.count) })
+      .catch(() => {
+        // The queue badge polls on every navigation; surfacing a toast for
+        // each transient failure would spam the admin. Reset to zero so a
+        // stale "high" count cannot mislead while we are out of sync, and
+        // rely on the next pathname change to re-sync.
+        if (!cancelled) setQueueCount(0)
+      })
+    return () => { cancelled = true }
   }, [location.pathname])
 
   return (

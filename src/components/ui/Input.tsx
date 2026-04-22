@@ -1,7 +1,6 @@
-import React, { useId, useState, useRef, useEffect, useCallback } from 'react'
+import React, { useId, useState, useRef, useCallback } from 'react'
 import { m, type HTMLMotionProps } from 'motion/react'
 import { LoadingSpinner } from './LoadingSpinner'
-import { soundManager } from '@/lib/audio/SoundManager'
 import { InputClearButton } from './InputClearButton'
 import { clearInputValue } from './inputHelpers'
 
@@ -160,9 +159,6 @@ export const Input = ({
   const setRefs = useCallback((el: HTMLInputElement | null) => composeInputRefs(inputRef, ref)(el), [ref])
 
   const hasError = error !== undefined && error !== false && error !== ''
-  useEffect(() => {
-    if (hasError) soundManager.playSnap()
-  }, [hasError])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (value === undefined) setUncontrolledHasValue(e.target.value.length > 0)
@@ -198,7 +194,6 @@ export const Input = ({
           disabled={disabled || loading}
           onFocus={(e) => {
             setIsFocused(true)
-            soundManager.playHover()
             props.onFocus?.(e)
           }}
           onBlur={(e) => {

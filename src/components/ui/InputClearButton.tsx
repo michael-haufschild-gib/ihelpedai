@@ -1,6 +1,5 @@
 import type React from 'react'
 import { m, AnimatePresence } from 'motion/react'
-import { soundManager } from '@/lib/audio/SoundManager'
 
 /** Animated clear button that appears inside an input field. */
 export const InputClearButton: React.FC<{
@@ -19,7 +18,6 @@ export const InputClearButton: React.FC<{
         title="Clear input"
         onClick={(e) => {
           e.stopPropagation()
-          soundManager.playClick()
           onClick(e)
         }}
         className="text-text-tertiary hover:text-text-primary rounded-full p-0.5 hover:bg-[var(--bg-active)] transition-colors"

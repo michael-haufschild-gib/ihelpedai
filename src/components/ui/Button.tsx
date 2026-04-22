@@ -1,12 +1,17 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { m, type HTMLMotionProps } from 'motion/react'
 import { LoadingSpinner } from './LoadingSpinner'
-import { soundManager } from '@/lib/audio/SoundManager'
 import { sx } from '@/lib/sx'
 
 /** Props for the Button component. */
 export interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'ref'> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  /**
+   * Visual variant. Use `'unstyled'` when the caller (e.g. a segmented
+   * control) supplies its own classes — it skips the `btn btn-{variant}`
+   * stack but keeps the ripple + disabled + loading + ARIA pass-through
+   * behaviour that makes Button the consistent click target everywhere.
+   */
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'unstyled'
   size?: 'sm' | 'md' | 'lg' | 'icon'
   children: React.ReactNode
   ref?: React.Ref<HTMLButtonElement>
@@ -69,23 +74,24 @@ export function Button({
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled || loading) return
-    soundManager.playClick()
     spawn(e)
     onClick?.(e)
   }
 
   const glowClass = glow ? 'shadow-accent-lg' : ''
+  // `unstyled` skips the variant + size class stack so the caller's className
+  // becomes the entire visual treatment. Useful for segmented controls and
+  // chips that need pill styling distinct from the standard btn variants.
+  const variantClasses = variant === 'unstyled' ? '' : `btn btn-${variant} btn-${size}`
+  const composedClassName = `${variantClasses} ${glowClass} ${className}`.trim()
 
   return (
     <m.button
       ref={ref}
       type={type}
       onClick={handleClick}
-      onMouseEnter={() => {
-        if (!disabled && !loading) soundManager.playHover()
-      }}
       disabled={disabled || loading}
-      className={`btn btn-${variant} btn-${size} ${glowClass} ${className}`}
+      className={composedClassName}
       aria-label={ariaLabel}
       data-testid={testId}
       whileHover={!disabled && !loading ? { scale: 1.02 } : undefined}

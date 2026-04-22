@@ -1,6 +1,5 @@
 import React from 'react'
 import { m as MotionEl } from 'motion/react'
-import { soundManager } from '@/lib/audio/SoundManager'
 
 /** Single option in a Select dropdown. */
 export interface SelectOption<T extends string = string> {
@@ -43,9 +42,6 @@ export const Select = <T extends string = string>({
           value={value}
           onChange={(e) => {
             onChange(e.target.value as T)
-          }}
-          onMouseEnter={() => {
-            if (!disabled) soundManager.playHover()
           }}
           disabled={disabled}
           data-testid={testId}

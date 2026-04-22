@@ -3,8 +3,20 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Switch } from '@/components/ui/Switch'
 import { Textarea } from '@/components/ui/Textarea'
+import { ApiError } from '@/lib/api'
 import type { AdminSettings as Settings } from '@/lib/adminApi'
 import { getSettings, updateSetting } from '@/lib/adminApi'
+import { showToast } from '@/stores/toastStore'
+
+/** One-line, audience-appropriate failure message for an admin save. */
+function describeSettingsSaveError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.kind === 'unauthorized') return 'Session expired. Sign in again.'
+    if (err.kind === 'invalid_input') return 'Invalid value — fix and retry.'
+    if (err.status === 0) return 'Network unreachable. Try again.'
+  }
+  return 'Save failed. Try again.'
+}
 
 /** Admin settings page (Story 11). */
 export function AdminSettings() {
@@ -17,7 +29,11 @@ export function AdminSettings() {
     let cancelled = false
     getSettings()
       .then((s) => { if (!cancelled) { setSettings(s); setExceptions(s.sanitizer_exceptions) } })
-      .catch(() => {})
+      .catch(() => {
+        // Page renders a "Failed to load settings." fallback when settings
+        // stays null, so this branch only needs to log via the toast store
+        // for visibility — the fallback already informs the admin.
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [])
@@ -29,8 +45,10 @@ export function AdminSettings() {
     try {
       await updateSetting(key, newVal)
       setSettings({ ...settings, [key]: newVal })
-    } catch {
-      // Keep the old value visible on failure; admin can retry.
+    } catch (err: unknown) {
+      // Keep the old value visible on failure; surface a toast so the admin
+      // knows the toggle did not actually take effect.
+      showToast(describeSettingsSaveError(err))
     } finally {
       setSaving(null)
     }
@@ -41,8 +59,9 @@ export function AdminSettings() {
     try {
       await updateSetting('sanitizer_exceptions', exceptions)
       if (settings) setSettings({ ...settings, sanitizer_exceptions: exceptions })
-    } catch {
+    } catch (err: unknown) {
       // Leave the unsaved draft in the textarea so the admin can retry.
+      showToast(describeSettingsSaveError(err))
     } finally {
       setSaving(null)
     }

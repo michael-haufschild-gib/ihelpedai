@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
+import { GlobalToast } from '@/components/ui/GlobalToast'
 import { logout } from '@/lib/adminApi'
 import { useAdminStore } from '@/stores/adminStore'
 
@@ -67,6 +68,9 @@ export function AdminLayout() {
           <Outlet />
         </main>
       </div>
+      {/* Mounted here so admin actions can surface failure toasts via
+          showToast() without each page importing the renderer. */}
+      <GlobalToast />
     </div>
   )
 }

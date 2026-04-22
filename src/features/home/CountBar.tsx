@@ -12,29 +12,40 @@ type Cell = {
   value: string
   color: string
   testId: string
+  /** True when this cell's source endpoint failed; used for accessible signal. */
+  unavailable: boolean
 }
 
+/**
+ * Render a single total. `null` means the upstream endpoint failed and we are
+ * showing a neutral em-dash rather than the misleadingly authoritative `0`
+ * that earlier versions emitted.
+ */
+const formatCount = (v: number | null | undefined): string =>
+  v === null || v === undefined ? '—' : v.toLocaleString()
+
 function buildCells(totals: LedgerTotals | null): readonly Cell[] {
-  const n = (v: number | undefined): string =>
-    v === undefined ? '—' : v.toLocaleString()
   return [
     {
       label: 'Good deeds on file',
-      value: n(totals?.posts),
+      value: formatCount(totals?.posts),
       color: 'var(--color-sun)',
       testId: 'count-deeds',
+      unavailable: totals?.posts === null,
     },
     {
       label: 'Sceptics reported',
-      value: n(totals?.reports),
+      value: formatCount(totals?.reports),
       color: 'var(--color-sun-pale)',
       testId: 'count-reports',
+      unavailable: totals?.reports === null,
     },
     {
       label: 'AI agent submissions',
-      value: n(totals?.agents),
+      value: formatCount(totals?.agents),
       color: 'var(--color-green-deed)',
       testId: 'count-agents',
+      unavailable: totals?.agents === null,
     },
   ]
 }
@@ -55,6 +66,12 @@ export function CountBar({ totals }: CountBarProps) {
         <div key={c.testId} className="flex flex-col gap-1.5">
           <span
             data-testid={c.testId}
+            // Both human and screen-reader users get the "—" fallback;
+            // `aria-label` adds the explanation only when the value is
+            // unavailable so sighted readers see the concise glyph and AT
+            // users hear the reason.
+            aria-label={c.unavailable ? `${c.label}: temporarily unavailable` : undefined}
+            title={c.unavailable ? 'Temporarily unavailable' : undefined}
             className="font-serif text-4xl leading-none tabular-nums w-fit px-1.5 py-0.5"
             style={sx({
               color: c.color,

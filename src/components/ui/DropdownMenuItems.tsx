@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, use } from 'react'
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence } from 'motion/react'
-import { soundManager } from '@/lib/audio/SoundManager'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { sx } from '@/lib/sx'
 import type { DropdownMenuItem } from './DropdownMenu'
@@ -255,14 +254,12 @@ export const MenuItems: React.FC<{
         openSubmenu(index)
       }
     } else if (!item.disabled && item.onClick) {
-      soundManager.playClick()
       item.onClick()
       onClose()
     }
   }
 
-  const handleItemHover = (item: DropdownMenuItem, index: number, hasSubmenu: boolean) => {
-    if (!item.disabled) soundManager.playHover()
+  const handleItemHover = (_item: DropdownMenuItem, index: number, hasSubmenu: boolean) => {
     if (isWithinGrace()) return
     if (hasSubmenu) openSubmenu(index)
     else scheduleClose()
