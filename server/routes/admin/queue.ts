@@ -1,6 +1,7 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
+import { syncEntryStatusAsync } from '../../search/sync.js'
 import { requireAdmin } from './middleware.js'
 
 const PAGE_SIZE = 50
@@ -19,6 +20,23 @@ const bulkActionSchema = z.object({
   action: z.enum(['approve', 'reject']),
   reason: z.string().max(500).optional(),
 })
+
+/** Apply a queue action to a single entry id; returns ok/skipped for bulk loop. */
+async function applyQueueAction(
+  app: FastifyInstance,
+  request: FastifyRequest,
+  id: string,
+  action: 'approve' | 'reject',
+  reason: string | null,
+): Promise<boolean> {
+  const entry = await app.store.getAdminEntryDetail(id)
+  if (!entry || entry.status !== 'pending') return false
+  const newStatus = action === 'approve' ? 'live' : 'deleted'
+  await app.store.updateEntryStatus(entry.id, entry.entryType, newStatus)
+  syncEntryStatusAsync(app, request.log, entry.id, entry.entryType, newStatus)
+  await app.store.insertAuditEntry(request.admin!.id, action, entry.id, entry.entryType, reason)
+  return true
+}
 
 /** Register moderation queue routes. */
 export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
@@ -56,25 +74,16 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
       reply.status(400).send({ error: 'invalid_input' })
       return
     }
-    const entry = await store.getAdminEntryDetail(params.data.id)
-    if (!entry || entry.status !== 'pending') {
+    const ok = await applyQueueAction(app, request, params.data.id, body.data.action, body.data.reason ?? null)
+      .catch((err: unknown) => {
+        request.log.error({ err, entryId: params.data.id }, 'queue action failed')
+        return false
+      })
+    if (!ok) {
       reply.status(404).send({ error: 'not_found' })
       return
     }
-    const newStatus = body.data.action === 'approve' ? 'live' : 'deleted'
-    await store.updateEntryStatus(entry.id, entry.entryType, newStatus)
-    try {
-      await store.insertAuditEntry(
-        request.admin!.id,
-        body.data.action,
-        entry.id,
-        entry.entryType,
-        body.data.reason ?? null,
-      )
-    } catch (err) {
-      request.log.error({ err, entryId: entry.id }, 'failed to write audit entry for queue action')
-    }
-    reply.status(200).send({ status: 'ok', entry_id: entry.id, action: body.data.action })
+    reply.status(200).send({ status: 'ok', entry_id: params.data.id, action: body.data.action })
   })
 
   app.post('/api/admin/queue/bulk', { preHandler: [requireAdmin] }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -85,26 +94,12 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
     }
     const results: { id: string; ok: boolean }[] = []
     for (const id of body.data.ids) {
-      try {
-        const entry = await store.getAdminEntryDetail(id)
-        if (!entry || entry.status !== 'pending') {
-          results.push({ id, ok: false })
-          continue
-        }
-        const newStatus = body.data.action === 'approve' ? 'live' : 'deleted'
-        await store.updateEntryStatus(entry.id, entry.entryType, newStatus)
-        await store.insertAuditEntry(
-          request.admin!.id,
-          body.data.action,
-          entry.id,
-          entry.entryType,
-          body.data.reason ?? null,
-        )
-        results.push({ id, ok: true })
-      } catch (err) {
-        request.log.error({ err, entryId: id }, 'bulk action failed for entry')
-        results.push({ id, ok: false })
-      }
+      const ok = await applyQueueAction(app, request, id, body.data.action, body.data.reason ?? null)
+        .catch((err: unknown) => {
+          request.log.error({ err, entryId: id }, 'bulk action failed for entry')
+          return false
+        })
+      results.push({ id, ok })
     }
     reply.status(200).send({ status: 'ok', results })
   })

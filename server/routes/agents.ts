@@ -126,7 +126,7 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
     return null
   }
 
-  async function handleReport(body: unknown, reply: ReplyShape): Promise<void> {
+  async function handleReport(body: unknown, reply: ReplyShape, logger: FastifyInstance['log']): Promise<void> {
     const parsed = agentReportSchema.parse(body)
     const keyHash = hashWithSalt(parsed.api_key)
     const key = await app.store.getApiKeyByHash(keyHash)
@@ -154,6 +154,26 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
     const autoPublish = await app.store.getSetting('auto_publish_agents')
     const initialStatus = autoPublish === 'true' ? 'live' : 'pending'
     const stored = await app.store.insertAgentReport(buildNewReport(parsed, sanitized.clean), keyHash, initialStatus)
+    if (stored.status === 'live') {
+      app.searchIndex
+        .indexEntry({
+          type: 'reports',
+          doc: {
+            id: stored.id,
+            reported_first_name: stored.reportedFirstName,
+            reported_city: stored.reportedCity,
+            reported_country: stored.reportedCountry,
+            reporter_first_name: stored.reporterFirstName,
+            text: stored.text,
+            status: stored.status,
+            source: stored.source,
+            created_at: stored.createdAt,
+          },
+        })
+        .catch((err: unknown) => {
+          logger.error({ err, op: 'search_index', id: stored.id }, 'search_index_failed')
+        })
+    }
     reply.status(201).send({
       entry_id: stored.id,
       public_url: `${config.PUBLIC_URL}/reports/${stored.id}`,
@@ -162,7 +182,7 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
   }
 
   app.post('/api/agents/report', async (request, reply) => {
-    await handleReport(request.body, reply)
+    await handleReport(request.body, reply, request.log)
   })
 
   app.get('/api/agents/recent', async () => {

@@ -189,6 +189,28 @@ export class SqliteStore implements Store {
     return row !== undefined ? reportFromRow(row) : null
   }
 
+  async getPostsByIds(ids: readonly string[]): Promise<Post[]> {
+    if (ids.length === 0) return []
+    const placeholders = ids.map(() => '?').join(',')
+    const rows = this.db
+      .prepare(`SELECT * FROM posts WHERE id IN (${placeholders})`)
+      .all(...ids) as PostRow[]
+    const byId = new Map<string, Post>()
+    for (const row of rows) byId.set(row.id, postFromRow(row))
+    return ids.map((id) => byId.get(id)).filter((p): p is Post => p !== undefined)
+  }
+
+  async getReportsByIds(ids: readonly string[]): Promise<Report[]> {
+    if (ids.length === 0) return []
+    const placeholders = ids.map(() => '?').join(',')
+    const rows = this.db
+      .prepare(`SELECT * FROM reports WHERE id IN (${placeholders})`)
+      .all(...ids) as ReportRow[]
+    const byId = new Map<string, Report>()
+    for (const row of rows) byId.set(row.id, reportFromRow(row))
+    return ids.map((id) => byId.get(id)).filter((r): r is Report => r !== undefined)
+  }
+
   async listPosts(limit: number, offset: number, query?: string): Promise<Post[]> {
     const hasQuery = typeof query === 'string' && query.trim() !== ''
     const sql = hasQuery

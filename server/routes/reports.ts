@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { config } from '../config.js'
 import type { RateLimiter } from '../rate-limit/index.js'
 import { sanitize } from '../sanitizer/sanitize.js'
+import type { SearchIndex } from '../search/index.js'
 import type { Report as StoredReport, Store } from '../store/index.js'
 
 /**
@@ -227,6 +228,7 @@ async function handleCreate(
     clientIpHash: ipHash,
     source: 'form',
   })
+  indexReportFireAndForget(request, storedRow)
   reply.code(201)
   return {
     slug: storedRow.id,
@@ -235,20 +237,79 @@ async function handleCreate(
   }
 }
 
+/**
+ * Mirror a live report into the search index. Fire-and-forget so the write
+ * path stays fast and decoupled from Meili health.
+ */
+function indexReportFireAndForget(request: FastifyRequest, report: StoredReport): void {
+  if (report.status !== 'live') return
+  request.server.searchIndex
+    .indexEntry({
+      type: 'reports',
+      doc: {
+        id: report.id,
+        reported_first_name: report.reportedFirstName,
+        reported_city: report.reportedCity,
+        reported_country: report.reportedCountry,
+        reporter_first_name: report.reporterFirstName,
+        text: report.text,
+        status: report.status,
+        source: report.source,
+        created_at: report.createdAt,
+      },
+    })
+    .catch((err: unknown) => {
+      request.log.error({ err, op: 'search_index', id: report.id }, 'search_index_failed')
+    })
+}
+
 /** GET /api/reports handler. Paginated listing with optional ?q= substring. */
 async function handleList(
   store: Store,
+  search: SearchIndex,
   request: FastifyRequest,
 ): Promise<PaginatedReportsResponse> {
   const parsed = listQuerySchema.parse(request.query)
   const page = parsed.page ?? 1
   const offset = (page - 1) * PAGE_SIZE
+  const query = typeof parsed.q === 'string' && parsed.q.length > 0 ? parsed.q : undefined
+  const { rows, total } = query === undefined
+    ? await listReportsUnfiltered(store, offset)
+    : await searchReportsWithFallback(store, search, query, page, request)
+  return { items: rows.map(storedToJson), page, page_size: PAGE_SIZE, total }
+}
+
+async function listReportsUnfiltered(
+  store: Store,
+  offset: number,
+): Promise<{ rows: StoredReport[]; total: number }> {
   const [rows, total] = await Promise.all([
-    store.listReports(PAGE_SIZE, offset, parsed.q, 'all'),
-    store.countFilteredEntries('reports', { query: parsed.q }),
+    store.listReports(PAGE_SIZE, offset, undefined, 'all'),
+    store.countFilteredEntries('reports', { query: undefined }),
   ])
-  const items = rows.map(storedToJson)
-  return { items, page, page_size: PAGE_SIZE, total }
+  return { rows, total }
+}
+
+async function searchReportsWithFallback(
+  store: Store,
+  search: SearchIndex,
+  query: string,
+  page: number,
+  request: FastifyRequest,
+): Promise<{ rows: StoredReport[]; total: number }> {
+  try {
+    const { ids, total } = await search.search('reports', query, PAGE_SIZE, page)
+    const rows = await store.getReportsByIds(ids)
+    return { rows, total }
+  } catch (err) {
+    request.log.error({ err, op: 'search', type: 'reports' }, 'search_failed_fallback')
+    const offset = (page - 1) * PAGE_SIZE
+    const [rows, total] = await Promise.all([
+      store.listReports(PAGE_SIZE, offset, query, 'all'),
+      store.countFilteredEntries('reports', { query }),
+    ])
+    return { rows, total }
+  }
 }
 
 /** GET /api/reports/:slug handler. Returns the report JSON or 404. */
@@ -273,6 +334,6 @@ async function handleGetOne(
 /** Register the three reports endpoints on the Fastify instance. */
 export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/reports', (req, reply) => handleCreate(app.store, app.limiter, req, reply))
-  app.get('/api/reports', (req) => handleList(app.store, req))
+  app.get('/api/reports', (req) => handleList(app.store, app.searchIndex, req))
   app.get('/api/reports/:slug', (req, reply) => handleGetOne(app.store, req, reply))
 }
