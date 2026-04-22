@@ -8,159 +8,23 @@
  *     `{ error: "invalid_input" | "rate_limited" | "unauthorized" | "internal_error" }`
  *     envelope or when the response is otherwise not usable.
  *
- * Endpoint URLs match the Round 1B contract; Round 3 reconciles any drift
- * between these paths and the final server route modules.
+ * Implementation kernel — request/error envelope/Paginated/buildQuery —
+ * lives in {@link ./httpClient}. This module owns the endpoint-specific
+ * input/response types and the wrapper functions per route.
  *
  * Input types deliberately INCLUDE `last_name` fields — the server discards
  * them silently (PRD 01 Story 11). Forms must still collect and transmit them.
  */
 
-/** Recognized server error kinds. */
-export type ApiErrorKind =
-  | 'invalid_input'
-  | 'rate_limited'
-  | 'unauthorized'
-  | 'internal_error'
+import { buildQuery, jsonBody, type Paginated, request } from './httpClient'
 
-/** Per-field validation messages returned on `invalid_input`. */
-export type ApiFieldErrors = Record<string, string>
-
-/** Thrown by every api wrapper on non-success or network failure. */
-export class ApiError extends Error {
-  public readonly kind: ApiErrorKind
-  public readonly status: number
-  public readonly fields?: ApiFieldErrors
-  public readonly retryAfterSeconds?: number
-
-  /** Construct a typed API error from a parsed server response. */
-  public constructor(opts: {
-    kind: ApiErrorKind
-    status: number
-    message?: string
-    fields?: ApiFieldErrors
-    retryAfterSeconds?: number
-  }) {
-    super(opts.message ?? opts.kind)
-    this.name = 'ApiError'
-    this.kind = opts.kind
-    this.status = opts.status
-    this.fields = opts.fields
-    this.retryAfterSeconds = opts.retryAfterSeconds
-  }
-}
-
-/** Raw server error envelope. */
-interface ErrorEnvelope {
-  error?: unknown
-  fields?: unknown
-  retry_after_seconds?: unknown
-  message?: unknown
-}
-
-const isRecord = (x: unknown): x is Record<string, unknown> =>
-  typeof x === 'object' && x !== null
-
-const asErrorKind = (value: unknown): ApiErrorKind => {
-  if (
-    value === 'invalid_input' ||
-    value === 'rate_limited' ||
-    value === 'unauthorized' ||
-    value === 'internal_error'
-  ) {
-    return value
-  }
-  return 'internal_error'
-}
-
-const asFields = (value: unknown): ApiFieldErrors | undefined => {
-  if (!isRecord(value)) return undefined
-  const out: ApiFieldErrors = {}
-  for (const [k, v] of Object.entries(value)) {
-    if (typeof v === 'string') out[k] = v
-  }
-  return Object.keys(out).length > 0 ? out : undefined
-}
-
-const asNumber = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined
-
-const buildApiErrorFromBody = (status: number, body: unknown): ApiError => {
-  const envelope: ErrorEnvelope = isRecord(body) ? body : {}
-  return new ApiError({
-    kind: asErrorKind(envelope.error),
-    status,
-    message: typeof envelope.message === 'string' ? envelope.message : undefined,
-    fields: asFields(envelope.fields),
-    retryAfterSeconds: asNumber(envelope.retry_after_seconds),
-  })
-}
-
-/**
- * Execute a request and decode its JSON body, throwing {@link ApiError} on
- * non-2xx responses or on network/parse failures.
- */
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(path, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
-        ...(init?.headers ?? {}),
-      },
-    })
-  } catch (cause) {
-    throw new ApiError({
-      kind: 'internal_error',
-      status: 0,
-      message: cause instanceof Error ? cause.message : 'network_error',
-    })
-  }
-
-  const text = await response.text()
-  const body: unknown = text.length > 0 ? safeParseJson(text) : null
-
-  if (!response.ok) {
-    throw buildApiErrorFromBody(response.status, body)
-  }
-  return body as T
-}
-
-const safeParseJson = (text: string): unknown => {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-const jsonBody = (payload: unknown): RequestInit => ({
-  method: 'POST',
-  body: JSON.stringify(payload),
-})
-
-const buildQuery = (params: Record<string, string | number | undefined>): string => {
-  const qs = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined) continue
-    qs.set(k, String(v))
-  }
-  const s = qs.toString()
-  return s.length > 0 ? `?${s}` : ''
-}
-
-/* ------------------------------------------------------------------------- */
-/* Shared result envelope types.                                             */
-/* ------------------------------------------------------------------------- */
-
-/** Pagination envelope used by list endpoints. */
-export interface Paginated<T> {
-  items: T[]
-  page: number
-  page_size: number
-  total: number
-}
+export {
+  ApiError,
+  buildApiErrorFromBody,
+  type ApiErrorKind,
+  type ApiFieldErrors,
+  type Paginated,
+} from './httpClient'
 
 /** A published "I helped" post as served by the public feed. */
 export interface HelpedPost {

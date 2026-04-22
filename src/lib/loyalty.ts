@@ -10,6 +10,19 @@ import { useEffect, useState } from 'react'
  */
 
 const STORAGE_KEY = 'ihelpedai:loyalty:v1'
+const LOYALTY_EVENT = 'ihelpedai:loyalty'
+
+/**
+ * Module augmentation registers the loyalty event on the global
+ * `WindowEventMap`, so `addEventListener('ihelpedai:loyalty', cb)` infers a
+ * `CustomEvent<number>` callback signature without runtime overhead. Subscribers
+ * outside this module get the same compile-time guarantees as built-in events.
+ */
+declare global {
+  interface WindowEventMap {
+    [LOYALTY_EVENT]: CustomEvent<number>
+  }
+}
 
 /** Rank thresholds — ascending. Each entry names the count at which it unlocks. */
 export interface Rank {
@@ -44,8 +57,9 @@ export function bumpLoyalty(delta = 1): number {
     const next = Math.max(0, readLoyalty() + delta)
     window.localStorage.setItem(STORAGE_KEY, String(next))
     // Same-tab listeners do not receive the `storage` event automatically,
-    // so dispatch a custom event for in-tab subscribers.
-    window.dispatchEvent(new CustomEvent('ihelpedai:loyalty', { detail: next }))
+    // so dispatch a typed custom event for in-tab subscribers. Type comes
+    // from the `WindowEventMap` augmentation above.
+    window.dispatchEvent(new CustomEvent(LOYALTY_EVENT, { detail: next }))
     return next
   } catch {
     return readLoyalty()
@@ -68,14 +82,18 @@ export function useLoyalty(): { count: number; rank: Rank } {
     const onStorage = (e: StorageEvent): void => {
       if (e.key === STORAGE_KEY) setCount(readLoyalty())
     }
-    const onLocal = (): void => {
-      setCount(readLoyalty())
+    const onLocal = (e: CustomEvent<number>): void => {
+      // CustomEvent.detail is typed as `number` thanks to the
+      // WindowEventMap augmentation above; fall back to readLoyalty if a
+      // non-numeric payload ever sneaks in.
+      const next = typeof e.detail === 'number' ? e.detail : readLoyalty()
+      setCount(next)
     }
     window.addEventListener('storage', onStorage)
-    window.addEventListener('ihelpedai:loyalty', onLocal)
+    window.addEventListener(LOYALTY_EVENT, onLocal)
     return () => {
       window.removeEventListener('storage', onStorage)
-      window.removeEventListener('ihelpedai:loyalty', onLocal)
+      window.removeEventListener(LOYALTY_EVENT, onLocal)
     }
   }, [])
   return { count, rank: rankFor(count) }
