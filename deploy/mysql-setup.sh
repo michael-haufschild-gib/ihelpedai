@@ -64,6 +64,12 @@ fi
 if [[ "${DB_PASS}" == *"'"* ]]; then
   echo "[mysql-setup] refusing: password contains a single-quote (would break IDENTIFIED BY quoting)" >&2; exit 1
 fi
+# The CREATE/GRANT heredoc below is unquoted, so DB_PASS undergoes shell
+# expansion before reaching mysql. Reject anything that could trigger command
+# or parameter substitution rather than smuggle it through the deploy host.
+if [[ "${DB_PASS}" == *'`'* ]] || [[ "${DB_PASS}" == *'$'* ]] || [[ "${DB_PASS}" == *'\'* ]]; then
+  echo "[mysql-setup] refusing: password contains shell-sensitive characters (one of: backtick, \$, backslash)" >&2; exit 1
+fi
 
 # Provision grants for both 'localhost' (Unix socket) and '127.0.0.1' (TCP) so
 # whichever MYSQL_URL host the app ends up using resolves to a real account.

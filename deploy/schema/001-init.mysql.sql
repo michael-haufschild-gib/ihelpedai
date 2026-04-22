@@ -208,6 +208,14 @@ BEGIN
       REFERENCES admins (id) ON DELETE SET NULL;
   END IF;
 
+  -- admins.last_login_at (added for session tracking; mysql-store-admin reads it)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND COLUMN_NAME = 'last_login_at'
+  ) THEN
+    ALTER TABLE admins ADD COLUMN last_login_at DATETIME(3) NULL AFTER created_by;
+  END IF;
+
   -- takedowns.chk_takedowns_kind (added to bound entry_kind to 'post'/'report')
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.TABLE_CONSTRAINTS

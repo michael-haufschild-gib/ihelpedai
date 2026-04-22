@@ -40,7 +40,7 @@ function buildCells(totals: LedgerTotals | null): readonly Cell[] {
 }
 
 /**
- * Dark strip below the hero showing four totals. Each number sits on a
+ * Dark strip below the hero showing three totals. Each number sits on a
  * translucent highlighter-style background block in its own accent colour —
  * matching the "inked receipt" feel of the paper-mode design.
  */

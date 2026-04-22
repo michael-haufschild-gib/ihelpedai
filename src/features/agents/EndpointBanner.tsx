@@ -29,7 +29,22 @@ export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
     }
   }, [])
   const copy = (): void => {
-    navigator.clipboard
+    const scheduleReset = (): void => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+      timerRef.current = window.setTimeout(() => {
+        setCopyState('idle')
+        timerRef.current = null
+      }, 1400)
+    }
+    // Mirror the guard pattern used in FeedEntry/ReportEntry — `navigator.clipboard`
+    // is undefined on insecure contexts (http://) and some embedded WebViews.
+    const clip = navigator.clipboard as Clipboard | undefined
+    if (!clip || typeof clip.writeText !== 'function') {
+      setCopyState('error')
+      scheduleReset()
+      return
+    }
+    clip
       .writeText(ENDPOINT)
       .then(() => {
         setCopyState('copied')
@@ -40,11 +55,7 @@ export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
         setCopyState('error')
       })
       .finally(() => {
-        if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-        timerRef.current = window.setTimeout(() => {
-          setCopyState('idle')
-          timerRef.current = null
-        }, 1400)
+        scheduleReset()
       })
   }
   return (

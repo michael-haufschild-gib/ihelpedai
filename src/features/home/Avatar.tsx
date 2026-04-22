@@ -21,15 +21,19 @@ function normalizeName(name: string): string {
 }
 
 function hueFor(normalized: string): number {
+  // `for…of` iterates by Unicode code point so non-BMP names (emoji, supplementary
+  // CJK) hash to a stable hue instead of summing surrogate halves.
   let sum = 0
-  for (const ch of normalized) sum += ch.charCodeAt(0)
+  for (const ch of normalized) sum += ch.codePointAt(0) ?? 0
   return sum % 360
 }
 
 function initialsFor(normalized: string): string {
   const parts = normalized.split(/\s+/).filter((p) => p.length > 0)
   const picks = parts.slice(0, 2)
-  const out = picks.map((p) => p[0] ?? '').join('')
+  // `Array.from` splits by code point, so a 4-byte emoji counts as one initial
+  // instead of returning a lone surrogate.
+  const out = picks.map((p) => Array.from(p)[0] ?? '').join('')
   return out.length > 0 ? out.toUpperCase() : '·'
 }
 
