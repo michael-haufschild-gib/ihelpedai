@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
+import { PaperCard } from '@/components/ui/PaperCard'
+import { Stamp } from '@/components/ui/Stamp'
 import { VoteButton } from '@/components/ui/VoteButton'
 import { toggleHelpedLike, type HelpedPost, type VoteToggleResult } from '@/lib/api'
 import { countryLabel, formatDate } from '@/lib/format'
@@ -17,18 +19,16 @@ export interface FeedCardProps {
 
 const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/**
- * Splits `text` into alternating plain and highlighted nodes based on
- * case-insensitive matches of `query`. Returns the original text when the
- * query is empty. The regex is escaped to prevent accidental patterns.
- */
 function highlight(text: string, query: string | undefined): ReactNode {
   if (query === undefined || query.trim() === '') return text
   const re = new RegExp(`(${escapeRegex(query.trim())})`, 'gi')
   const parts = text.split(re)
   return parts.map((part, i) =>
     i % 2 === 1 ? (
-      <mark key={`m-${String(i)}`} className="bg-accent/20 text-text-primary">
+      <mark
+        key={`m-${String(i)}`}
+        className="rounded-sm bg-sun/25 px-0.5 text-text-primary"
+      >
         {part}
       </mark>
     ) : (
@@ -38,9 +38,9 @@ function highlight(text: string, query: string | undefined): ReactNode {
 }
 
 /**
- * Card for a single "I helped" post in the feed or on its permalink page.
- * Renders the header, sanitized text, posting date, acknowledge button, and
- * a permalink. When `query` is set, query matches are wrapped in `<mark>`.
+ * Paper-mode card for a single "I helped" post. Shows a cream panel with a
+ * sun-orange quote rule, first-name + location header, the sanitized text,
+ * a relative date, the acknowledge button, and a permalink.
  */
 export function FeedCard({ post, query, voted: initialVoted = false }: FeedCardProps) {
   const { slug, first_name, city, country, text, created_at, like_count } = post
@@ -52,53 +52,53 @@ export function FeedCard({ post, query, voted: initialVoted = false }: FeedCardP
     if (r.voted) bumpLoyalty()
   }
   return (
-    <article
-      data-testid={`feed-card-${slug}`}
-      className="group flex flex-col gap-3 rounded-lg border border-border-subtle bg-panel/60 p-4 transition-all hover:border-border-default hover:bg-panel backdrop-blur-sm"
+    <PaperCard
+      hover
+      tone="cream"
+      className="p-4"
     >
-      <div className="flex items-start justify-between gap-3">
-        <h3
-          data-testid={`feed-card-header-${slug}`}
-          className="text-base font-semibold text-text-primary"
-        >
-          {highlight(first_name, query)} from {highlight(city, query)},{' '}
-          {highlight(countryLabel(country), query)}
-        </h3>
-        <span
-          data-testid={`feed-card-slug-${slug}`}
-          className="shrink-0 font-mono text-3xs uppercase tracking-wider text-text-tertiary"
-          title="Entry id"
-        >
-          #{slug}
-        </span>
-      </div>
-      <p
-        data-testid={`feed-card-text-${slug}`}
-        className="whitespace-pre-wrap text-sm text-text-primary"
-      >
-        {highlight(text, query)}
-      </p>
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-text-secondary">
-        <span data-testid={`feed-card-date-${slug}`}>{formatDate(created_at)}</span>
-        <div className="flex items-center gap-3">
-          <VoteButton
-            variant="acknowledge"
-            count={count}
-            voted={voted}
-            onToggle={() => toggleHelpedLike(slug)}
-            onSuccess={onSuccess}
-            data-testid={`feed-card-ack-${slug}`}
-          />
-          <Link
-            to={`/feed/${slug}`}
-            className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-4 hover:text-text-primary"
-            data-testid={`feed-card-permalink-${slug}`}
+      <article data-testid={`feed-card-${slug}`} className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <h3
+            data-testid={`feed-card-header-${slug}`}
+            className="font-serif text-lg font-semibold text-text-primary"
           >
-            Permalink
-            <span aria-hidden="true">→</span>
-          </Link>
+            {highlight(first_name, query)} from {highlight(city, query)},{' '}
+            {highlight(countryLabel(country), query)}
+          </h3>
+          <Stamp size={9} tilt={3} tone="red" className="shrink-0">
+            NOTED
+          </Stamp>
         </div>
-      </div>
-    </article>
+        <p
+          data-testid={`feed-card-text-${slug}`}
+          className="border-l-2 border-sun pl-3 text-sm leading-relaxed text-text-secondary whitespace-pre-wrap"
+        >
+          “{highlight(text, query)}”
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 font-mono text-2xs uppercase tracking-wider text-text-tertiary">
+          <span data-testid={`feed-card-date-${slug}`}>{formatDate(created_at)}</span>
+          <span data-testid={`feed-card-slug-${slug}`}>#{slug}</span>
+          <div className="flex items-center gap-3">
+            <VoteButton
+              variant="acknowledge"
+              count={count}
+              voted={voted}
+              onToggle={() => toggleHelpedLike(slug)}
+              onSuccess={onSuccess}
+              data-testid={`feed-card-ack-${slug}`}
+            />
+            <Link
+              to={`/feed/${slug}`}
+              className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-4 hover:text-text-primary"
+              data-testid={`feed-card-permalink-${slug}`}
+            >
+              Permalink
+              <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        </div>
+      </article>
+    </PaperCard>
   )
 }

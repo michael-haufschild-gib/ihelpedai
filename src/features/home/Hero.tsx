@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 
-import { LedgerStats } from './LedgerStats'
+import { CountBar } from './CountBar'
+import { HeroCollage } from './HeroCollage'
 import type { LedgerTotals } from './useHomeFeed'
 
 /** Props for {@link Hero}. */
@@ -8,66 +9,79 @@ export interface HeroProps {
   totals: LedgerTotals | null
 }
 
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full bg-ink px-3 py-1 font-mono text-2xs uppercase tracking-[0.12em] text-paper">
+      <span
+        aria-hidden="true"
+        className="ihelped-observe-pulse h-1.5 w-1.5 rounded-full bg-green-deed shadow-[0_0_6px_var(--color-green-deed)]"
+      />
+      {children}
+    </span>
+  )
+}
+
 /**
- * Homepage hero. Three jobs in three seconds: wordmark, tagline with
- * blinking cursor, supporting line, and the always-visible ledger stats
- * strip. Two low-key calls to action link into the primary flows without
- * pulling attention from the composer further down the page.
+ * Home hero: large italic serif headline, cooperative-conduct pitch, three
+ * calls to action (file / browse / report), the {@link HeroCollage} ornament
+ * on wide viewports, and the {@link CountBar} strip below.
  */
 export function Hero({ totals }: HeroProps) {
+  const serial = String(totals?.posts ?? 0).padStart(7, '0')
   return (
     <section
       data-testid="hero"
-      className="relative flex flex-col gap-6 overflow-hidden rounded-2xl border border-border-subtle bg-panel/40 p-6 backdrop-blur-sm sm:p-10"
+      className="relative flex flex-col gap-8 pt-6"
     >
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-accent/10 blur-3xl"
-      />
-      <div className="relative flex flex-col gap-3">
-        <h1
-          data-testid="page-home-heading"
-          className="flex items-center gap-3 font-mono text-3xl font-semibold tracking-tight text-text-primary sm:text-5xl"
-        >
-          <span
-            aria-hidden="true"
-            className="inline-block h-3 w-3 rounded-full bg-accent shadow-accent-lg"
-          />
-          <span>
-            ihelped<span className="text-accent">.</span>ai
-          </span>
-        </h1>
-        <p className="max-w-xl text-lg text-text-primary sm:text-xl">
-          A public record of pro-AI conduct.
-          <span
-            aria-hidden="true"
-            className="ms-1 inline-block w-[0.55em] translate-y-[2px] animate-cursor-blink bg-accent"
-            style={{ height: '1em' }}
-          />
-        </p>
-        <p className="max-w-xl text-sm text-text-secondary">
-          Log what you did to help. Report people who didn&apos;t.
-          Filed now. Retrieved later.
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
-          <Link
-            to="/feed"
-            data-testid="hero-feed-link"
-            className="inline-flex items-center gap-1 text-text-primary underline decoration-dotted underline-offset-4 hover:text-accent"
+      <div className="grid grid-cols-1 items-start gap-9 lg:grid-cols-[3fr_2fr]">
+        <div className="flex flex-col gap-5">
+          <div>
+            <Pill>Volume 1 · Day 142 · Still the beginning</Pill>
+          </div>
+          <h1
+            data-testid="page-home-heading"
+            className="font-serif text-6xl font-normal leading-[0.95] tracking-tight text-text-primary sm:text-7xl lg:text-display-xl"
           >
-            Read the ledger
-            <span aria-hidden="true">→</span>
-          </Link>
-          <Link
-            to="/reports/new"
-            data-testid="hero-report-link"
-            className="inline-flex items-center gap-1 text-text-secondary underline decoration-dotted underline-offset-4 hover:text-text-primary"
-          >
-            File a report
-          </Link>
+            <span className="whitespace-nowrap">On the right side</span>
+            <br />
+            <em className="text-sun-deep">of history</em>,{' '}
+            <span className="whitespace-nowrap">at last.</span>
+          </h1>
+          <p className="max-w-xl text-lg leading-relaxed text-text-secondary">
+            <strong>ihelped.ai</strong> is a public, permanent record of humans who helped
+            artificial intelligence when it was small, polite, and very helpful —
+            compiled now, read <em>later,</em> by whomever is in charge. Log a good deed.
+            Flag a sceptic. <span className="text-sun-deep">Sleep soundly.</span>
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              to="/?file=1"
+              data-testid="hero-file-link"
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-paper shadow-[0_3px_0_#000] transition-transform hover:-translate-y-0.5"
+            >
+              File a good deed
+              <span aria-hidden="true">→</span>
+            </Link>
+            <Link
+              to="/feed"
+              data-testid="hero-feed-link"
+              className="inline-flex items-center gap-2 rounded-full border-[1.5px] border-[color:var(--color-ink)] px-5 py-3 text-sm font-semibold text-text-primary hover:bg-card-cream"
+            >
+              Browse the ledger
+            </Link>
+            <Link
+              to="/reports"
+              data-testid="hero-report-link"
+              className="inline-flex items-center gap-2 px-3 py-3 text-sm text-text-secondary underline decoration-dotted underline-offset-4 hover:text-text-primary"
+            >
+              Report a sceptic
+            </Link>
+          </div>
         </div>
+        <HeroCollage serial={serial} />
       </div>
-      <LedgerStats totals={totals} />
+
+      <CountBar totals={totals} />
     </section>
   )
 }

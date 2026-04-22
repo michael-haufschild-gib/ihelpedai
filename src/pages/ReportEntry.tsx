@@ -101,7 +101,7 @@ export function ReportEntry() {
     <section data-testid="page-report-entry" className="flex flex-col gap-6">
       <h1
         data-testid="page-report-entry-heading"
-        className="text-2xl font-semibold text-text-primary"
+        className="font-serif text-5xl font-normal tracking-tight text-text-primary"
       >
         Report
       </h1>

@@ -121,7 +121,7 @@ export function FeedEntry() {
     <section data-testid="page-feed-entry" className="flex flex-col gap-4">
       <h1
         data-testid="page-feed-entry-heading"
-        className="text-2xl font-semibold text-text-primary"
+        className="font-serif text-5xl font-normal tracking-tight text-text-primary"
       >
         Entry
       </h1>

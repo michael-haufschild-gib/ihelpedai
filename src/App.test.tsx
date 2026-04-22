@@ -11,11 +11,11 @@ describe('App', () => {
         <App />
       </MemoryRouter>,
     )
-    expect(screen.getByTestId('page-home-heading')).toHaveTextContent('ihelped.ai')
+    expect(screen.getByTestId('page-home-heading')).toHaveTextContent('right side')
     expect(screen.getByTestId('helped-preview')).toHaveTextContent('Preview')
     expect(screen.getByTestId('site-nav')).toBeInTheDocument()
     expect(screen.getByTestId('footer-tagline')).toHaveTextContent(
-      'ihelped.ai — since 2025. The AI will read this eventually.',
+      'THE ARCHIVE OF COOPERATIVE CONDUCT',
     )
   })
 
