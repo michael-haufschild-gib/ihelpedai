@@ -153,65 +153,74 @@ const storedToJson = (row: StoredReport): ReportJson => {
 
 const buildPublicUrl = (slug: string): string => `${config.PUBLIC_URL}/reports/${slug}`
 
-/** Enforce per-IP hourly/daily and global hourly rate limits. Replies with 429 on denial. */
+/**
+ * Enforce per-IP hourly/daily and global hourly rate limits atomically.
+ * Replies 429 with the first denying bucket's retry-after on denial. The
+ * atomic `checkAll` avoids a subtle fairness bug present with sequential
+ * checks: when the global cap rejects, the user's per-IP buckets would
+ * still have been incremented by the earlier passes.
+ */
 async function checkRateLimits(
   limiter: RateLimiter,
   reply: FastifyReply,
   ipHash: string,
 ): Promise<boolean> {
-  const perIpHour = await limiter.check(
-    `reports:ip:hour:${ipHash}`,
-    effectiveLimit(FORM_LIMIT_PER_HOUR),
-    HOUR_SECONDS,
-  )
-  if (!perIpHour.allowed) {
-    await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: perIpHour.retryAfter })
-    return false
-  }
-  const perIpDay = await limiter.check(
-    `reports:ip:day:${ipHash}`,
-    effectiveLimit(FORM_LIMIT_PER_DAY),
-    DAY_SECONDS,
-  )
-  if (!perIpDay.allowed) {
-    await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: perIpDay.retryAfter })
-    return false
-  }
-  const global = await limiter.check(
-    GLOBAL_BUCKET,
-    effectiveLimit(GLOBAL_LIMIT_PER_HOUR),
-    HOUR_SECONDS,
-  )
-  if (!global.allowed) {
-    await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: global.retryAfter })
+  const decision = await limiter.checkAll([
+    {
+      bucket: `reports:ip:hour:${ipHash}`,
+      limit: effectiveLimit(FORM_LIMIT_PER_HOUR),
+      windowSeconds: HOUR_SECONDS,
+    },
+    {
+      bucket: `reports:ip:day:${ipHash}`,
+      limit: effectiveLimit(FORM_LIMIT_PER_DAY),
+      windowSeconds: DAY_SECONDS,
+    },
+    {
+      bucket: GLOBAL_BUCKET,
+      limit: effectiveLimit(GLOBAL_LIMIT_PER_HOUR),
+      windowSeconds: HOUR_SECONDS,
+    },
+  ])
+  if (!decision.allowed) {
+    await reply
+      .code(429)
+      .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
     return false
   }
   return true
 }
 
-/** POST /api/reports handler. Validates, rate-limits, sanitizes, stores, returns 201. */
+/**
+ * POST /api/reports handler. Validates, rate-limits, sanitizes, stores,
+ * returns 201. All responses go through `reply.code().send()` and the
+ * function returns `void` — matching the convention used by the helped/agents
+ * route modules. Mixing explicit reply.send() with Fastify's return-value
+ * auto-send invites accidental double-send bugs, so the codebase standardises
+ * on the explicit form.
+ */
 async function handleCreate(
   store: Store,
   limiter: RateLimiter,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<ReportCreatedResponse | undefined> {
+): Promise<void> {
   const freeze = await store.getSetting('submission_freeze')
   if (freeze === 'true') {
     await reply.code(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
-    return undefined
+    return
   }
   const body = bodySchema.parse(request.body)
   const ipHash = hashIp(request.ip)
 
-  if (!(await checkRateLimits(limiter, reply, ipHash))) return undefined
+  if (!(await checkRateLimits(limiter, reply, ipHash))) return
 
   const sanitized = sanitize(body.what_they_did)
   if (sanitized.overRedacted) {
     await reply
       .code(400)
       .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
-    return undefined
+    return
   }
 
   // `last_name` fields from both reporter and reported-person are validated
@@ -230,12 +239,12 @@ async function handleCreate(
     source: 'form',
   })
   indexReportFireAndForget(request, storedRow)
-  reply.code(201)
-  return {
+  const created: ReportCreatedResponse = {
     slug: storedRow.id,
     public_url: buildPublicUrl(storedRow.id),
     status: 'posted',
   }
+  await reply.code(201).send(created)
 }
 
 /**
@@ -256,7 +265,8 @@ async function handleList(
   store: Store,
   search: SearchIndex,
   request: FastifyRequest,
-): Promise<PaginatedReportsResponse> {
+  reply: FastifyReply,
+): Promise<void> {
   const parsed = listQuerySchema.parse(request.query)
   const page = parsed.page ?? 1
   const offset = (page - 1) * PAGE_SIZE
@@ -265,7 +275,13 @@ async function handleList(
   const { rows, total } = query === undefined
     ? await listReportsUnfiltered(store, offset)
     : await searchReportsWithFallback(store, search, query, page, request)
-  return { items: rows.map(storedToJson), page, page_size: PAGE_SIZE, total }
+  const body: PaginatedReportsResponse = {
+    items: rows.map(storedToJson),
+    page,
+    page_size: PAGE_SIZE,
+    total,
+  }
+  await reply.code(200).send(body)
 }
 
 async function listReportsUnfiltered(
@@ -316,23 +332,23 @@ async function handleGetOne(
   store: Store,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<ReportJson | undefined> {
+): Promise<void> {
   const parsed = slugParamsSchema.safeParse(request.params)
   if (!parsed.success) {
     await reply.code(404).send({ error: 'not_found' })
-    return undefined
+    return
   }
   const row = await store.getReport(parsed.data.slug)
   if (row === null) {
     await reply.code(404).send({ error: 'not_found' })
-    return undefined
+    return
   }
-  return storedToJson(row)
+  await reply.code(200).send(storedToJson(row))
 }
 
 /** Register the three reports endpoints on the Fastify instance. */
 export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/reports', (req, reply) => handleCreate(app.store, app.limiter, req, reply))
-  app.get('/api/reports', (req) => handleList(app.store, app.searchIndex, req))
+  app.get('/api/reports', (req, reply) => handleList(app.store, app.searchIndex, req, reply))
   app.get('/api/reports/:slug', (req, reply) => handleGetOne(app.store, req, reply))
 }

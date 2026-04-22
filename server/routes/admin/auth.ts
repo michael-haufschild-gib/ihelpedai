@@ -5,12 +5,40 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../../config.js'
+import type { BucketSpec } from '../../rate-limit/index.js'
+import { isAcceptablePassword } from './password-strength.js'
 import { requireAdmin, SESSION_COOKIE, sessionExpiry } from './middleware.js'
 
 const BCRYPT_ROUNDS = 12
 const LOGIN_THROTTLE_MAX = 5
 const LOGIN_THROTTLE_WINDOW_S = 15 * 60
 const RESET_TOKEN_EXPIRY_MS = 60 * 60 * 1000
+
+// Multi-bucket rate limits for forgot-password. Each bucket caps one abuse
+// vector: IP rotation, victim bombing, and global volume. If any bucket
+// denies, the reset email is not sent; the handler still returns 200 so
+// attackers cannot distinguish throttled from accepted.
+const HOUR_S = 3600
+const DAY_S = 24 * HOUR_S
+const FORGOT_IP_WINDOW_LIMIT = 5
+const FORGOT_IP_WINDOW_S = 15 * 60
+const FORGOT_IP_DAY_LIMIT = 20
+const FORGOT_EMAIL_HOUR_LIMIT = 3
+const FORGOT_EMAIL_DAY_LIMIT = 5
+const FORGOT_GLOBAL_HOUR_LIMIT = 20
+const FORGOT_GLOBAL_DAY_LIMIT = 50
+
+/** Multi-bucket rate-limit specs for a single forgot-password request. */
+function forgotPasswordBuckets(ipHash: string, emailHash: string): BucketSpec[] {
+  return [
+    { bucket: `admin:forgot-password:ip:${ipHash}:window`, limit: FORGOT_IP_WINDOW_LIMIT, windowSeconds: FORGOT_IP_WINDOW_S },
+    { bucket: `admin:forgot-password:ip:${ipHash}:day`, limit: FORGOT_IP_DAY_LIMIT, windowSeconds: DAY_S },
+    { bucket: `admin:forgot-password:email:${emailHash}:hour`, limit: FORGOT_EMAIL_HOUR_LIMIT, windowSeconds: HOUR_S },
+    { bucket: `admin:forgot-password:email:${emailHash}:day`, limit: FORGOT_EMAIL_DAY_LIMIT, windowSeconds: DAY_S },
+    { bucket: 'admin:forgot-password:global:hour', limit: FORGOT_GLOBAL_HOUR_LIMIT, windowSeconds: HOUR_S },
+    { bucket: 'admin:forgot-password:global:day', limit: FORGOT_GLOBAL_DAY_LIMIT, windowSeconds: DAY_S },
+  ]
+}
 
 const loginInput = z.object({
   email: z.string().email().max(255),
@@ -21,19 +49,11 @@ const resetRequestInput = z.object({
   email: z.string().email().max(255),
 })
 
-const WEAK_PASSWORDS = new Set([
-  'password1234', 'password12345', '123456789012',
-  'qwertyuiopas', 'admin1234567', 'changeme1234',
-  'adminadmin12', 'welcome12345', 'letmein123456',
-  'iloveyou1234', 'sunshine12345', 'trustno11234',
-  'ihelpedai123', 'ihelpedadmin',
-])
-
 const resetPasswordInput = z.object({
   token: z.string().min(1),
   password: z
     .string().min(12).max(255)
-    .refine((v) => !WEAK_PASSWORDS.has(v.toLowerCase()), 'weak_password'),
+    .refine((v) => isAcceptablePassword(v), 'weak_password'),
   confirm_password: z.string().min(1),
 })
 
@@ -41,7 +61,7 @@ const changePasswordInput = z.object({
   current_password: z.string().min(1),
   new_password: z
     .string().min(12).max(255)
-    .refine((v) => !WEAK_PASSWORDS.has(v.toLowerCase()), 'weak_password'),
+    .refine((v) => isAcceptablePassword(v), 'weak_password'),
 })
 
 /** Hash a string with SHA-256 using the server salt. */
@@ -102,11 +122,8 @@ export async function adminPasswordRoutes(app: FastifyInstance): Promise<void> {
     const parsed = resetRequestInput.safeParse(request.body)
     if (!parsed.success) { reply.status(400).send({ error: 'invalid_input' }); return }
     const ipHash = hashWithSalt(request.ip ?? 'unknown')
-    const throttle = await limiter.check(
-      `admin:forgot-password:${ipHash}`,
-      LOGIN_THROTTLE_MAX,
-      LOGIN_THROTTLE_WINDOW_S,
-    )
+    const emailHash = hashWithSalt(parsed.data.email.toLowerCase())
+    const throttle = await limiter.checkAll(forgotPasswordBuckets(ipHash, emailHash))
     // Always respond 200 so attackers cannot distinguish throttled from
     // fresh requests (no email-existence probe, no throttle probe).
     reply.status(200).send({ message: 'If an admin account exists for this email, a reset link has been sent.' })

@@ -4,6 +4,20 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
+import type { BucketSpec } from '../rate-limit/index.js'
+
+const HOUR_SECONDS = 3600
+const DAY_SECONDS = 24 * HOUR_SECONDS
+
+// Multi-bucket rate limits: three layers protect the outbound mail budget
+// against abuse (per-victim / per-attacker / global). Adjust these before
+// touching any code paths below.
+const PER_EMAIL_LIMIT = 3
+const PER_EMAIL_WINDOW_S = DAY_SECONDS
+const PER_IP_HOUR_LIMIT = 3
+const PER_IP_DAY_LIMIT = 10
+const GLOBAL_HOUR_LIMIT = 30
+const GLOBAL_DAY_LIMIT = 100
 
 const issueSchema = z.object({
   email: z.string().email().max(200),
@@ -40,12 +54,27 @@ type ReplyShape = {
 }
 
 /**
+ * Build the multi-bucket rate-limit specs for a single issue request. Three
+ * layers bound outbound mail volume so no single actor (victim, attacker, or
+ * the system as a whole) can drive enough email to risk blacklisting.
+ */
+function issueBuckets(emailHash: string, ipHash: string): BucketSpec[] {
+  return [
+    { bucket: `api_key_issue:email:${emailHash}`, limit: PER_EMAIL_LIMIT, windowSeconds: PER_EMAIL_WINDOW_S },
+    { bucket: `api_key_issue:ip:${ipHash}:hour`, limit: PER_IP_HOUR_LIMIT, windowSeconds: HOUR_SECONDS },
+    { bucket: `api_key_issue:ip:${ipHash}:day`, limit: PER_IP_DAY_LIMIT, windowSeconds: DAY_SECONDS },
+    { bucket: 'api_key_issue:global:hour', limit: GLOBAL_HOUR_LIMIT, windowSeconds: HOUR_SECONDS },
+    { bucket: 'api_key_issue:global:day', limit: GLOBAL_DAY_LIMIT, windowSeconds: DAY_SECONDS },
+  ]
+}
+
+/**
  * Routes for API key self-service issuance (PRD 01 Story 7).
  * Registers:
  *   POST /api/api-keys/issue   — send a new API key by email
  */
 export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
-  async function handleIssue(body: unknown, reply: ReplyShape): Promise<void> {
+  async function handleIssue(body: unknown, ipHash: string, reply: ReplyShape): Promise<void> {
     const result = issueSchema.safeParse(body)
     if (!result.success) {
       const fields: Record<string, string> = {}
@@ -59,7 +88,7 @@ export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
     }
     const parsed = result.data
     const emailHash = hashWithSalt(parsed.email.toLowerCase())
-    const decision = await app.limiter.check(`api_key_issue:${emailHash}`, 3, 24 * 3600)
+    const decision = await app.limiter.checkAll(issueBuckets(emailHash, ipHash))
     if (!decision.allowed) {
       reply
         .status(429)
@@ -95,6 +124,7 @@ export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
   }
 
   app.post('/api/api-keys/issue', async (request, reply) => {
-    await handleIssue(request.body, reply)
+    const ipHash = hashWithSalt(request.ip ?? 'unknown')
+    await handleIssue(request.body, ipHash, reply)
   })
 }

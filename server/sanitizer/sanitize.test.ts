@@ -1,7 +1,22 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
 
+import { SANITIZER_PARITY_CASES } from '../../src/lib/__fixtures__/sanitizer-parity-cases.js'
 import { sanitize, EXCEPTIONS } from './sanitize.js'
+
+describe('sanitize — parity fixture (server side)', () => {
+  // The same cases run on the client mirror in
+  // src/lib/sanitizePreview.test.ts — drift on either side fails both.
+  for (const c of SANITIZER_PARITY_CASES) {
+    it(c.name, () => {
+      const result = sanitize(c.input)
+      expect(result.clean).toBe(c.expectedClean)
+      expect(result.overRedacted).toBe(c.expectedOverRedacted)
+      // Idempotence — sanitising twice equals sanitising once.
+      expect(sanitize(result.clean).clean).toBe(result.clean)
+    })
+  }
+})
 
 describe('sanitize — Story 9 rules', () => {
   it('redacts two consecutive capitalized words', () => {

@@ -51,7 +51,7 @@ function buildMailer(): Mailer {
     if (config.SMTP_URL === undefined || config.SMTP_URL === '') {
       throw new Error('MAILER=smtp requires SMTP_URL')
     }
-    return new SmtpMailer(config.SMTP_URL, config.MAIL_FROM)
+    return SmtpMailer.fromUrl(config.SMTP_URL, config.MAIL_FROM)
   }
   return new FileMailer(config.MAIL_FROM)
 }
@@ -92,5 +92,15 @@ export function registerDeps(app: FastifyInstance): void {
   })
   // Release backing resources on graceful shutdown (mysql2 pool, sqlite
   // handle, redis client). Without this the process hangs on SIGTERM.
-  app.addHook('onClose', async (instance) => { await instance.store.close() })
+  app.addHook('onClose', async (instance) => {
+    await instance.store.close()
+    // Limiter only owns a network handle when it's the Redis impl. The
+    // memory limiter exposes `dispose` to clear its sweeper interval; the
+    // Redis impl's `dispose` quits the connection. Both are safe no-ops if
+    // the connection / interval was already torn down.
+    const limiter = instance.limiter as { dispose?: () => void | Promise<void> }
+    if (typeof limiter.dispose === 'function') {
+      await limiter.dispose()
+    }
+  })
 }

@@ -95,27 +95,32 @@ const toWire = (p: Post): HelpedPostWire => ({
   created_at: p.createdAt,
 })
 
-/** Runs the three rate-limit checks. Returns retry-after seconds if any bucket denies. */
+/**
+ * Runs all three rate-limit buckets atomically. Returns retry-after seconds
+ * if any bucket denies. Atomicity matters: with sequential `check` calls a
+ * burst that trips the global cap would still consume the user's per-IP
+ * hourly + daily quota even though the request was rejected. `checkAll`
+ * either records the hit against every bucket or none.
+ */
 async function checkRateLimits(limiter: RateLimiter, ipHash: string): Promise<number | null> {
-  const hour = await limiter.check(
-    `helped:post:hour:${ipHash}`,
-    effectiveLimit(PER_IP_HOURLY_LIMIT),
-    ONE_HOUR_SECONDS,
-  )
-  if (!hour.allowed) return hour.retryAfter
-  const day = await limiter.check(
-    `helped:post:day:${ipHash}`,
-    effectiveLimit(PER_IP_DAILY_LIMIT),
-    ONE_DAY_SECONDS,
-  )
-  if (!day.allowed) return day.retryAfter
-  const global = await limiter.check(
-    'helped:post:hour:global',
-    effectiveLimit(GLOBAL_HOURLY_LIMIT),
-    ONE_HOUR_SECONDS,
-  )
-  if (!global.allowed) return global.retryAfter
-  return null
+  const decision = await limiter.checkAll([
+    {
+      bucket: `helped:post:hour:${ipHash}`,
+      limit: effectiveLimit(PER_IP_HOURLY_LIMIT),
+      windowSeconds: ONE_HOUR_SECONDS,
+    },
+    {
+      bucket: `helped:post:day:${ipHash}`,
+      limit: effectiveLimit(PER_IP_DAILY_LIMIT),
+      windowSeconds: ONE_DAY_SECONDS,
+    },
+    {
+      bucket: 'helped:post:hour:global',
+      limit: effectiveLimit(GLOBAL_HOURLY_LIMIT),
+      windowSeconds: ONE_HOUR_SECONDS,
+    },
+  ])
+  return decision.allowed ? null : decision.retryAfter
 }
 
 /** POST /api/helped/posts handler. Validates, sanitizes, rate-limits, and stores. */

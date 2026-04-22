@@ -22,6 +22,21 @@ type EnvShape = {
   REDIS_URL?: string
 }
 
+/**
+ * Parse a comma-separated `ADMIN_SESSION_SECRET` into an ordered list. The
+ * first element signs newly issued cookies; later elements are accepted by
+ * `@fastify/cookie` for verification only. This lets a deploy add a fresh
+ * secret to position 0, leave the previous one in position 1 until existing
+ * sessions expire, then drop it on the next deploy. Whitespace and empty
+ * entries are stripped so that `KEY1, KEY2 ,, KEY3` parses cleanly.
+ */
+export function parseAdminSessionSecrets(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
+
 /** Add a `custom` issue tied to a single field with a short message. */
 function addRequired(ctx: RefinementCtx, path: string, message: string): void {
   ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message })
@@ -35,7 +50,15 @@ const PROD_DEFAULTS: ReadonlyArray<{ key: 'IP_HASH_SALT' | 'ADMIN_SESSION_SECRET
 function refineProductionSecrets(env: EnvShape, ctx: RefinementCtx): void {
   if (env.NODE_ENV !== 'production') return
   for (const { key, devValue } of PROD_DEFAULTS) {
-    if (env[key] === devValue) {
+    // ADMIN_SESSION_SECRET supports rotation via comma-separated values, so
+    // any individual entry matching the dev default is the failure condition,
+    // not equality of the raw string.
+    if (key === 'ADMIN_SESSION_SECRET') {
+      const parts = parseAdminSessionSecrets(env[key])
+      if (parts.length === 0 || parts.some((p) => p === devValue)) {
+        addRequired(ctx, key, `Production must set ${key} to a non-default value`)
+      }
+    } else if (env[key] === devValue) {
       addRequired(ctx, key, `Production must set ${key} to a non-default value`)
     }
   }

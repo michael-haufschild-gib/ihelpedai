@@ -120,11 +120,13 @@ function buildNewReport(body: AgentReportBody, sanitizedText: string): NewReport
  */
 export async function agentsRoutes(app: FastifyInstance): Promise<void> {
   async function checkAgentRateLimit(keyHash: string): Promise<number | null> {
-    const hour = await app.limiter.check(`agent_report:hour:${keyHash}`, 60, 3600)
-    if (!hour.allowed) return hour.retryAfter
-    const day = await app.limiter.check(`agent_report:day:${keyHash}`, 1000, 86400)
-    if (!day.allowed) return day.retryAfter
-    return null
+    // Atomic across the hour + day buckets so a 60/h overage does not also
+    // burn a slot of the daily 1000 cap.
+    const decision = await app.limiter.checkAll([
+      { bucket: `agent_report:hour:${keyHash}`, limit: 60, windowSeconds: 3600 },
+      { bucket: `agent_report:day:${keyHash}`, limit: 1000, windowSeconds: 86400 },
+    ])
+    return decision.allowed ? null : decision.retryAfter
   }
 
   async function handleReport(body: unknown, reply: ReplyShape, logger: FastifyInstance['log']): Promise<void> {

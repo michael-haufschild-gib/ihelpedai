@@ -215,9 +215,11 @@ export class SqliteStore implements Store {
 
   async listPosts(limit: number, offset: number, query?: string): Promise<Post[]> {
     const hasQuery = typeof query === 'string' && query.trim() !== ''
+    // `id DESC` as a deterministic tie-breaker — matches MysqlStore so dev and
+    // prod paginate identically when multiple rows share a created_at ms.
     const sql = hasQuery
-      ? `SELECT * FROM posts WHERE status = 'live' AND (first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?`
-      : `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      ? `SELECT * FROM posts WHERE status = 'live' AND (first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?) ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
+      : `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
     const rows = hasQuery
       ? (this.db.prepare(sql).all(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, limit, offset) as PostRow[])
       : (this.db.prepare(sql).all(limit, offset) as PostRow[])
@@ -234,7 +236,8 @@ export class SqliteStore implements Store {
       params.push(q, q, q, q, q)
     }
     params.push(limit, offset)
-    return (this.db.prepare(`SELECT * FROM reports WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params) as ReportRow[]).map(reportFromRow)
+    // `id DESC` as a deterministic tie-breaker — matches MysqlStore.
+    return (this.db.prepare(`SELECT * FROM reports WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(...params) as ReportRow[]).map(reportFromRow)
   }
 
   async listAgentReports(limit: number, offset: number): Promise<Report[]> {

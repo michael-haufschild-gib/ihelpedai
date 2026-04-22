@@ -6,7 +6,7 @@ import cors from '@fastify/cors'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { ZodError } from 'zod'
 
-import { config } from './config.js'
+import { config, parseAdminSessionSecrets } from './config.js'
 import { registerDeps } from './deps.js'
 import { registerRoutes } from './routes/index.js'
 
@@ -16,9 +16,14 @@ import { registerRoutes } from './routes/index.js'
  */
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
-    // Trust nginx/X-Forwarded-For so `request.ip` is the real client address.
-    // Without this, votes and rate-limits collapse to the proxy IP in prod.
-    trustProxy: true,
+    // Trust X-Forwarded-For only when the immediate peer is loopback — i.e.
+    // nginx running on the same host. `trustProxy: true` would honour the
+    // header from any source, letting any inbound request fabricate its own
+    // client IP and defeat the per-IP rate limit + vote dedupe. Loopback IPv4
+    // and IPv6 are listed because nginx may forward over either depending on
+    // upstream block configuration. Tests using `app.inject` default to
+    // `127.0.0.1` as the simulated peer so this remains compatible.
+    trustProxy: ['127.0.0.1', '::1'],
     logger: {
       level: config.NODE_ENV === 'production' ? 'info' : 'debug',
       transport:
@@ -28,7 +33,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     },
   })
 
-  await app.register(cookie, { secret: config.ADMIN_SESSION_SECRET })
+  // @fastify/cookie accepts a string or string[]. With an array, the first
+  // entry signs new cookies and any entry verifies existing ones — that is
+  // the rotation primitive. ADMIN_SESSION_SECRET parses comma-separated so a
+  // deploy can prepend a new secret while old sessions are still valid, then
+  // drop the previous secret on a later deploy without invalidating anyone.
+  const sessionSecrets = parseAdminSessionSecrets(config.ADMIN_SESSION_SECRET)
+  await app.register(cookie, { secret: sessionSecrets })
   await app.register(cors, {
     origin: [config.PUBLIC_URL],
     credentials: true,

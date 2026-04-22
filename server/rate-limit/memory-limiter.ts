@@ -1,4 +1,4 @@
-import type { RateLimitDecision, RateLimiter } from './index.js'
+import type { BucketSpec, RateLimitDecision, RateLimiter } from './index.js'
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -23,26 +23,42 @@ export class MemoryRateLimiter implements RateLimiter {
   }
 
   async check(bucket: string, limit: number, windowSeconds: number): Promise<RateLimitDecision> {
-    if (
-      !Number.isFinite(limit) ||
-      limit < 1 ||
-      !Number.isFinite(windowSeconds) ||
-      windowSeconds <= 0
-    ) {
-      return { allowed: false, retryAfter: 1 }
-    }
+    return this.checkAll([{ bucket, limit, windowSeconds }])
+  }
+
+  async checkAll(specs: ReadonlyArray<BucketSpec>): Promise<RateLimitDecision> {
+    if (specs.length === 0) return { allowed: true, retryAfter: 0 }
     const now = Date.now()
-    const existing = this.store.get(bucket)
-    if (existing === undefined || existing.expiresAt <= now) {
-      this.store.set(bucket, { count: 1, expiresAt: now + windowSeconds * 1000 })
-      return { allowed: true, retryAfter: 0 }
+    // First pass: peek at every bucket's current state and decide whether
+    // this request would be allowed across all of them. No mutation happens
+    // until the second pass — that is what makes `checkAll` atomic.
+    const previews: { spec: BucketSpec; existing: Record | undefined }[] = []
+    for (const spec of specs) {
+      if (
+        !Number.isFinite(spec.limit) ||
+        spec.limit < 1 ||
+        !Number.isFinite(spec.windowSeconds) ||
+        spec.windowSeconds <= 0
+      ) {
+        return { allowed: false, retryAfter: 1 }
+      }
+      const existing = this.store.get(spec.bucket)
+      const expired = existing === undefined || existing.expiresAt <= now
+      if (!expired && existing.count >= spec.limit) {
+        const retryAfter = Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
+        return { allowed: false, retryAfter }
+      }
+      previews.push({ spec, existing })
     }
-    if (existing.count < limit) {
-      existing.count += 1
-      return { allowed: true, retryAfter: 0 }
+    // Second pass: every bucket allows, so commit the increments together.
+    for (const { spec, existing } of previews) {
+      if (existing === undefined || existing.expiresAt <= now) {
+        this.store.set(spec.bucket, { count: 1, expiresAt: now + spec.windowSeconds * 1000 })
+      } else {
+        existing.count += 1
+      }
     }
-    const retryAfter = Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
-    return { allowed: false, retryAfter }
+    return { allowed: true, retryAfter: 0 }
   }
 
   /** Releases the cleanup timer; call from tests or on shutdown. */
