@@ -27,7 +27,7 @@ function buildCells(totals: LedgerTotals | null): readonly Cell[] {
     {
       label: 'Sceptics reported',
       value: n(totals?.reports),
-      color: '#f3c242',
+      color: 'var(--color-sun-pale)',
       testId: 'count-reports',
     },
     {

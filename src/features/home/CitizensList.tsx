@@ -17,6 +17,9 @@ export interface CitizensListProps {
 
 function relativeTime(iso: string): string {
   const deltaMs = Date.now() - new Date(iso).getTime()
+  // Clock skew (server vs. client) can push `iso` slightly into the future,
+  // which would otherwise produce negative minute/hour labels.
+  if (deltaMs < 0) return 'just now'
   const mins = Math.max(1, Math.floor(deltaMs / 60000))
   if (mins < 60) return `${String(mins)} minute${mins === 1 ? '' : 's'} ago`
   const hours = Math.floor(mins / 60)

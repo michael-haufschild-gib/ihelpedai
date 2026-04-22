@@ -286,18 +286,28 @@ async function searchReportsWithFallback(
   page: number,
   request: FastifyRequest,
 ): Promise<{ rows: StoredReport[]; total: number }> {
-  try {
-    const { ids, total } = await search.search('reports', query, PAGE_SIZE, page)
-    const rows = await store.getReportsByIds(ids)
-    return { rows, total }
-  } catch (err) {
-    request.log.error({ err, op: 'search', type: 'reports' }, 'search_failed_fallback')
-    const offset = (page - 1) * PAGE_SIZE
+  const offset = (page - 1) * PAGE_SIZE
+  const fallbackFromStore = async (): Promise<{ rows: StoredReport[]; total: number }> => {
     const [rows, total] = await Promise.all([
       store.listReports(PAGE_SIZE, offset, query, 'all'),
       store.countFilteredEntries('reports', { query }),
     ])
     return { rows, total }
+  }
+  try {
+    const { ids, total } = await search.search('reports', query, PAGE_SIZE, page)
+    const rows = await store.getReportsByIds(ids)
+    if (rows.length !== ids.length) {
+      request.log.warn(
+        { op: 'search', type: 'reports', requested: ids.length, hydrated: rows.length },
+        'search_hydration_mismatch_fallback',
+      )
+      return fallbackFromStore()
+    }
+    return { rows, total }
+  } catch (err) {
+    request.log.error({ err, op: 'search', type: 'reports' }, 'search_failed_fallback')
+    return fallbackFromStore()
   }
 }
 

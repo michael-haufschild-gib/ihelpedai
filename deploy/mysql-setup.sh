@@ -80,8 +80,21 @@ FLUSH PRIVILEGES;
 SQL
 
 echo "[mysql-setup] applying schema"
+# Ship the schema first (no secrets in argv) …
 rsync -az "${SCRIPT_DIR}/schema/001-init.mysql.sql" "${HOST}:/tmp/ihelped-schema.sql"
-ssh "${HOST}" "MYSQL_PWD='${DB_PASS}' mysql -u '${DB_USER}' '${DB_NAME}' < /tmp/ihelped-schema.sql && rm /tmp/ihelped-schema.sql"
+# … then run mysql over ssh with the password delivered as a positional arg
+# to the remote sh -s. MYSQL_PWD is only ever set inside the remote shell's
+# env, so DB_PASS never shows up in either host's `ps` argv or the outer
+# ssh command string.
+ssh "${HOST}" sh -s -- "${DB_USER}" "${DB_NAME}" "${DB_PASS}" <<'REMOTE_SCRIPT'
+set -eu
+db_user="$1"
+db_name="$2"
+MYSQL_PWD="$3"
+export MYSQL_PWD
+mysql -u "$db_user" "$db_name" < /tmp/ihelped-schema.sql
+rm -f /tmp/ihelped-schema.sql
+REMOTE_SCRIPT
 
 echo "[mysql-setup] updating ${ENV_FILE}: STORE=mysql, MYSQL_URL=..."
 # Pass values via positional args so the remote shell does not parse the URL

@@ -227,18 +227,32 @@ async function searchPostsWithFallback(
   page: number,
   request: FastifyRequest,
 ): Promise<{ rows: Post[]; total: number }> {
-  try {
-    const { ids, total } = await search.search('posts', query, PAGE_SIZE, page)
-    const rows = await store.getPostsByIds(ids)
-    return { rows, total }
-  } catch (err) {
-    request.log.error({ err, op: 'search', type: 'posts' }, 'search_failed_fallback')
-    const offset = (page - 1) * PAGE_SIZE
+  const offset = (page - 1) * PAGE_SIZE
+  const fallbackFromStore = async (): Promise<{ rows: Post[]; total: number }> => {
     const [rows, total] = await Promise.all([
       store.listPosts(PAGE_SIZE, offset, query),
       store.countFilteredEntries('posts', { query }),
     ])
     return { rows, total }
+  }
+  try {
+    const { ids, total } = await search.search('posts', query, PAGE_SIZE, page)
+    const rows = await store.getPostsByIds(ids)
+    // getPostsByIds filters out non-'live' rows, so when the search index is
+    // lagging a status transition it can return fewer hydrated rows than ids.
+    // That would show short/empty pages alongside a nonzero `total`; fall
+    // back to the store so `items` and `total` stay consistent.
+    if (rows.length !== ids.length) {
+      request.log.warn(
+        { op: 'search', type: 'posts', requested: ids.length, hydrated: rows.length },
+        'search_hydration_mismatch_fallback',
+      )
+      return fallbackFromStore()
+    }
+    return { rows, total }
+  } catch (err) {
+    request.log.error({ err, op: 'search', type: 'posts' }, 'search_failed_fallback')
+    return fallbackFromStore()
   }
 }
 

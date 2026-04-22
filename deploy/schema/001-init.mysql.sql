@@ -3,6 +3,14 @@
 -- Every DDL is idempotent so the setup script can be re-run safely.
 -- Kept column-compatible with the SQLite schema (deploy/schema/001-init.sqlite.sql)
 -- so the Store interface returns the same DTOs regardless of backend.
+--
+-- Schema evolution policy
+-- -----------------------
+-- `CREATE TABLE IF NOT EXISTS` only runs on fresh installs. For databases
+-- provisioned under an earlier revision of this file, the "upgrade" block at
+-- the bottom (`upgrade_schema` procedure) adds any columns/constraints that
+-- were introduced later. The procedure guards every statement against
+-- information_schema so re-runs are safe.
 
 CREATE TABLE IF NOT EXISTS posts (
   id              VARCHAR(16)   NOT NULL,
@@ -153,3 +161,62 @@ CREATE TABLE IF NOT EXISTS admin_settings (
   updated_at DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- Upgrade block: safely add columns / constraints introduced after the
+-- original baseline. `CREATE TABLE IF NOT EXISTS` is a no-op when the table
+-- already exists, so these ALTERs are the only way a pre-existing database
+-- picks up the new delta. Each statement is guarded against information_schema
+-- so re-running mysql-setup.sh is safe.
+-- ---------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS upgrade_schema;
+DELIMITER $$
+CREATE PROCEDURE upgrade_schema()
+BEGIN
+  -- reports.api_key_hash + idx_reports_api_key_hash (added for agent API)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reports' AND COLUMN_NAME = 'api_key_hash'
+  ) THEN
+    ALTER TABLE reports ADD COLUMN api_key_hash VARCHAR(64) NULL AFTER client_ip_hash;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reports' AND INDEX_NAME = 'idx_reports_api_key_hash'
+  ) THEN
+    ALTER TABLE reports ADD KEY idx_reports_api_key_hash (api_key_hash);
+  END IF;
+
+  -- admins.created_by + self-FK (added for audit trail)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND COLUMN_NAME = 'created_by'
+  ) THEN
+    ALTER TABLE admins ADD COLUMN created_by VARCHAR(16) NULL;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND INDEX_NAME = 'idx_admins_created_by'
+  ) THEN
+    ALTER TABLE admins ADD KEY idx_admins_created_by (created_by);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admins' AND CONSTRAINT_NAME = 'fk_admins_created_by'
+  ) THEN
+    ALTER TABLE admins ADD CONSTRAINT fk_admins_created_by FOREIGN KEY (created_by)
+      REFERENCES admins (id) ON DELETE SET NULL;
+  END IF;
+
+  -- takedowns.chk_takedowns_kind (added to bound entry_kind to 'post'/'report')
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'takedowns' AND CONSTRAINT_NAME = 'chk_takedowns_kind'
+  ) THEN
+    ALTER TABLE takedowns ADD CONSTRAINT chk_takedowns_kind
+      CHECK (entry_kind IS NULL OR entry_kind IN ('post', 'report'));
+  END IF;
+END$$
+DELIMITER ;
+CALL upgrade_schema();
+DROP PROCEDURE upgrade_schema;

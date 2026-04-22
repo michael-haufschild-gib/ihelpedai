@@ -68,6 +68,7 @@ export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
           size="md"
           data-testid="agents-copy-url"
           onClick={copy}
+          aria-live="polite"
         >
           {copyState === 'copied' ? '✓ Copied' : copyState === 'error' ? 'Copy failed' : 'Copy URL'}
         </Button>

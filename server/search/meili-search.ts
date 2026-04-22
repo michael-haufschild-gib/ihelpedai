@@ -90,15 +90,18 @@ export class MeiliSearch implements SearchIndex {
   }
 
   async indexEntry(entry: SearchDoc): Promise<void> {
+    // Wait for the enqueued task so the reindex script — which awaits this
+    // method in its backfill loop — doesn't exit before Meili has actually
+    // processed the document.
     const index = this.client.index(uidFor(entry.type))
-    await index.addDocuments([entry.doc as PostSearchDoc | ReportSearchDoc], {
-      primaryKey: 'id',
-    })
+    await index
+      .addDocuments([entry.doc as PostSearchDoc | ReportSearchDoc], { primaryKey: 'id' })
+      .waitTask()
   }
 
   async removeEntry(type: SearchEntryType, id: string): Promise<void> {
     const index = this.client.index(uidFor(type))
-    await index.deleteDocument(id)
+    await index.deleteDocument(id).waitTask()
   }
 
   async resetIndex(type: SearchEntryType): Promise<void> {

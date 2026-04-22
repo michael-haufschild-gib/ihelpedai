@@ -14,14 +14,20 @@ export interface AvatarProps {
   decorative?: boolean
 }
 
-function hueFor(name: string): number {
+// Normalize canonically equivalent sequences (precomposed vs combining
+// characters) so "é" and "é" pick the same hue and initials.
+function normalizeName(name: string): string {
+  return name.normalize('NFC').trim()
+}
+
+function hueFor(normalized: string): number {
   let sum = 0
-  for (const ch of name) sum += ch.charCodeAt(0)
+  for (const ch of normalized) sum += ch.charCodeAt(0)
   return sum % 360
 }
 
-function initialsFor(name: string): string {
-  const parts = name.trim().split(/\s+/).filter((p) => p.length > 0)
+function initialsFor(normalized: string): string {
+  const parts = normalized.split(/\s+/).filter((p) => p.length > 0)
   const picks = parts.slice(0, 2)
   const out = picks.map((p) => p[0] ?? '').join('')
   return out.length > 0 ? out.toUpperCase() : '·'
@@ -32,9 +38,10 @@ function initialsFor(name: string): string {
  * `name` so the same person gets the same colour across re-renders.
  */
 export function Avatar({ name, size = 44, decorative = true }: AvatarProps) {
-  const hue = hueFor(name)
-  const initials = initialsFor(name)
-  const accessibleName = name.trim().length > 0 ? name.trim() : 'unknown'
+  const normalized = normalizeName(name)
+  const hue = hueFor(normalized)
+  const initials = initialsFor(normalized)
+  const accessibleName = normalized.length > 0 ? normalized : 'unknown'
   return (
     <div
       aria-hidden={decorative ? true : undefined}
