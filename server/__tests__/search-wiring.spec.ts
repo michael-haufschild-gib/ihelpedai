@@ -55,6 +55,9 @@ class RecordingSearch implements SearchIndex {
   async indexEntry(entry: SearchDoc): Promise<void> {
     this.indexCalls.push({ entry })
   }
+  async indexMany(entries: readonly SearchDoc[]): Promise<void> {
+    for (const entry of entries) this.indexCalls.push({ entry })
+  }
   async removeEntry(type: SearchEntryType, id: string): Promise<void> {
     this.removeCalls.push({ type, id })
   }

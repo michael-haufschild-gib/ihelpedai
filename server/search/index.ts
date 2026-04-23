@@ -62,6 +62,14 @@ export interface SearchIndex {
   /** Upsert a single document. Only `live` docs should be indexed. */
   indexEntry(entry: SearchDoc): Promise<void>
 
+  /**
+   * Bulk-upsert a batch of documents. Implementations are expected to issue
+   * one index task per entry type rather than one per document, which is
+   * essential for reindex throughput against Meili (N round-trips collapse
+   * to 1). Entries may be mixed-type; impls partition internally.
+   */
+  indexMany(entries: readonly SearchDoc[]): Promise<void>
+
   /** Remove a document by id. Called on status transitions away from `live`. */
   removeEntry(type: SearchEntryType, id: string): Promise<void>
 

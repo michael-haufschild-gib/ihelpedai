@@ -47,6 +47,17 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   registerDeps(app)
 
+  // Map an HTTP status to our public error-envelope kind enum. Keeps Fastify
+  // framework errors (body-too-large, unsupported media type, plugin errors,
+  // etc.) from leaking raw `error.message` strings into the `error` field.
+  const statusToErrorKind = (status: number): string => {
+    if (status === 429) return 'rate_limited'
+    if (status === 401 || status === 403) return 'unauthorized'
+    if (status === 404) return 'not_found'
+    if (status >= 500) return 'internal_error'
+    return 'invalid_input'
+  }
+
   app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
     if (error instanceof ZodError) {
       const fields: Record<string, string> = {}
@@ -62,9 +73,22 @@ export async function buildApp(): Promise<FastifyInstance> {
     } else {
       request.log.warn({ err: error }, 'client error')
     }
-    reply.status(statusCode).send({
-      error: statusCode >= 500 ? 'internal_error' : error.message,
-    })
+    // Emit the enum `error` + optional non-sensitive `message` so clients can
+    // still display context (e.g. "Body too large") while the contract-level
+    // kind remains stable. Server-side 5xx details are withheld.
+    const body: { error: string; message?: string } = { error: statusToErrorKind(statusCode) }
+    if (statusCode < 500 && typeof error.message === 'string' && error.message !== '') {
+      body.message = error.message
+    }
+    reply.status(statusCode).send(body)
+  })
+
+  // Custom 404 handler — Fastify's default envelope is
+  // `{ statusCode, error: "Not Found", message }` which doesn't match the
+  // PRD error contract. Align with route-level 404 emitters that already
+  // send `{ error: "not_found" }`.
+  app.setNotFoundHandler((_request, reply) => {
+    reply.status(404).send({ error: 'not_found' })
   })
 
   await registerRoutes(app)

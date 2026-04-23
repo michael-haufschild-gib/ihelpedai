@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto'
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
-import { config } from '../config.js'
+import { effectiveLimit } from '../lib/effective-limit.js'
+import { hashWithSalt } from '../lib/salted-hash.js'
 import type { VoteKind } from '../store/index.js'
 
 /**
@@ -18,17 +17,14 @@ import type { VoteKind } from '../store/index.js'
  */
 
 const VOTE_LIMIT_PER_HOUR = 60
+// /api/votes/mine is a read-only "which of these did I vote on" probe. A
+// higher budget than the toggle endpoint (60/h) lets a feed page refresh
+// its vote state without tripping, but a hard cap prevents enumeration of
+// vote state across many IPs via bulk requests.
+const MINE_LIMIT_PER_HOUR = 300
 const HOUR_SECONDS = 60 * 60
 const SLUG_RE = /^[A-Za-z0-9]{1,32}$/
 const MAX_MINE_SLUGS = 50
-
-const hashIp = (ip: string): string =>
-  createHash('sha256').update(`${config.IP_HASH_SALT}:${ip}`).digest('hex')
-
-const effectiveLimit = (base: number): number =>
-  config.NODE_ENV === 'production'
-    ? base
-    : Math.max(1, Math.floor(base * config.DEV_RATE_MULTIPLIER))
 
 const mineBodySchema = z.object({
   kind: z.enum(['post', 'report']),
@@ -62,7 +58,7 @@ export async function votesRoutes(app: FastifyInstance): Promise<void> {
       await reply.code(404).send({ error: 'not_found' })
       return undefined
     }
-    const ipHash = hashIp(request.ip)
+    const ipHash = hashWithSalt(request.ip)
     if (!(await enforceVoteLimit(reply, ipHash))) return undefined
     const result = await app.store.toggleVote(slug, kind, ipHash)
     if (result === null) {
@@ -74,10 +70,24 @@ export async function votesRoutes(app: FastifyInstance): Promise<void> {
 
   async function handleMine(
     request: FastifyRequest,
-  ): Promise<{ voted: readonly string[] }> {
+    reply: FastifyReply,
+  ): Promise<{ voted: readonly string[] } | undefined> {
     const body = mineBodySchema.parse(request.body)
     if (body.slugs.length === 0) return { voted: [] }
-    const ipHash = hashIp(request.ip)
+    const ipHash = hashWithSalt(request.ip)
+    // Rate-limit: probing vote state is cheap but still a data-disclosure
+    // vector. Cap per IP so a scraper can't mass-enumerate.
+    const decision = await app.limiter.check(
+      `vote_mine:hour:${ipHash}`,
+      effectiveLimit(MINE_LIMIT_PER_HOUR),
+      HOUR_SECONDS,
+    )
+    if (!decision.allowed) {
+      await reply
+        .code(429)
+        .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
+      return undefined
+    }
     const voted = await app.store.getVotedEntryIds(ipHash, body.kind, body.slugs)
     return { voted }
   }

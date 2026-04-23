@@ -218,6 +218,28 @@ export type AdminApiKey = {
   usageCount: number
 }
 
+/** Filter shape accepted by listAuditLog / countAuditLog. */
+export type AuditLogFilter = {
+  adminId?: string
+  action?: string
+  dateFrom?: string
+  dateTo?: string
+}
+
+/**
+ * Shared filter shape for admin-entry listing. `listAdminEntries` adds a
+ * `sort` field via intersection; `countAdminEntries` reuses this type
+ * directly since count is order-agnostic.
+ */
+export type AdminEntryFilter = {
+  entryType?: 'post' | 'report'
+  status?: EntryStatus
+  source?: EntrySource
+  query?: string
+  dateFrom?: string
+  dateTo?: string
+}
+
 /** Admin settings key-value pair. */
 export type AdminSetting = {
   key: string
@@ -381,13 +403,11 @@ export interface Store {
   listAuditLog(
     limit: number,
     offset: number,
-    filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
+    filters?: AuditLogFilter,
   ): Promise<AuditEntryWithEmail[]>
 
   /** Count total audit log entries matching filters. */
-  countAuditLog(
-    filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
-  ): Promise<number>
+  countAuditLog(filters?: AuditLogFilter): Promise<number>
 
   /** List audit entries for a specific target entity. */
   listAuditLogForTarget(targetId: string): Promise<AuditEntryWithEmail[]>
@@ -396,28 +416,11 @@ export interface Store {
   listAdminEntries(
     limit: number,
     offset: number,
-    filters?: {
-      entryType?: 'post' | 'report'
-      status?: EntryStatus
-      source?: EntrySource
-      query?: string
-      dateFrom?: string
-      dateTo?: string
-      sort?: 'asc' | 'desc'
-    },
+    filters?: AdminEntryFilter & { sort?: 'asc' | 'desc' },
   ): Promise<AdminEntry[]>
 
   /** Count entries matching admin filters. */
-  countAdminEntries(
-    filters?: {
-      entryType?: 'post' | 'report'
-      status?: EntryStatus
-      source?: EntrySource
-      query?: string
-      dateFrom?: string
-      dateTo?: string
-    },
-  ): Promise<number>
+  countAdminEntries(filters?: AdminEntryFilter): Promise<number>
 
   /** Get full admin detail for any entry (post or report). */
   getAdminEntryDetail(id: string): Promise<AdminEntryDetail | null>

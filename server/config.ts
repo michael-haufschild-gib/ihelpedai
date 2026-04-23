@@ -9,6 +9,7 @@ const isMissing = (value: string | undefined): boolean =>
 
 type EnvShape = {
   NODE_ENV: 'development' | 'test' | 'production'
+  PUBLIC_URL: string
   IP_HASH_SALT: string
   ADMIN_SESSION_SECRET: string
   MAILER: 'file' | 'smtp'
@@ -21,6 +22,8 @@ type EnvShape = {
   RATE_LIMIT: 'memory' | 'redis'
   REDIS_URL?: string
 }
+
+const DEV_PUBLIC_URL_DEFAULT = 'http://localhost:5173'
 
 /**
  * Parse a comma-separated `ADMIN_SESSION_SECRET` into an ordered list. The
@@ -62,6 +65,18 @@ function refineProductionSecrets(env: EnvShape, ctx: RefinementCtx): void {
       addRequired(ctx, key, `Production must set ${key} to a non-default value`)
     }
   }
+  // PUBLIC_URL is quietly load-bearing: it prefixes password-reset email
+  // links and every public_url response field. Booting prod with the
+  // localhost default emits unclickable reset links and misleading
+  // response URLs — reject at boot so the miss-config surfaces before
+  // users see it.
+  if (env.PUBLIC_URL === DEV_PUBLIC_URL_DEFAULT) {
+    addRequired(
+      ctx,
+      'PUBLIC_URL',
+      'Production must set PUBLIC_URL to the public origin (e.g. https://ihelped.ai)',
+    )
+  }
 }
 
 function refineModeRequirements(env: EnvShape, ctx: RefinementCtx): void {
@@ -89,13 +104,39 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(3001),
-    PUBLIC_URL: z.string().url().default('http://localhost:5173'),
+    PUBLIC_URL: z.string().url().default(DEV_PUBLIC_URL_DEFAULT),
 
     IP_HASH_SALT: z.string().min(1).default('dev-ip-hash-salt-change-me'),
-    ADMIN_SESSION_SECRET: z.string().min(1).default('dev-session-secret-change-me'),
+    // Zod's `min(1)` accepts `","` or `" , "` — strings that contain characters
+    // but parse to zero usable secrets. `@fastify/cookie` with an empty
+    // `secret: []` is undefined behaviour, so reject at the config boundary
+    // and fail fast. The prod-only default check still runs on top of this.
+    ADMIN_SESSION_SECRET: z
+      .string()
+      .min(1)
+      .refine(
+        (raw) => parseAdminSessionSecrets(raw).length > 0,
+        'must contain at least one non-empty secret',
+      )
+      .default('dev-session-secret-change-me'),
 
     MAILER: z.enum(['file', 'smtp']).default('file'),
-    SMTP_URL: z.string().optional(),
+    // nodemailer's createTransport(url) only understands `smtp://` and
+    // `smtps://`. Validating the shape at the config boundary fails the boot
+    // fast when MAILER=smtp + SMTP_URL=http://… is set in prod, instead of
+    // silently booting and exploding at the first outbound email.
+    SMTP_URL: z
+      .string()
+      .optional()
+      .refine((raw) => {
+        if (raw === undefined || raw === '') return true
+        try {
+          const url = new URL(raw)
+          return url.protocol === 'smtp:' || url.protocol === 'smtps:'
+        } catch {
+          return false
+        }
+      }, 'must be a smtp:// or smtps:// URL'),
     MAIL_FROM: z.string().default('noreply@ihelped.ai'),
 
     STORE: z.enum(['sqlite', 'mysql']).default('sqlite'),

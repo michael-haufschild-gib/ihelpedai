@@ -1,9 +1,9 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
-import { config } from '../config.js'
+import { hashWithSalt } from '../lib/salted-hash.js'
 import type { BucketSpec } from '../rate-limit/index.js'
 
 const HOUR_SECONDS = 3600
@@ -22,11 +22,6 @@ const GLOBAL_DAY_LIMIT = 100
 const issueSchema = z.object({
   email: z.string().email().max(200),
 })
-
-/** Hash a value with sha256 using the server-side salt. */
-function hashWithSalt(value: string): string {
-  return createHash('sha256').update(`${config.IP_HASH_SALT}:${value}`).digest('hex')
-}
 
 /** Generate a 32-byte URL-safe API key (~43 chars of base64url). */
 function generateApiKey(): string {

@@ -4,7 +4,6 @@
  * (when a transaction is needed via store.tx). Kept in its own file to keep
  * mysql-store.ts under the 500-line lint cap.
  */
-import { customAlphabet } from 'nanoid'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 
 import type {
@@ -12,20 +11,17 @@ import type {
   AdminApiKey,
   AdminEntry,
   AdminEntryDetail,
+  AdminEntryFilter,
   AdminSession,
   AuditEntryWithEmail,
+  AuditLogFilter,
   EntrySource,
   EntryStatus,
   PasswordReset,
   Report,
 } from './index.js'
 import type { MysqlStore } from './mysql-store.js'
-
-const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-const newId = customAlphabet(ID_ALPHABET, 10)
-
-/** UTC ISO-8601 string, matching SqliteStore output. */
-const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString())
+import { iso, isoDate, newId } from './mysql-utils.js'
 
 /* ------------------------------------------------------------------ */
 /* Query helpers — shave the mysql2 two-tuple destructuring boilerplate */
@@ -122,11 +118,6 @@ const adminApiKeyFromRow = (r: ApiKeyRow): AdminApiKey => ({
   lastUsedAt: iso(r.last_used_at), usageCount: r.usage_count,
 })
 
-const isoDate = (d: Date | null): string | null => {
-  if (d === null) return null
-  return d.toISOString().slice(0, 10)
-}
-
 const reportFromRow = (r: ReportRowLike): Report => ({
   id: r.id, reporterFirstName: r.reporter_first_name,
   reporterCity: r.reporter_city, reporterCountry: r.reporter_country,
@@ -143,7 +134,7 @@ const reportFromRow = (r: ReportRowLike): Report => ({
 
 function buildEntryFilter(
   type: 'post' | 'report',
-  filters?: { status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string },
+  filters?: Omit<AdminEntryFilter, 'entryType'>,
 ): { where: string; params: (string | number)[] } {
   const conditions: string[] = []
   const params: (string | number)[] = []
@@ -170,7 +161,7 @@ function buildEntryFilter(
 }
 
 function buildAuditFilters(
-  filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
+  filters?: AuditLogFilter,
 ): { conditions: string[]; params: (string | number)[] } {
   const conditions: string[] = []
   const params: (string | number)[] = []
@@ -301,7 +292,7 @@ export async function insertAuditEntry(
 /** List audit log entries. */
 export async function listAuditLog(
   pool: Pool, limit: number, offset: number,
-  filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
+  filters?: AuditLogFilter,
 ): Promise<AuditEntryWithEmail[]> {
   const { conditions, params } = buildAuditFilters(filters)
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -315,7 +306,7 @@ export async function listAuditLog(
 
 /** Count audit log entries. */
 export async function countAuditLog(
-  pool: Pool, filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
+  pool: Pool, filters?: AuditLogFilter,
 ): Promise<number> {
   const { conditions, params } = buildAuditFilters(filters)
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -334,7 +325,7 @@ export async function listAuditLogForTarget(pool: Pool, targetId: string): Promi
 /** List admin entries (unified posts + reports). */
 export async function listAdminEntries(
   pool: Pool, limit: number, offset: number,
-  filters?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string; sort?: 'asc' | 'desc' },
+  filters?: AdminEntryFilter & { sort?: 'asc' | 'desc' },
 ): Promise<AdminEntry[]> {
   const sort = filters?.sort ?? 'desc'
   const parts: string[] = []
@@ -368,7 +359,7 @@ export async function listAdminEntries(
 
 /** Count admin entries matching filters. */
 export async function countAdminEntries(
-  pool: Pool, filters?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string },
+  pool: Pool, filters?: AdminEntryFilter,
 ): Promise<number> {
   let total = 0
   if (filters?.entryType === undefined || filters.entryType === 'post') {

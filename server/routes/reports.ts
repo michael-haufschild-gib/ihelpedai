@@ -1,12 +1,14 @@
-import { createHash } from 'node:crypto'
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
+import { effectiveLimit } from '../lib/effective-limit.js'
+import { isValidIsoDate } from '../lib/iso-date.js'
+import { hashWithSalt } from '../lib/salted-hash.js'
 import type { RateLimiter } from '../rate-limit/index.js'
-import { sanitize } from '../sanitizer/sanitize.js'
+import { parseSanitizerExceptionList, sanitize } from '../sanitizer/sanitize.js'
 import type { SearchIndex } from '../search/index.js'
+import { searchWithFallback } from '../search/search-with-fallback.js'
 import { reportToDoc } from '../search/sync.js'
 import type { Report as StoredReport, Store } from '../store/index.js'
 
@@ -85,8 +87,12 @@ const bodySchema = z.object({
   action_date: z
     .string()
     .max(20)
+    // Reject impossible calendar dates like "2026-13-40" — the regex alone
+    // accepts them and the MySQL DATE path would only fail at insert time
+    // with an opaque error. Empty string is still allowed so an unchecked
+    // optional field on the public form doesn't 400 the submission.
     .refine(
-      (v) => v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v),
+      (v) => v === '' || isValidIsoDate(v),
       { message: 'invalid_date' },
     )
     .optional(),
@@ -94,22 +100,16 @@ const bodySchema = z.object({
 
 type ReportBody = z.infer<typeof bodySchema>
 
+// `page` is bounded so a malicious client cannot push the store into a
+// linear scan with `OFFSET = page * PAGE_SIZE`. Aligned with helped.ts.
 const listQuerySchema = z.object({
   q: z.string().max(200).optional(),
-  page: z.coerce.number().int().positive().optional(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
 })
 
 const slugParamsSchema = z.object({
   slug: z.string().min(1).max(64),
 })
-
-const effectiveLimit = (base: number): number =>
-  config.NODE_ENV === 'production'
-    ? base
-    : Math.max(1, Math.floor(base * config.DEV_RATE_MULTIPLIER))
-
-const hashIp = (ip: string): string =>
-  createHash('sha256').update(`${config.IP_HASH_SALT}:${ip}`).digest('hex')
 
 const reporterToStorage = (
   reporter: ReportBody['reporter'],
@@ -211,11 +211,12 @@ async function handleCreate(
     return
   }
   const body = bodySchema.parse(request.body)
-  const ipHash = hashIp(request.ip)
+  const ipHash = hashWithSalt(request.ip)
 
   if (!(await checkRateLimits(limiter, reply, ipHash))) return
 
-  const sanitized = sanitize(body.what_they_did)
+  const extraExceptions = parseSanitizerExceptionList((await store.getSetting('sanitizer_exceptions')) ?? '')
+  const sanitized = sanitize(body.what_they_did, { extraExceptions })
   if (sanitized.overRedacted) {
     await reply
       .code(400)
@@ -303,28 +304,22 @@ async function searchReportsWithFallback(
   request: FastifyRequest,
 ): Promise<{ rows: StoredReport[]; total: number }> {
   const offset = (page - 1) * PAGE_SIZE
-  const fallbackFromStore = async (): Promise<{ rows: StoredReport[]; total: number }> => {
-    const [rows, total] = await Promise.all([
-      store.listReports(PAGE_SIZE, offset, query, 'all'),
-      store.countFilteredEntries('reports', { query }),
-    ])
-    return { rows, total }
-  }
-  try {
-    const { ids, total } = await search.search('reports', query, PAGE_SIZE, page)
-    const rows = await store.getReportsByIds(ids)
-    if (rows.length !== ids.length) {
-      request.log.warn(
-        { op: 'search', type: 'reports', requested: ids.length, hydrated: rows.length },
-        'search_hydration_mismatch_fallback',
-      )
-      return fallbackFromStore()
-    }
-    return { rows, total }
-  } catch (err) {
-    request.log.error({ err, op: 'search', type: 'reports' }, 'search_failed_fallback')
-    return fallbackFromStore()
-  }
+  return searchWithFallback<StoredReport>({
+    search,
+    type: 'reports',
+    query,
+    page,
+    hitsPerPage: PAGE_SIZE,
+    hydrate: (ids) => store.getReportsByIds(ids),
+    fallback: async () => {
+      const [rows, total] = await Promise.all([
+        store.listReports(PAGE_SIZE, offset, query, 'all'),
+        store.countFilteredEntries('reports', { query }),
+      ])
+      return { rows, total }
+    },
+    log: request.log,
+  })
 }
 
 /** GET /api/reports/:slug handler. Returns the report JSON or 404. */

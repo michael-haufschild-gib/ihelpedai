@@ -1,19 +1,31 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
+import { isValidIsoDate } from '../../lib/iso-date.js'
 import { syncEntryStatusAsync } from '../../search/sync.js'
 import type { EntryStatus } from '../../store/index.js'
 import { requireAdmin } from './middleware.js'
 
 const PAGE_SIZE = 50
 
+// Accept empty string (UI clear) or YYYY-MM-DD; reject typos so the SQL
+// comparison never runs against garbage and returns an empty page. Transform
+// '' → undefined so the store receives a truly absent filter: otherwise the
+// SQL `< date('', '+1 day')` evaluates to NULL and filters out every row,
+// turning "cleared date_to" into a silent empty list.
+const dateQueryField = z
+  .string()
+  .refine((v) => v === '' || isValidIsoDate(v), { message: 'invalid_date' })
+  .transform((v) => (v === '' ? undefined : v))
+  .optional()
+
 const listQuerySchema = z.object({
   entry_type: z.enum(['post', 'report']).optional(),
   status: z.enum(['live', 'pending', 'deleted']).optional(),
   source: z.enum(['form', 'api']).optional(),
   q: z.string().trim().optional(),
-  date_from: z.string().optional(),
-  date_to: z.string().optional(),
+  date_from: dateQueryField,
+  date_to: dateQueryField,
   sort: z.enum(['asc', 'desc']).default('desc'),
   page: z.coerce.number().int().min(1).default(1),
 })

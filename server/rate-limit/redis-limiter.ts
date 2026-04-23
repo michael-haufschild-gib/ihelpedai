@@ -23,9 +23,18 @@ import type { BucketSpec, RateLimitDecision, RateLimiter } from './index.js'
  *   `{1, 0}`      → allowed; every bucket was incremented (TTL set on first hit).
  *   `{0, secs}`   → denied; `secs` is the seconds-until-reset of the first bucket
  *                   that would have exceeded its limit. No bucket was modified.
+ *
+ * Outage semantics: if the Redis `eval` throws (connection refused, timeout,
+ * Redis rebooting after our bounded retries give up), the limiter fails OPEN
+ * — a downed limiter must not become a downed API. The error is logged via
+ * stderr so SRE sees the outage even though requests continue to flow. For
+ * login/reset endpoints that rely on rate limiting against brute-force, this
+ * is a deliberate availability-over-strictness tradeoff: Redis outages are
+ * rare and internal, while API outages are user-visible.
  */
 export class RedisRateLimiter implements RateLimiter {
   private readonly client: Redis
+  private lastOutageLogAt = 0
 
   constructor(url: string) {
     if (url === '') {
@@ -36,12 +45,18 @@ export class RedisRateLimiter implements RateLimiter {
       // issued during the brief initial-connect window queue (instead of
       // erroring with "Stream isn't writeable"), but a 2 s connect timeout
       // and capped retries mean a genuinely-down Redis surfaces an error to
-      // the caller within seconds rather than retrying indefinitely. A
-      // downed limiter must not become a downed API.
+      // the caller within seconds rather than retrying indefinitely — at
+      // which point `checkAll` catches it and fails open (see class docs).
       enableOfflineQueue: true,
       connectTimeout: 2000,
       maxRetriesPerRequest: 2,
       retryStrategy: (times) => (times > 5 ? null : Math.min(times * 100, 1000)),
+    })
+    // Swallow emitted client errors that fire outside of an active command
+    // (ECONNREFUSED during background reconnect). Without a listener,
+    // ioredis crashes the process via the default 'error' event behaviour.
+    this.client.on('error', (err: unknown) => {
+      this.logOutage(err)
     })
   }
 
@@ -68,7 +83,16 @@ export class RedisRateLimiter implements RateLimiter {
       args.push(String(s.limit), String(s.windowSeconds))
     }
 
-    const reply = (await this.client.eval(CHECK_ALL_SCRIPT, keys.length, ...keys, ...args)) as [number, number]
+    let reply: [number, number]
+    try {
+      reply = (await this.client.eval(CHECK_ALL_SCRIPT, keys.length, ...keys, ...args)) as [number, number]
+    } catch (err) {
+      this.logOutage(err)
+      // Fail open — see class-level docs. Return `allowed: true` so callers
+      // continue their happy path; retryAfter=0 keeps the response envelope
+      // honest in case a caller inspects it.
+      return { allowed: true, retryAfter: 0 }
+    }
     const [allowedFlag, retryAfter] = reply
     if (allowedFlag === 1) return { allowed: true, retryAfter: 0 }
     return { allowed: false, retryAfter: Math.max(1, retryAfter) }
@@ -77,6 +101,19 @@ export class RedisRateLimiter implements RateLimiter {
   /** Close the connection. Call on graceful shutdown so the process can exit. */
   async dispose(): Promise<void> {
     await this.client.quit().catch(() => undefined)
+  }
+
+  // A hot outage path (eval rejecting every request) would otherwise spam
+  // stderr hundreds of lines per second. Throttle to one line per 30 s so
+  // the signal survives the noise without flooding the journal.
+  private logOutage(err: unknown): void {
+    const now = Date.now()
+    if (now - this.lastOutageLogAt < 30_000) return
+    this.lastOutageLogAt = now
+    const message = err instanceof Error ? err.message : String(err)
+    process.stderr.write(
+      `[redis-limiter] outage, failing open: ${message}\n`,
+    )
   }
 }
 

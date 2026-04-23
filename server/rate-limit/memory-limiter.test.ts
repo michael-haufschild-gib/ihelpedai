@@ -73,4 +73,31 @@ describe('MemoryRateLimiter.checkAll — atomicity', () => {
     // 600s `second` window — `first` is the one actually blocking.
     expect(decision.retryAfter).toBeLessThanOrEqual(60)
   })
+
+  // Defensive: a typo like `limit: 0` or `windowSeconds: NaN` in a future
+  // caller should fail closed (deny) rather than passing through and letting
+  // the math underflow — silent acceptance of invalid limits has in the past
+  // allowed unbounded hits on a bucket the author thought they'd disabled.
+  it('denies with retryAfter=1 when a spec has an invalid limit', async () => {
+    const decision = await limiter.checkAll([
+      { bucket: 'bad', limit: 0, windowSeconds: 60 },
+    ])
+    expect(decision).toEqual({ allowed: false, retryAfter: 1 })
+  })
+
+  it('denies when a spec has a non-finite windowSeconds', async () => {
+    const decision = await limiter.checkAll([
+      { bucket: 'bad', limit: 5, windowSeconds: Number.NaN },
+    ])
+    expect(decision.allowed).toBe(false)
+  })
+
+  it('returns allowed without mutating when specs is empty', async () => {
+    const decision = await limiter.checkAll([])
+    expect(decision).toEqual({ allowed: true, retryAfter: 0 })
+    // A subsequent real call should still pass — empty checkAll must not
+    // consume any bucket.
+    const next = await limiter.check('fresh', 1, 60)
+    expect(next.allowed).toBe(true)
+  })
 })

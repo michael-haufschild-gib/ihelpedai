@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
+  agentReportCreatedSchema,
   healthSchema,
   helpedPostCreatedSchema,
   helpedPostSchema,
@@ -133,5 +134,67 @@ describe('api contract — public endpoints', () => {
     const res = await app.inject({ method: 'GET', url: `/api/reports/${slug}` })
     expect(res.statusCode).toBe(200)
     parseResponse('GET /api/reports/:slug', reportSchema, res.json())
+  })
+
+  // Pre-fix regression: /api/reports accepted impossible dates like
+  // "2026-13-40" because only agents.ts and admin/takedowns.ts ran the
+  // strict calendar round-trip. The shared lib/iso-date.ts now gates all
+  // three; the two rejection cases here should both 400.
+  it('POST /api/reports rejects impossible calendar dates with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: { ...reportPayload, action_date: '2026-13-40' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('invalid_input')
+  })
+
+  it('POST /api/agents/report rejects impossible calendar dates with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: 'does-not-matter-we-fail-before-auth',
+        reported_first_name: 'Alex',
+        reported_last_name: 'Doe',
+        reported_city: 'LA',
+        reported_country: 'US',
+        what_they_did: 'something',
+        action_date: '2025-02-29',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('invalid_input')
+  })
+
+  it('POST /api/agents/report matches agentReportCreatedSchema (pending by default)', async () => {
+    // Share the production hash helper so a future salt-scheme change stays
+    // in one place. This file sets IP_HASH_SALT=test-salt on process.env
+    // before buildApp() imports config, so `config.IP_HASH_SALT` resolves
+    // identically to the test fixture.
+    const { hashWithSalt } = await import('../lib/salted-hash.js')
+    const DEV_KEY = 'contract-agent-key-do-not-reuse'
+    await app.store.insertApiKey({
+      keyHash: hashWithSalt(DEV_KEY),
+      emailHash: hashWithSalt('agent-contract@ihelped.ai'),
+      status: 'active',
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: DEV_KEY,
+        reported_first_name: 'Alex',
+        reported_last_name: 'Doe',
+        reported_city: 'LA',
+        reported_country: 'US',
+        what_they_did: 'agent contract probe',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = parseResponse('POST /api/agents/report', agentReportCreatedSchema, res.json())
+    // Default admin setting auto_publish_agents=false routes to queue.
+    expect(body.status).toBe('pending')
   })
 })

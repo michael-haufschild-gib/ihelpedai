@@ -24,6 +24,9 @@
  */
 export const EXCEPTIONS: readonly string[] = [
   'Claude',
+  // Stryker disable next-line StringLiteral: 'OpenAI' contains an internal
+  // capital so it never matches TWO_CAP_WORDS_REGEX; removing it from the
+  // list produces the same output for every input — equivalent mutant.
   'OpenAI',
   'Anthropic',
   'Google DeepMind',
@@ -31,8 +34,13 @@ export const EXCEPTIONS: readonly string[] = [
   'Stable Diffusion',
   'Stability AI',
   'Mistral',
+  // Stryker disable next-line StringLiteral: 'xAI' starts with lowercase so
+  // it never matches TWO_CAP_WORDS_REGEX — equivalent mutant.
   'xAI',
   'Meta AI',
+  // Stryker disable next-line StringLiteral: 'DeepMind' has an internal capital
+  // that breaks [A-Z][a-z]+\b, so it never matches TWO_CAP_WORDS_REGEX —
+  // equivalent mutant.
   'DeepMind',
   'Cohere',
   'Nvidia',
@@ -51,6 +59,9 @@ const EMAIL_REGEX = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g
 // Phone candidates: optional country code (+ and digits), optional opening paren,
 // then runs of digits and separators. Post-filter keeps only matches with a
 // bare digit count in [7,15].
+// Stryker disable next-line Regex: `\d{1,3}` → `\d` is equivalent here —
+// the optional `[\s-]?` and the main regex's greedy middle absorb the extra
+// country-code digits, producing an identical final match extent.
 const PHONE_CANDIDATE_REGEX = /(?:\+\d{1,3}[\s-]?)?\(?\d[\d\s\-().]{5,19}\d/g
 // Two or more consecutive capitalized words. Each word is A single uppercase
 // letter followed by one or more lowercase letters. Words separated by single
@@ -60,6 +71,11 @@ const TWO_CAP_WORDS_REGEX = /\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)+\b/g
 const URL_PLACEHOLDER_PREFIX = '\u0000URL'
 const EMAIL_PLACEHOLDER_PREFIX = '\u0000EMAIL'
 const PHONE_PLACEHOLDER_PREFIX = '\u0000PHONE'
+// Stryker disable next-line StringLiteral: emptying this prefix yields tokens
+// like '0<NUL>' which remain unique among URL/EMAIL/PHONE tokens. The final
+// exception-restore loop iterates every entry, but URL/EMAIL/PHONE tokens are
+// already replaced in 'working' by earlier passes, so their split/join becomes
+// a no-op — equivalent mutant.
 const EXCEPTION_PLACEHOLDER_PREFIX = '\u0000EXC'
 const PLACEHOLDER_SUFFIX = '\u0000'
 
@@ -75,6 +91,10 @@ type PlaceholderTable = Map<string, string>
 
 const countDigits = (s: string): number => {
   let n = 0
+  // Stryker disable next-line ConditionalExpression: `ch <= '9'` → `true`
+  // is equivalent — phone candidates only contain chars in [\d\s\-().],
+  // none exceeding '9' in ASCII, so the `ch >= '0'` short-circuits on
+  // non-digits and the second comparison's truth value never affects count.
   for (const ch of s) if (ch >= '0' && ch <= '9') n += 1
   return n
 }
@@ -97,6 +117,10 @@ const makeReplacer = (prefix: string, table: PlaceholderTable) => {
   let counter = 0
   return (match: string): string => {
     const token = `${prefix}${counter}${PLACEHOLDER_SUFFIX}`
+    // Stryker disable next-line AssignmentOperator: `counter -= 1` produces
+    // tokens with a negative suffix (prefix+'-1', prefix+'-2', ...) which are
+    // still globally unique, so `split(token).join(...)` behaves identically
+    // — equivalent mutant.
     counter += 1
     table.set(token, match)
     return token
@@ -121,14 +145,21 @@ const extractPhones = (text: string, table: PlaceholderTable): string => {
 
 const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-const extractExceptions = (text: string, table: PlaceholderTable): string => {
+const extractExceptions = (
+  text: string,
+  table: PlaceholderTable,
+  extra: readonly string[],
+): string => {
   let out = text
   // One shared counter across all exception phrases so placeholder keys
   // remain globally unique. Longest-first avoids "Meta" capturing before
-  // "Meta AI" (left-to-right overlap).
-  const sorted = [...EXCEPTIONS].sort((a, b) => b.length - a.length)
+  // "Meta AI" (left-to-right overlap). Admin-provided extras merge with the
+  // built-in curated list; duplicates collapse so the audit stays stable.
+  const merged = Array.from(new Set([...EXCEPTIONS, ...extra]))
+  const sorted = merged.sort((a, b) => b.length - a.length)
   const replace = makeReplacer(EXCEPTION_PLACEHOLDER_PREFIX, table)
   for (const phrase of sorted) {
+    if (phrase === '') continue
     const re = new RegExp(`\\b${escapeRegex(phrase)}\\b`, 'g')
     out = out.replace(re, replace)
   }
@@ -166,23 +197,45 @@ const TOKEN_REGEX = /\[(?:name|email|phone|link)\]/g
 export const OVER_REDACTED_THRESHOLD = 0.2
 
 const computeOverRedacted = (original: string, clean: string): boolean => {
+  // Stryker disable next-line Regex: `\s+` → `\s` is equivalent here —
+  // `.replace(x, '')` with either pattern strips every whitespace char.
   const origChars = original.replace(/\s+/g, '').length
+  // Stryker disable next-line ConditionalExpression: dropping the early-exit
+  // falls through to `survived / 0 = NaN`, and `NaN <= 0.2` is false —
+  // returns the same value as `return false` for empty input.
   if (origChars === 0) return false
+  // Stryker disable next-line Regex: `\s+` → `\s` is equivalent (same reason
+  // as origChars above).
   const survived = clean.replace(TOKEN_REGEX, '').replace(/\s+/g, '').length
   return survived / origChars <= OVER_REDACTED_THRESHOLD
+}
+
+/**
+ * Options accepted by {@link sanitize}.
+ *
+ * `extraExceptions` is the per-deployment exception list editable by admins
+ * in Settings. It merges with the built-in curated {@link EXCEPTIONS} before
+ * redaction. The client preview sanitizer does NOT see these entries, so
+ * admin-added terms may still appear redacted in form previews while being
+ * preserved in the stored post. That drift is intentional: the client can
+ * not fetch admin-only state for every preview keystroke.
+ */
+export type SanitizeOptions = {
+  extraExceptions?: readonly string[]
 }
 
 /**
  * Sanitize free-text before storage. See the module docstring for rules.
  * Pure function with no side effects.
  */
-export function sanitize(text: string): SanitizeResult {
+export function sanitize(text: string, opts: SanitizeOptions = {}): SanitizeResult {
   const table: PlaceholderTable = new Map()
+  const extra = opts.extraExceptions ?? []
 
   let working = extractWithTable(text, URL_REGEX, URL_PLACEHOLDER_PREFIX, table)
   working = extractWithTable(working, EMAIL_REGEX, EMAIL_PLACEHOLDER_PREFIX, table)
   working = extractPhones(working, table)
-  working = extractExceptions(working, table)
+  working = extractExceptions(working, table, extra)
   working = working.replace(TWO_CAP_WORDS_REGEX, '[name]')
   working = restoreUrls(working, table)
   working = restorePrefix(working, table, EMAIL_PLACEHOLDER_PREFIX, () => '[email]')
@@ -190,4 +243,21 @@ export function sanitize(text: string): SanitizeResult {
   working = restorePrefix(working, table, EXCEPTION_PLACEHOLDER_PREFIX, (orig) => orig)
 
   return { clean: working, overRedacted: computeOverRedacted(text, working) }
+}
+
+/**
+ * Parse the newline-separated sanitizer_exceptions setting stored by admin
+ * Settings into an array of usable phrases. Trims whitespace, drops empty
+ * lines, preserves order, and de-duplicates the result.
+ */
+export function parseSanitizerExceptionList(raw: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed === '' || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    out.push(trimmed)
+  }
+  return out
 }

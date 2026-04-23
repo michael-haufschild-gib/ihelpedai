@@ -53,8 +53,13 @@ describe('SmtpMailer', () => {
       .rejects.toThrow('connection refused')
   })
 
-  it('fromUrl builds a transporter from a connection URL', () => {
-    const mailer = SmtpMailer.fromUrl('smtp://127.0.0.1:25', 'noreply@ihelped.ai')
-    expect(mailer).toBeInstanceOf(SmtpMailer)
+  it('fromUrl builds a transporter from both smtp:// and smtps:// URLs', () => {
+    const plain = SmtpMailer.fromUrl('smtp://127.0.0.1:25', 'noreply@ihelped.ai')
+    const secure = SmtpMailer.fromUrl(
+      'smtps://user:pass@smtp.example.com:465',
+      'noreply@ihelped.ai',
+    )
+    expect(plain).toBeInstanceOf(SmtpMailer)
+    expect(secure).toBeInstanceOf(SmtpMailer)
   })
 })

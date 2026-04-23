@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { SANITIZER_PARITY_CASES } from '../../src/lib/__fixtures__/sanitizer-parity-cases.js'
-import { sanitize, EXCEPTIONS } from './sanitize.js'
+import { EXCEPTIONS, parseSanitizerExceptionList, sanitize } from './sanitize.js'
 
 describe('sanitize — parity fixture (server side)', () => {
   // The same cases run on the client mirror in
@@ -156,5 +156,52 @@ describe('sanitize — Story 9 rules', () => {
     expect(sanitize('I wrote GitHub actions for an H100 cluster').clean).toBe(
       'I wrote GitHub actions for an H100 cluster',
     )
+  })
+})
+
+describe('sanitize — admin-provided extra exceptions', () => {
+  it('preserves an admin-added two-word phrase that the base rule would redact', () => {
+    const before = sanitize('I admired Ada Lovelace all evening').clean
+    expect(before).toBe('I admired [name] all evening')
+    const after = sanitize('I admired Ada Lovelace all evening', {
+      extraExceptions: ['Ada Lovelace'],
+    }).clean
+    expect(after).toBe('I admired Ada Lovelace all evening')
+  })
+
+  it('still applies built-in exceptions when caller passes extras', () => {
+    const result = sanitize('Hugging Face meets Ada Lovelace', {
+      extraExceptions: ['Ada Lovelace'],
+    }).clean
+    expect(result).toBe('Hugging Face meets Ada Lovelace')
+  })
+
+  it('idempotent across a second pass with the same extras', () => {
+    const opts = { extraExceptions: ['Ada Lovelace'] }
+    const once = sanitize('Dear Ada Lovelace, thanks Sam Altman', opts).clean
+    expect(once).toBe('Dear Ada Lovelace, thanks [name]')
+    expect(sanitize(once, opts).clean).toBe(once)
+  })
+
+  it('ignores empty and whitespace-only extras without throwing', () => {
+    const result = sanitize('Sam Altman waved', { extraExceptions: ['', '   '] }).clean
+    expect(result).toBe('[name] waved')
+  })
+})
+
+describe('parseSanitizerExceptionList', () => {
+  it('splits on newlines, trims, drops empty lines, and dedupes', () => {
+    const raw = 'Ada Lovelace\n  Linus Torvalds \n\nAda Lovelace\n\r\nGrace Hopper\n'
+    expect(parseSanitizerExceptionList(raw)).toEqual([
+      'Ada Lovelace',
+      'Linus Torvalds',
+      'Grace Hopper',
+    ])
+  })
+
+  it('returns an empty array for empty or whitespace input', () => {
+    expect(parseSanitizerExceptionList('')).toEqual([])
+    expect(parseSanitizerExceptionList('   ')).toEqual([])
+    expect(parseSanitizerExceptionList('\n\n\n')).toEqual([])
   })
 })

@@ -1,7 +1,9 @@
-import { customAlphabet } from 'nanoid'
 import mysql from 'mysql2/promise'
 import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise'
 
+import { buildContainsLikePattern } from '../lib/like-pattern.js'
+
+import { iso, isoDate, newId } from './mysql-utils.js'
 import type {
   Admin,
   AdminApiKey,
@@ -31,10 +33,6 @@ import type {
 } from './index.js'
 import * as adm from './mysql-store-admin.js'
 import * as td from './mysql-store-takedowns.js'
-
-const ID_ALPHABET =
-  'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-const newId = customAlphabet(ID_ALPHABET, 10)
 
 type PostRow = RowDataPacket & {
   id: string
@@ -76,19 +74,6 @@ type ApiKeyRow = RowDataPacket & {
   usage_count: number
 }
 
-/** UTC ISO-8601 string with ms precision ("…Z"), matching the SqliteStore output. */
-function iso(d: Date | null): string | null {
-  return d === null ? null : d.toISOString()
-}
-
-/** Render an action_date column (DATE column → YYYY-MM-DD) without TZ drift. */
-function isoDate(d: Date | null): string | null {
-  if (d === null) return null
-  // mysql2 returns DATE columns as Date objects at midnight UTC; take the
-  // first 10 chars of the ISO string to drop the time portion.
-  return d.toISOString().slice(0, 10)
-}
-
 const postFromRow = (r: PostRow): Post => ({
   id: r.id,
   firstName: r.first_name,
@@ -128,9 +113,6 @@ const apiKeyFromRow = (r: ApiKeyRow): ApiKey => ({
   lastUsedAt: iso(r.last_used_at),
   usageCount: r.usage_count,
 })
-
-/** Re-export for the admin delegate so it shares the same id alphabet. */
-export { newId as newMysqlId, iso as isoTimestamp, isoDate as isoDateOnly }
 
 /**
  * Production Store backed by MySQL 8 via mysql2/promise.
@@ -255,14 +237,22 @@ export class MysqlStore implements Store {
     const hasQuery = typeof query === 'string' && query.trim() !== ''
     // `id DESC` as a deterministic tie-breaker. Without it, rows sharing the
     // same millisecond `created_at` can reshuffle between pages and produce
-    // duplicates/skips across LIMIT/OFFSET requests.
+    // duplicates/skips across LIMIT/OFFSET requests. `ESCAPE '\\'` pairs with
+    // buildContainsLikePattern so %/_ in user input match literally.
     const [rows] = hasQuery
       ? await this.pool.query<PostRow[]>(
           `SELECT * FROM posts
            WHERE status = 'live'
-             AND (first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?)
+             AND (first_name LIKE ? ESCAPE '\\\\' OR city LIKE ? ESCAPE '\\\\' OR country LIKE ? ESCAPE '\\\\' OR text LIKE ? ESCAPE '\\\\')
            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-          [`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, limit, offset],
+          [
+            buildContainsLikePattern(query!),
+            buildContainsLikePattern(query!),
+            buildContainsLikePattern(query!),
+            buildContainsLikePattern(query!),
+            limit,
+            offset,
+          ],
         )
       : await this.pool.query<PostRow[]>(
           `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
@@ -284,8 +274,10 @@ export class MysqlStore implements Store {
       params.push(sourceFilter)
     }
     if (typeof query === 'string' && query.trim() !== '') {
-      conditions.push('(reported_first_name LIKE ? OR reported_city LIKE ? OR reported_country LIKE ? OR text LIKE ? OR reporter_first_name LIKE ?)')
-      const q = `%${query}%`
+      conditions.push(
+        `(reported_first_name LIKE ? ESCAPE '\\\\' OR reported_city LIKE ? ESCAPE '\\\\' OR reported_country LIKE ? ESCAPE '\\\\' OR text LIKE ? ESCAPE '\\\\' OR reporter_first_name LIKE ? ESCAPE '\\\\')`,
+      )
+      const q = buildContainsLikePattern(query)
       params.push(q, q, q, q, q)
     }
     params.push(limit, offset)
@@ -451,12 +443,16 @@ export class MysqlStore implements Store {
     params.push(status)
     const query = opts?.query
     if (typeof query === 'string' && query.trim() !== '') {
-      const q = `%${query}%`
+      const q = buildContainsLikePattern(query)
       if (table === 'posts') {
-        conditions.push('(first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?)')
+        conditions.push(
+          `(first_name LIKE ? ESCAPE '\\\\' OR city LIKE ? ESCAPE '\\\\' OR country LIKE ? ESCAPE '\\\\' OR text LIKE ? ESCAPE '\\\\')`,
+        )
         params.push(q, q, q, q)
       } else {
-        conditions.push('(reported_first_name LIKE ? OR reported_city LIKE ? OR reported_country LIKE ? OR text LIKE ? OR reporter_first_name LIKE ?)')
+        conditions.push(
+          `(reported_first_name LIKE ? ESCAPE '\\\\' OR reported_city LIKE ? ESCAPE '\\\\' OR reported_country LIKE ? ESCAPE '\\\\' OR text LIKE ? ESCAPE '\\\\' OR reporter_first_name LIKE ? ESCAPE '\\\\')`,
+        )
         params.push(q, q, q, q, q)
       }
     }

@@ -53,37 +53,38 @@ async function main(): Promise<void> {
 
   // Clear each index before backfilling. Without this, any previously-indexed
   // doc whose remove hook was dropped survives the rebuild and keeps drifting
-  // totalHits / pagination, defeating the point of a reindex.
-  await search.resetIndex('posts')
-  await search.resetIndex('reports')
+  // totalHits / pagination, defeating the point of a reindex. Run in parallel
+  // since the two indexes are independent tasks inside Meili.
+  await Promise.all([search.resetIndex('posts'), search.resetIndex('reports')])
 
   let posted = 0
   let offset = 0
   while (true) {
     const batch = await store.listPosts(BATCH, offset, undefined)
     if (batch.length === 0) break
-    for (const post of batch) {
-      await search.indexEntry({ type: 'posts', doc: postToDoc(post) })
-    }
+    // One bulk index call per batch instead of one per row. 500 docs × 2
+    // Meili round-trips each → 2 round-trips total; wall-clock drops by
+    // roughly the factor of BATCH on network-bound reindexes.
+    await search.indexMany(batch.map((post) => ({ type: 'posts', doc: postToDoc(post) })))
     posted += batch.length
+    process.stdout.write(`posts: ${String(posted)}\n`)
     offset += BATCH
     if (batch.length < BATCH) break
   }
-  process.stdout.write(`indexed ${posted} posts\n`)
+  process.stdout.write(`indexed ${String(posted)} posts\n`)
 
   let reported = 0
   offset = 0
   while (true) {
     const batch = await store.listReports(BATCH, offset, undefined, 'all')
     if (batch.length === 0) break
-    for (const report of batch) {
-      await search.indexEntry({ type: 'reports', doc: reportToDoc(report) })
-    }
+    await search.indexMany(batch.map((report) => ({ type: 'reports', doc: reportToDoc(report) })))
     reported += batch.length
+    process.stdout.write(`reports: ${String(reported)}\n`)
     offset += BATCH
     if (batch.length < BATCH) break
   }
-  process.stdout.write(`indexed ${reported} reports\n`)
+  process.stdout.write(`indexed ${String(reported)} reports\n`)
 
   await store.close()
 }

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
+import { isValidIsoDate } from '../../lib/iso-date.js'
 import { requireAdmin } from './middleware.js'
 
 const PAGE_SIZE = 50
@@ -9,20 +10,6 @@ const listQuerySchema = z.object({
   status: z.enum(['open', 'closed']).optional(),
   page: z.coerce.number().int().min(1).default(1),
 })
-
-/** Reject garbage dates like '2026-13-40' that a plain length check would accept. */
-const isValidIsoDate = (value: string): boolean => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (match === null) return false
-  const [, y, m, d] = match
-  const date = new Date(`${value}T00:00:00Z`)
-  return (
-    Number.isFinite(date.getTime()) &&
-    date.getUTCFullYear() === Number(y) &&
-    date.getUTCMonth() + 1 === Number(m) &&
-    date.getUTCDate() === Number(d)
-  )
-}
 
 const createSchema = z.object({
   requester_email: z.string().email().max(255).nullable().optional(),

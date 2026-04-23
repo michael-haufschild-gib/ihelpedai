@@ -39,6 +39,10 @@ export class SqlSearch implements SearchIndex {
     // LIKE-backed index reads live rows straight from the store; no mirror.
   }
 
+  async indexMany(_entries: readonly SearchDoc[]): Promise<void> {
+    // See indexEntry — nothing to mirror.
+  }
+
   async removeEntry(_type: SearchEntryType, _id: string): Promise<void> {
     // See indexEntry — nothing to remove.
   }

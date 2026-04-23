@@ -99,6 +99,31 @@ export class MeiliSearch implements SearchIndex {
       .waitTask()
   }
 
+  async indexMany(entries: readonly SearchDoc[]): Promise<void> {
+    if (entries.length === 0) return
+    // Partition by type so we issue at most one addDocuments task per index.
+    // Collapsing N entries into 1 task per type is the core reindex
+    // throughput win over looping indexEntry.
+    const posts: PostSearchDoc[] = []
+    const reports: ReportSearchDoc[] = []
+    for (const entry of entries) {
+      if (entry.type === 'posts') posts.push(entry.doc)
+      else reports.push(entry.doc)
+    }
+    if (posts.length > 0) {
+      await this.client
+        .index(POSTS_INDEX)
+        .addDocuments(posts, { primaryKey: 'id' })
+        .waitTask()
+    }
+    if (reports.length > 0) {
+      await this.client
+        .index(REPORTS_INDEX)
+        .addDocuments(reports, { primaryKey: 'id' })
+        .waitTask()
+    }
+  }
+
   async removeEntry(type: SearchEntryType, id: string): Promise<void> {
     const index = this.client.index(uidFor(type))
     await index.deleteDocument(id).waitTask()

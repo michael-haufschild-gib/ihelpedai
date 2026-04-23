@@ -1,5 +1,4 @@
 // @vitest-environment node
-import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,11 +28,9 @@ const DEV_API_KEY = 'dev-key-do-not-use-in-prod'
 
 let app: FastifyInstance
 
-const hashWithSalt = (value: string): string =>
-  createHash('sha256').update(`test-salt:${value}`).digest('hex')
-
 async function seedDevKey(): Promise<void> {
   const { SqliteStore } = await import('../store/sqlite-store.js')
+  const { hashWithSalt } = await import('../lib/salted-hash.js')
   const store = new SqliteStore(process.env.SQLITE_PATH ?? '')
   await store.insertApiKey({
     keyHash: hashWithSalt(DEV_API_KEY),
@@ -99,6 +96,34 @@ describe('last_name discard — POST /api/helped/posts', () => {
     expect(res.body).not.toContain(MARKER)
   })
 
+  // Detail route has its own wire mapper and code path — a future
+  // divergence from the list mapper could bypass the list assertion
+  // while still leaking the marker here.
+  it('does not leak the marker into the GET /:slug detail response', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/helped/posts',
+      payload: helpedPayload(),
+      headers: { 'content-type': 'application/json' },
+    })
+    const { slug } = created.json() as { slug: string }
+    const detail = await app.inject({ method: 'GET', url: `/api/helped/posts/${slug}` })
+    expect(detail.statusCode).toBe(200)
+    expect(detail.body).not.toContain(MARKER)
+  })
+
+  // Covers the search code path: a future column reshuffle that landed
+  // last_name into a searchable field would make it discoverable via `?q=`
+  // even if list+detail mappers filtered it out of the projection.
+  it('does not leak the marker when querying ?q=<marker>', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/helped/posts?q=${encodeURIComponent(MARKER)}`,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).not.toContain(MARKER)
+  })
+
   it('does not store the marker in the underlying SQLite row', async () => {
     const { SqliteStore } = await import('../store/sqlite-store.js')
     const store = new SqliteStore(process.env.SQLITE_PATH ?? '')
@@ -120,6 +145,22 @@ describe('last_name discard — POST /api/helped/posts', () => {
     expect(body.error).toBe('invalid_input')
     expect(typeof body.fields?.last_name).toBe('string')
   })
+
+  // If a sibling field fails validation with last_name=<marker> in the
+  // same payload, the 400 response body must not echo the submitted
+  // last_name back. Zod's flatten() returns only paths+messages, never
+  // submitted values — this test locks that invariant.
+  it('does not echo last_name in 400 responses when sibling fields fail validation', async () => {
+    const badFirstName = { ...helpedPayload(), first_name: '' }
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/helped/posts',
+      payload: badFirstName,
+      headers: { 'content-type': 'application/json' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.body).not.toContain(MARKER)
+  })
 })
 
 describe('last_name discard — POST /api/reports', () => {
@@ -136,6 +177,28 @@ describe('last_name discard — POST /api/reports', () => {
 
   it('does not leak the marker into the reports list', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/reports' })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).not.toContain(MARKER)
+  })
+
+  it('does not leak the marker into the GET /:slug detail response', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: reportPayload(),
+      headers: { 'content-type': 'application/json' },
+    })
+    const { slug } = created.json() as { slug: string }
+    const detail = await app.inject({ method: 'GET', url: `/api/reports/${slug}` })
+    expect(detail.statusCode).toBe(200)
+    expect(detail.body).not.toContain(MARKER)
+  })
+
+  it('does not leak the marker when querying ?q=<marker>', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reports?q=${encodeURIComponent(MARKER)}`,
+    })
     expect(res.statusCode).toBe(200)
     expect(res.body).not.toContain(MARKER)
   })
@@ -179,6 +242,18 @@ describe('last_name discard — POST /api/agents/report', () => {
     const res = await app.inject({ method: 'GET', url: '/api/agents/recent' })
     expect(res.statusCode).toBe(200)
     expect(res.body).not.toContain(MARKER)
+  })
+
+  // Defence in depth: the reports-describe store check ran BEFORE the
+  // agent POST, so a leak that only manifests on the agent code path would
+  // slip through that earlier assertion. Re-read the store after the
+  // agent submission lands.
+  it('does not store the marker in any agent-submitted reports row', async () => {
+    const { SqliteStore } = await import('../store/sqlite-store.js')
+    const store = new SqliteStore(process.env.SQLITE_PATH ?? '')
+    const rows = await store.listAgentReports(50, 0)
+    await store.close()
+    expect(JSON.stringify(rows)).not.toContain(MARKER)
   })
 
   it('rejects agent submissions missing reported_last_name with 400', async () => {

@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyBaseLogger } from 'fastify'
 
-import type { EntryStatus, Post, Report, Store } from '../store/index.js'
+import type { EntryStatus, Post, Report } from '../store/index.js'
 
-import type { PostSearchDoc, ReportSearchDoc, SearchIndex } from './index.js'
+import type { PostSearchDoc, ReportSearchDoc } from './index.js'
 
 /** Build the search doc for a post. */
 export function postToDoc(post: Post): PostSearchDoc {
@@ -76,5 +76,3 @@ export function syncEntryStatusAsync(
     log.error({ err, op: 'search_index', id, entryType, newStatus }, 'search_sync_failed')
   })
 }
-
-export type { Store, SearchIndex }
