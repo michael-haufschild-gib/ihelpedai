@@ -63,7 +63,12 @@ function ComposerPlaceRow({ values, errors, setValue, setBlurred }: ComposerFiel
           data-testid="composer-country"
         />
         {typeof errors.country === 'string' && errors.country !== '' && (
-          <span data-testid="composer-country-error" className="ms-1 text-xs text-danger">
+          <span
+            data-testid="composer-country-error"
+            className="ms-1 text-xs text-danger"
+            role="alert"
+            aria-live="polite"
+          >
             {errors.country}
           </span>
         )}
@@ -77,6 +82,7 @@ function ComposerText({ values, errors, setValue, setBlurred, textareaRef }: Com
   const textareaId = useId()
   const count = values.text.length
   const atMax = count >= MAX_HELPED_TEXT
+  const hasTextError = typeof errors.text === 'string' && errors.text !== ''
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={textareaId} className="ms-1 text-xs font-medium text-text-primary">
@@ -96,13 +102,11 @@ function ComposerText({ values, errors, setValue, setBlurred, textareaRef }: Com
       <div className="flex items-center justify-between text-xs">
         <span
           data-testid="composer-text-error"
-          className={
-            typeof errors.text === 'string' && errors.text !== ''
-              ? 'text-danger'
-              : 'text-transparent'
-          }
+          role={hasTextError ? 'alert' : undefined}
+          aria-live="polite"
+          className={hasTextError ? 'text-danger' : 'text-transparent'}
         >
-          {errors.text ?? ''}
+          {hasTextError ? errors.text : ''}
         </span>
         <span
           data-testid="composer-text-counter"
@@ -135,11 +139,13 @@ export function EditingComposer({ fields, canPreview, onCancel, onPreview }: Edi
       // Esc closes the inline composer the same way the Cancel button does.
       // Bound on the form rather than on window to scope the shortcut to the
       // composer and avoid swallowing Esc for other surfaces on the page.
+      // Respect `defaultPrevented` so a nested control (custom select,
+      // popover) that already handled Escape isn't followed by the composer
+      // also cancelling and dropping the user's in-progress draft.
       onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          onCancel()
-        }
+        if (e.key !== 'Escape' || e.defaultPrevented) return
+        e.preventDefault()
+        onCancel()
       }}
     >
       <ComposerNameRow {...fields} />

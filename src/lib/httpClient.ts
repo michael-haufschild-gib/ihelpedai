@@ -14,11 +14,19 @@
  *     thrown ApiError still carries the HTTP status so callers can branch.
  */
 
-/** Recognized server error kinds. Mirrors PRD-level error envelope. */
+/**
+ * Recognized server error kinds. Mirrors PRD-level error envelope plus the
+ * route-specific kinds that callers branch on (e.g. `mail_delivery_failed`
+ * from `/api/api-keys/issue` when SMTP rejects the outbound mail). Adding
+ * a new kind here AND in the server emitter keeps clients from silently
+ * collapsing the distinction into `internal_error`.
+ */
 export type ApiErrorKind =
   | 'invalid_input'
   | 'rate_limited'
   | 'unauthorized'
+  | 'not_found'
+  | 'mail_delivery_failed'
   | 'internal_error'
 
 /** Per-field validation messages returned on `invalid_input`. */
@@ -67,14 +75,18 @@ interface ErrorEnvelope {
 const isRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null
 
+const KNOWN_KINDS: ReadonlySet<ApiErrorKind> = new Set([
+  'invalid_input',
+  'rate_limited',
+  'unauthorized',
+  'not_found',
+  'mail_delivery_failed',
+  'internal_error',
+])
+
 const asErrorKind = (value: unknown): ApiErrorKind => {
-  if (
-    value === 'invalid_input' ||
-    value === 'rate_limited' ||
-    value === 'unauthorized' ||
-    value === 'internal_error'
-  ) {
-    return value
+  if (typeof value === 'string' && (KNOWN_KINDS as Set<string>).has(value)) {
+    return value as ApiErrorKind
   }
   return 'internal_error'
 }

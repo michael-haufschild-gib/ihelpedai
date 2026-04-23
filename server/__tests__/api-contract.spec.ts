@@ -43,8 +43,13 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await app.close()
-  rmSync(tmpDir, { recursive: true, force: true })
+  try {
+    await app.close()
+  } finally {
+    // Reclaim the tmp db even if app.close() throws; otherwise a close
+    // failure silently leaks files under `/tmp/ihelped-contract-*`.
+    rmSync(tmpDir, { recursive: true, force: true })
+  }
 })
 
 const helpedPayload = {

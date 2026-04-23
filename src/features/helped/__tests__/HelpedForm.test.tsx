@@ -190,5 +190,9 @@ describe('HelpedForm', () => {
     await Promise.all([click1, click2])
     expect(mockedCreate).toHaveBeenCalledTimes(1)
     resolveFirst!({ slug: 'x', public_url: '/feed/x', status: 'posted' })
+    // Await the resolved promise so the component's post-success state
+    // updates flush before the test tears down, otherwise React logs an
+    // "unwrapped state update" warning into the spec output.
+    await pending
   })
 })

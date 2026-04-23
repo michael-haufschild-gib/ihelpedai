@@ -111,6 +111,32 @@ describe('admin accounts routes', () => {
     expect(reset?.used).toBe(false)
   })
 
+  it('POST /api/admin/admins/invite rolls back admin + reset token when mail delivery fails', async () => {
+    // Swap in a mailer that rejects — covers the SMTP-failure branch the
+    // happy-path spec skips. The route must deactivate the new admin row
+    // and mark the reset token used so neither can be abused after a
+    // failed invite mail.
+    class ThrowingMailer implements Mailer {
+      async send(): Promise<void> { throw new Error('smtp: connection refused') }
+    }
+    const original = mailer
+    ;(app as unknown as { mailer: Mailer }).mailer = new ThrowingMailer()
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/admins/invite',
+        headers: { cookie },
+        payload: { email: 'stranded@admin.ai' },
+      })
+      expect(res.statusCode).toBe(502)
+      expect(res.json().error).toBe('internal_error')
+      const stranded = await app.store.getAdminByEmail('stranded@admin.ai')
+      expect(stranded?.status).toBe('deactivated')
+    } finally {
+      ;(app as unknown as { mailer: Mailer }).mailer = original
+    }
+  })
+
   it('POST /api/admin/admins/:id/deactivate refuses self-deactivation', async () => {
     const res = await app.inject({
       method: 'POST',

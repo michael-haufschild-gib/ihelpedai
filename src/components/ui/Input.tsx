@@ -99,7 +99,10 @@ function InputAdornments({
   const hasIcon = Boolean(rightIcon)
   if (!loading && !hasIcon) return null
   return (
-    <div className="absolute right-3 flex items-center gap-2">
+    // `pointer-events-none`: the slot is decorative (spinner / static icon)
+    // so clicks on the padded right edge should still land on the input
+    // and move the caret there rather than hitting this overlay.
+    <div className="pointer-events-none absolute right-3 flex items-center gap-2">
       {loading && <LoadingSpinner size={14} className="text-text-tertiary" />}
       {hasIcon && !loading && <div className="text-text-tertiary">{rightIcon}</div>}
     </div>

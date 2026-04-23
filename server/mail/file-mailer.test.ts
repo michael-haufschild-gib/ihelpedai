@@ -9,8 +9,8 @@ import { FileMailer, MAIL_DIR_MODE, MAIL_FILE_MODE } from './file-mailer.js'
 
 describe('FileMailer', () => {
   let dir: string
-  let parentDir: string
-  let writeSpy: ReturnType<typeof vi.spyOn>
+  let parentDir: string | undefined
+  let writeSpy: ReturnType<typeof vi.spyOn> | undefined
 
   beforeEach(async () => {
     parentDir = await mkdtemp(join(tmpdir(), 'ihelped-mail-'))
@@ -21,10 +21,15 @@ describe('FileMailer', () => {
   })
 
   afterEach(async () => {
-    writeSpy.mockRestore()
-    // Each test creates its own tmp tree under `/tmp/ihelped-mail-*`. Without
-    // cleanup these accumulate indefinitely in local and CI runs.
-    await rm(parentDir, { recursive: true, force: true })
+    // Guard the teardown against partial setup — if `beforeEach` threw
+    // before `writeSpy` / `parentDir` were assigned, a bare call here
+    // would mask the original failure with a TypeError.
+    writeSpy?.mockRestore()
+    if (parentDir !== undefined) {
+      await rm(parentDir, { recursive: true, force: true })
+    }
+    writeSpy = undefined
+    parentDir = undefined
   })
 
   it('creates the drop directory with 0o700 when it does not exist yet', async () => {
@@ -72,8 +77,10 @@ describe('FileMailer', () => {
     const raw = await readFile(join(dir, name!), 'utf8')
     const headerBlock = raw.split('\r\n\r\n')[0]!
     // Every header line is terminated with CRLF — no bare LF allowed in
-    // headers or permissive parsers will split them differently.
-    expect(headerBlock).not.toMatch(/[^\r]\n/)
+    // headers or permissive parsers will split them differently. The
+    // `(^|[^\r])` prefix catches a bare LF at index 0 as well, which a
+    // `[^\r]\n` pattern alone would miss.
+    expect(headerBlock).not.toMatch(/(^|[^\r])\n/)
   })
 
   it('sanitizes subject in filename, capping non-filename chars and length', async () => {
