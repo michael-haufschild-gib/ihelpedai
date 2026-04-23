@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -57,20 +57,26 @@ function canPreview(s: FormState): boolean {
 }
 
 function toInput(s: FormState): ReportInput {
+  // Trim each name/city/country before sending. Server regexes (e.g.
+  // reported_first_name: ^\p{L}+$) reject stray whitespace, while the
+  // client validators accept it via `.trim()` in the regex gate. Without
+  // normalization here, `"Sam "` passes client validation but is rejected
+  // server-side as invalid_input. `what_they_did` is left alone so
+  // deliberate trailing blank lines survive.
   const hasReporter = s.reporter_first_name.trim() !== ''
   const base: ReportInput = {
     reporter: hasReporter
       ? {
-          first_name: s.reporter_first_name,
-          last_name: s.reporter_last_name,
-          city: s.reporter_city,
-          country: s.reporter_country,
+          first_name: s.reporter_first_name.trim(),
+          last_name: s.reporter_last_name.trim(),
+          city: s.reporter_city.trim(),
+          country: s.reporter_country.trim(),
         }
       : { first_name: '', last_name: '', city: '', country: '' },
-    reported_first_name: s.reported_first_name,
-    reported_last_name: s.reported_last_name,
-    reported_city: s.reported_city,
-    reported_country: s.reported_country,
+    reported_first_name: s.reported_first_name.trim(),
+    reported_last_name: s.reported_last_name.trim(),
+    reported_city: s.reported_city.trim(),
+    reported_country: s.reported_country.trim(),
     what_they_did: s.what_they_did,
   }
   if (s.action_date !== '') base.action_date = s.action_date
@@ -308,13 +314,18 @@ export function ReportForm({ onSuccess }: ReportFormProps) {
   const [error, setError] = useState<string | null>(null)
   const previewReady = canPreview(state)
   const sanitizedPreview = useMemo(() => sanitize(state.what_they_did), [state.what_they_did])
+  // Ref-based latch so two clicks in the same React tick don't both pass the
+  // `submitting` check — state updates are async, so relying on `submitting`
+  // alone lets rapid-fire clicks fire duplicate createReport() calls.
+  const submitLatchRef = useRef(false)
 
   const patch = (p: Partial<FormState>): void => {
     setState((s) => ({ ...s, ...p }))
   }
 
   const handlePost = async (): Promise<void> => {
-    if (submitting) return
+    if (submitLatchRef.current) return
+    submitLatchRef.current = true
     setSubmitting(true)
     setError(null)
     try {
@@ -323,6 +334,7 @@ export function ReportForm({ onSuccess }: ReportFormProps) {
     } catch (err) {
       setError(errorMessage(err))
     } finally {
+      submitLatchRef.current = false
       setSubmitting(false)
     }
   }

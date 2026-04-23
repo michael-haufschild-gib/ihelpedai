@@ -25,7 +25,7 @@ function SwitchThumb({
       initial={false}
       transition={{ type: 'spring', stiffness: 700, damping: 30 }}
       animate={{ x: checked ? 22 : 2 }}
-      className={`absolute top-0.5 left-0 w-5 h-5 rounded-full shadow-md z-10 flex items-center justify-center overflow-hidden transition-colors duration-200 pointer-events-none ${checked ? 'bg-white' : 'bg-text-secondary group-hover/switch:bg-text-primary'}`}
+      className={`absolute top-0.5 left-0 w-5 h-5 rounded-full shadow-md z-10 flex items-center justify-center overflow-hidden transition-colors duration-200 pointer-events-none ${checked ? 'bg-white' : 'bg-[var(--text-secondary)] group-hover/switch:bg-[var(--text-primary)]'}`}
     >
       <div className="relative w-full h-full flex items-center justify-center">
         {Boolean(iconOn) && (
@@ -65,8 +65,8 @@ export const Switch: React.FC<SwitchProps> = ({
 }) => {
   const accessibleName = ariaLabel ?? label ?? 'Toggle'
   const trackClass = checked
-    ? 'bg-[var(--theme-accent)] border-[var(--theme-accent)] shadow-[0_0_15px_var(--theme-accent-glow)]'
-    : 'bg-[var(--bg-surface)] border-[var(--border-default)] group-hover/switch:bg-[var(--bg-hover)]'
+    ? 'bg-accent border-accent shadow-accent-glow'
+    : 'bg-surface border-border-default group-hover/switch:bg-[var(--bg-hover)]'
 
   return (
     <label

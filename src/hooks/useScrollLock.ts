@@ -56,9 +56,3 @@ export function useScrollLock(isOpen: boolean) {
     }
   }, [isOpen])
 }
-
-/** Reset internal state — test-only, not exported from the public API. */
-export function _resetScrollLockState() {
-  lockCount = 0
-  savedOverflow = null
-}

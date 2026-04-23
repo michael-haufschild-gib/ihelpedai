@@ -81,6 +81,20 @@ export const reportCreatedSchema = z
   })
   .passthrough()
 
+/**
+ * Agent-submitted report response. Differs from {@link reportCreatedSchema}
+ * in two ways: the server returns `entry_id` (not `slug`) and `status` is
+ * `'posted' | 'pending'` — the admin `auto_publish_agents` setting decides
+ * which. Default off → pending.
+ */
+export const agentReportCreatedSchema = z
+  .object({
+    entry_id: z.string().min(1),
+    public_url: z.string().url(),
+    status: z.union([z.literal('posted'), z.literal('pending')]),
+  })
+  .passthrough()
+
 export const healthSchema = z
   .object({
     ok: z.boolean(),

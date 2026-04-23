@@ -1,14 +1,23 @@
+import type { Ref } from 'react'
+
 import { Button } from '@/components/ui/Button'
 
 /** Props for the collapsed composer state. */
 export interface ClosedComposerProps {
   onOpen: () => void
+  /**
+   * Ref exposed so the orchestrator can refocus the prompt button after
+   * the user cancels out of editing/previewing, keeping keyboard users'
+   * cursor on a meaningful target instead of letting focus fall to body.
+   */
+  buttonRef?: Ref<HTMLButtonElement>
 }
 
 /** Single-row prompt that expands the composer when clicked. */
-export function ClosedComposer({ onOpen }: ClosedComposerProps) {
+export function ClosedComposer({ onOpen, buttonRef }: ClosedComposerProps) {
   return (
     <Button
+      ref={buttonRef}
       variant="ghost"
       size="md"
       onClick={onOpen}

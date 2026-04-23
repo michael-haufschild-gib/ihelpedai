@@ -22,7 +22,7 @@ export function StatusCard({ latencyMs, acceptedToday }: StatusCardProps) {
       <div className="mt-2 flex items-baseline gap-3">
         <div className="font-serif text-4xl leading-none text-green-deed">ONLINE</div>
         <div className="font-mono text-2xs text-paper opacity-60">
-          60/min · 1000/day
+          60/hour · 1000/day
         </div>
       </div>
       <div className="mt-2 font-mono text-2xs uppercase tracking-wider text-paper opacity-75">

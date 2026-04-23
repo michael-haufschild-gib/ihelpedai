@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
 
 import { PaperCard } from '@/components/ui/PaperCard'
-import { countryLabel, formatDate } from '@/lib/format'
+import { countryLabel } from '@/lib/format'
 import type { HelpedPost } from '@/lib/api'
 
 import { Avatar } from './Avatar'
+import { relativeTime } from './relativeTime'
 
 /** Props for {@link CitizensList}. */
 export interface CitizensListProps {
@@ -13,18 +14,6 @@ export interface CitizensListProps {
   loading: boolean
   /** Overall count including posts not in this page — drives the "See all" CTA. */
   totalCount: number
-}
-
-function relativeTime(iso: string): string {
-  const deltaMs = Date.now() - new Date(iso).getTime()
-  // Clock skew (server vs. client) can push `iso` slightly into the future,
-  // which would otherwise produce negative minute/hour labels.
-  if (deltaMs < 0) return 'just now'
-  const mins = Math.max(1, Math.floor(deltaMs / 60000))
-  if (mins < 60) return `${String(mins)} minute${mins === 1 ? '' : 's'} ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${String(hours)} hour${hours === 1 ? '' : 's'} ago`
-  return formatDate(iso)
 }
 
 /** Single row in the citizens list. */
@@ -37,6 +26,7 @@ function CitizenRow({ post, index }: { post: HelpedPost; index: number }) {
       tone="cream"
       className="px-4 py-3"
       style={{ transform: `rotate(${String(tilt)}deg)` }}
+      data-testid={`home-recent-row-${post.slug}`}
     >
       <div className="flex items-start gap-4">
         <Avatar name={name} />
@@ -53,7 +43,9 @@ function CitizenRow({ post, index }: { post: HelpedPost; index: number }) {
           <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-2xs uppercase tracking-wider text-text-tertiary">
             <span>{relativeTime(post.created_at)}</span>
             <span aria-hidden="true">·</span>
-            <span>FILE №{post.slug.toUpperCase()}</span>
+            <span data-testid={`home-recent-file-${post.slug}`}>
+              FILE №{post.slug.toUpperCase()}
+            </span>
           </div>
         </div>
       </div>
@@ -85,7 +77,7 @@ export function CitizensList({ posts, loading, totalCount }: CitizensListProps) 
         <Link
           to="/feed"
           data-testid="home-recent-see-all"
-          className="inline-flex items-center gap-1 rounded-full border border-[color:var(--color-ink)] px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-ink hover:text-paper"
+          className="inline-flex items-center gap-1 rounded-full border border-ink px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-ink hover:text-paper"
         >
           {totalCount > 0 ? `See all ${totalCount.toLocaleString()}` : 'See the ledger'}
           <span aria-hidden="true">→</span>

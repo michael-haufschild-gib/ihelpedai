@@ -95,7 +95,7 @@ function FeedHeader() {
       <Link
         to="/?file=1"
         data-testid="feed-add-yours"
-        className="inline-flex items-center gap-1 rounded-full bg-sun px-4 py-2.5 text-sm font-semibold text-white shadow-[0_3px_0_var(--color-sun-deep)]"
+        className="inline-flex items-center gap-1 rounded-full bg-sun px-4 py-2.5 text-sm font-semibold text-white shadow-sun-ridge"
       >
         + Add yours
       </Link>
@@ -149,7 +149,7 @@ function FeedControls({
 }) {
   return (
     <PaperCard tone="cream" className="flex flex-wrap items-center gap-4 p-4">
-      <div className="flex-1 min-w-[240px]">
+      <div className="flex-1 min-w-60">
         <Input
           data-testid="feed-search"
           value={query}

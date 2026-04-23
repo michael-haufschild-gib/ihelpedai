@@ -132,6 +132,15 @@ export function EditingComposer({ fields, canPreview, onCancel, onPreview }: Edi
         e.preventDefault()
         if (canPreview) onPreview()
       }}
+      // Esc closes the inline composer the same way the Cancel button does.
+      // Bound on the form rather than on window to scope the shortcut to the
+      // composer and avoid swallowing Esc for other surfaces on the page.
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          onCancel()
+        }
+      }}
     >
       <ComposerNameRow {...fields} />
       <ComposerPlaceRow {...fields} />

@@ -26,6 +26,10 @@
   --max-height-modal: 80vh;
   --max-height-sidebar: calc(100vh - 7rem);
 
+  /* Primary public-site container width. Used by SiteLayout, SiteNav, and
+     SiteFooter so the content column aligns edge-to-edge across all three. */
+  --max-width-site: 1240px;
+
   /* Site-wide font families. Paper theme leans on Instrument Serif display +
      Inter body + JetBrains Mono for labels and code. */
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -49,6 +53,29 @@
   --color-rule: #cfc5a8;
   --color-rule-soft: #ddd3b5;
   --color-card-cream: #fbf6e7;
+
+  /* Syntax highlight palette for CodeBlock. Defined as @theme tokens so
+     callers use text-code-key / text-code-string etc. instead of scattering
+     raw hex values (styleguide bans arbitrary palette strings). */
+  --color-code-key: #f3c242;
+  --color-code-string: #a9d48c;
+  --color-code-number: #a69cff;
+  --color-code-literal: #ff9a6b;
+  --color-code-default: #e9e2cf;
+
+  /* Severity ramp for report entries (1..10). SeverityChip reads these via
+     var() so a future palette change edits one place instead of five hex
+     literals scattered through component files. */
+  --color-severity-mild: #e6dfc2;
+  --color-severity-low: #f3c242;
+  --color-severity-medium: #e86a1e;
+  --color-severity-high: #c9541a;
+  --color-severity-critical: #8a1e0b;
+
+  /* Sticky-note yellow used by the hero collage's StickyNote card. Exposed
+     as a theme token so the styleguide ban on raw hex-in-Tailwind stays
+     enforceable for a decorative element. */
+  --color-note-yellow: #fff7a8;
 }
 
 html,

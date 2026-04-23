@@ -4,6 +4,30 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { resetPassword } from '@/lib/adminApi'
+import { ApiError } from '@/lib/api'
+
+/**
+ * Translate the reset-password API failure into a user-actionable message.
+ * The server returns `fields.password = 'weak_password'` for zxcvbn rejects
+ * and `fields.confirm_password = 'passwords_must_match'` for the confirm
+ * mismatch, usually without a human `message`. For expired/used-token
+ * branches the server DOES set a specific message — surface that verbatim.
+ */
+function describeResetError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.fields?.password === 'weak_password') {
+      return 'Password too weak. Use more variety (mixed case, digits, symbols) or a longer passphrase.'
+    }
+    if (err.fields?.confirm_password === 'passwords_must_match') {
+      return "Passwords don't match."
+    }
+    if (typeof err.message === 'string' && err.message !== '' && err.message !== err.kind) {
+      return err.message
+    }
+    if (err.kind === 'rate_limited') return 'Too many attempts. Try again in a few minutes.'
+  }
+  return 'Reset failed. Try again.'
+}
 
 /** Password reset form page (Story 2). */
 export function AdminResetPassword() {
@@ -35,7 +59,7 @@ export function AdminResetPassword() {
       await resetPassword(token, password, confirm)
       setDone(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reset failed.')
+      setError(describeResetError(err))
     } finally {
       setLoading(false)
     }

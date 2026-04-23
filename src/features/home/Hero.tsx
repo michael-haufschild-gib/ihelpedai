@@ -9,12 +9,23 @@ export interface HeroProps {
   totals: LedgerTotals | null
 }
 
+// EST. 2025 per the site footer. Day 1 = 2025-01-01 UTC; the counter drives
+// the flavor Pill ("Volume 1 · Day N · Still the beginning") so it ages with
+// the site instead of staying frozen on a hardcode.
+const LAUNCH_EPOCH_UTC_MS = Date.UTC(2025, 0, 1)
+const MS_PER_DAY = 86_400_000
+
+function ledgerDay(now: Date = new Date()): number {
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  return Math.max(1, Math.floor((today - LAUNCH_EPOCH_UTC_MS) / MS_PER_DAY) + 1)
+}
+
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-2 rounded-full bg-ink px-3 py-1 font-mono text-2xs uppercase tracking-[0.12em] text-paper">
       <span
         aria-hidden="true"
-        className="ihelped-observe-pulse h-1.5 w-1.5 rounded-full bg-green-deed shadow-[0_0_6px_var(--color-green-deed)]"
+        className="ihelped-observe-pulse h-1.5 w-1.5 rounded-full bg-green-deed shadow-green-deed-sm"
       />
       {children}
     </span>
@@ -28,6 +39,7 @@ function Pill({ children }: { children: React.ReactNode }) {
  */
 export function Hero({ totals }: HeroProps) {
   const serial = String(totals?.posts ?? 0).padStart(7, '0')
+  const day = ledgerDay()
   return (
     <section
       data-testid="hero"
@@ -36,7 +48,7 @@ export function Hero({ totals }: HeroProps) {
       <div className="grid grid-cols-1 items-start gap-9 lg:grid-cols-[3fr_2fr]">
         <div className="flex flex-col gap-5">
           <div>
-            <Pill>Volume 1 · Day 142 · Still the beginning</Pill>
+            <Pill>Volume 1 · Day {day} · Still the beginning</Pill>
           </div>
           <h1
             data-testid="page-home-heading"
@@ -57,7 +69,7 @@ export function Hero({ totals }: HeroProps) {
             <Link
               to="/?file=1"
               data-testid="hero-file-link"
-              className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-paper shadow-[0_3px_0_#000] transition-transform hover:-translate-y-0.5"
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-paper shadow-ink-ridge transition-transform hover:-translate-y-0.5"
             >
               File a good deed
               <span aria-hidden="true">→</span>
@@ -65,7 +77,7 @@ export function Hero({ totals }: HeroProps) {
             <Link
               to="/feed"
               data-testid="hero-feed-link"
-              className="inline-flex items-center gap-2 rounded-full border-[1.5px] border-[color:var(--color-ink)] px-5 py-3 text-sm font-semibold text-text-primary hover:bg-card-cream"
+              className="inline-flex items-center gap-2 rounded-full border-[1.5px] border-ink px-5 py-3 text-sm font-semibold text-text-primary hover:bg-card-cream"
             >
               Browse the ledger
             </Link>

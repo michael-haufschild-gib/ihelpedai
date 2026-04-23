@@ -1,4 +1,5 @@
 import { AnimatePresence, m } from 'motion/react'
+import type { Ref } from 'react'
 
 import { isHelpedFormValid } from '@/features/helped/form/validators'
 
@@ -30,10 +31,12 @@ export interface ComposerBodyProps {
   fields: ComposerFieldsProps
   sanitized: ComposerSanitised
   cb: ComposerCallbacks
+  /** Ref forwarded to the prompt button so the orchestrator can refocus it. */
+  closedButtonRef?: Ref<HTMLButtonElement>
 }
 
 /** Renders one of four mode-specific layouts inside the composer shell. */
-export function ComposerBody({ state, fields, sanitized, cb }: ComposerBodyProps) {
+export function ComposerBody({ state, fields, sanitized, cb, closedButtonRef }: ComposerBodyProps) {
   return (
     <AnimatePresence mode="wait" initial={false}>
       {state.mode === 'closed' && (
@@ -44,7 +47,7 @@ export function ComposerBody({ state, fields, sanitized, cb }: ComposerBodyProps
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
         >
-          <ClosedComposer onOpen={cb.open} />
+          <ClosedComposer onOpen={cb.open} buttonRef={closedButtonRef} />
         </m.div>
       )}
       {state.mode === 'editing' && (

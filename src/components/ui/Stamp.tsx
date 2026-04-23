@@ -10,7 +10,7 @@ const TONE_CLASS: Record<StampTone, string> = {
   indigo: 'text-indigo-ink border-indigo-ink',
   sun: 'text-sun-deep border-sun-deep',
   green: 'text-green-deed border-green-deed',
-  ink: 'text-text-primary border-[color:var(--color-ink)]',
+  ink: 'text-text-primary border-ink',
 }
 
 /** Props for the rubber-stamp chip. */

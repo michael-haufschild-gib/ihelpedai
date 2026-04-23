@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/Button'
@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import type { AdminEntry, EntryFilters, Paginated } from '@/lib/adminApi'
 import { listEntries } from '@/lib/adminApi'
+
+const SEARCH_DEBOUNCE_MS = 300
 
 /** Entry status badge. */
 function StatusBadge({ status }: { status: string }) {
@@ -21,13 +23,19 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-/** Admin entries list page (Story 3). */
-export function AdminEntries() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [data, setData] = useState<Paginated<AdminEntry> | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+type ParsedFilters = {
+  pageRaw: number
+  page: number
+  entryTypeRaw: string
+  entryType: 'post' | 'report' | undefined
+  statusRaw: string
+  status: 'live' | 'pending' | 'deleted' | undefined
+  q: string
+  sort: 'asc' | 'desc'
+}
 
+/** Parse entry filters out of the URL query string, clamping invalid values. */
+function parseFilters(searchParams: URLSearchParams): ParsedFilters {
   const pageRaw = Number(searchParams.get('page') ?? '1')
   const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
   const entryTypeRaw = searchParams.get('entry_type') ?? ''
@@ -35,9 +43,32 @@ export function AdminEntries() {
   const q = searchParams.get('q') ?? ''
   const sortRaw = searchParams.get('sort') ?? 'desc'
   const sort: 'asc' | 'desc' = sortRaw === 'asc' ? 'asc' : 'desc'
+  const entryType = entryTypeRaw === 'post' || entryTypeRaw === 'report' ? entryTypeRaw : undefined
+  const status =
+    statusRaw === 'live' || statusRaw === 'pending' || statusRaw === 'deleted' ? statusRaw : undefined
+  return { pageRaw, page, entryTypeRaw, entryType, statusRaw, status, q, sort }
+}
 
-  const entryType = (entryTypeRaw === 'post' || entryTypeRaw === 'report') ? entryTypeRaw : undefined
-  const status = (statusRaw === 'live' || statusRaw === 'pending' || statusRaw === 'deleted') ? statusRaw : undefined
+/** Admin entries list page (Story 3). */
+export function AdminEntries() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [data, setData] = useState<Paginated<AdminEntry> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const { page, entryType, entryTypeRaw, status, statusRaw, q, sort } = parseFilters(searchParams)
+
+  // Flip loading back to `true` during render whenever the filter signature
+  // changes, before the fetch effect runs. This is React's "reset state on
+  // prop change" pattern and replaces a set-state-in-effect that triggers
+  // the react-hooks/set-state-in-effect rule. Without this, rapid filter
+  // changes leave stale data visible during the in-flight fetch.
+  const filterSignature = `${String(page)}|${entryType ?? ''}|${status ?? ''}|${q}|${sort}`
+  const [prevFilterSignature, setPrevFilterSignature] = useState(filterSignature)
+  if (filterSignature !== prevFilterSignature) {
+    setPrevFilterSignature(filterSignature)
+    setLoading(true)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -52,18 +83,33 @@ export function AdminEntries() {
     return () => { cancelled = true }
   }, [page, entryType, status, q, sort])
 
-  const setFilter = (key: string, value: string) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (value !== '') next.set(key, value); else next.delete(key)
-      next.set('page', '1')
-      return next
-    })
-  }
+  // useCallback keeps the identity of these handlers stable across parent
+  // re-renders (e.g. a fetch completing mid-typing). EntriesFilters uses
+  // onFilter in a useEffect dependency array for its debounce timer; a
+  // fresh closure on every parent render would reset the debounce and
+  // delay the filter update indefinitely while the user keeps typing.
+  const setFilter = useCallback(
+    (key: string, value: string) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        if (value !== '') next.set(key, value); else next.delete(key)
+        next.set('page', '1')
+        return next
+      })
+    },
+    [setSearchParams],
+  )
 
-  const setPage = (p: number) => {
-    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next })
-  }
+  const setPage = useCallback(
+    (p: number) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('page', String(p))
+        return next
+      })
+    },
+    [setSearchParams],
+  )
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0
 
@@ -111,6 +157,29 @@ function EntriesFilters({ entryType, status, q, sort, onFilter }: {
   sort: string
   onFilter: (key: string, value: string) => void
 }) {
+  // Local input state decouples typing from URL/history updates. Each
+  // keystroke used to push a new history entry and fire a fetch; typing a
+  // five-letter query sent five requests and cluttered the back-button.
+  // The debounce pushes only the last value, 300 ms after the user stops.
+  //
+  // The `prevExternalQ` pattern is the React-docs-blessed way to reset
+  // local state in response to a prop/URL change during render — avoids
+  // the set-state-in-effect anti-pattern and the double render it causes.
+  const [searchInput, setSearchInput] = useState(q)
+  const [prevExternalQ, setPrevExternalQ] = useState(q)
+  if (q !== prevExternalQ) {
+    setPrevExternalQ(q)
+    setSearchInput(q)
+  }
+
+  useEffect(() => {
+    if (searchInput === q) return
+    const timer = setTimeout(() => {
+      onFilter('q', searchInput)
+    }, SEARCH_DEBOUNCE_MS)
+    return () => { clearTimeout(timer) }
+  }, [searchInput, q, onFilter])
+
   return (
     <div className="flex flex-wrap gap-3">
       <Select
@@ -137,8 +206,8 @@ function EntriesFilters({ entryType, status, q, sort, onFilter }: {
       <Input
         data-testid="admin-entries-search"
         placeholder="Search..."
-        value={q}
-        onChange={(e) => onFilter('q', e.target.value)}
+        value={searchInput}
+        onChange={(e) => setSearchInput(e.target.value)}
         className="w-48"
       />
       <Button

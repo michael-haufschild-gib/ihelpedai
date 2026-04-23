@@ -92,7 +92,9 @@ export function AdminSettings() {
       <div className="rounded border border-border-default bg-surface p-4">
         <p className="mb-2 font-medium">Sanitizer exception list</p>
         <p className="mb-3 text-sm text-text-secondary">
-          One entry per line. These terms will be preserved by the sanitizer.
+          One entry per line. Preserved by the server sanitizer when a post is stored. Live form
+          previews use the client's static list, so admin-added terms may still appear as
+          [name] during preview but will survive in the final post.
         </p>
         <Textarea
           data-testid="admin-settings-exceptions"

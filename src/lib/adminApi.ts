@@ -8,6 +8,7 @@
  */
 
 import {
+  ApiError,
   buildQuery,
   jsonBody,
   type Paginated,
@@ -17,9 +18,40 @@ import {
 
 export { type Paginated } from './httpClient'
 
+/**
+ * Fired by {@link adminRequest} on 401 responses to a credentialed admin
+ * request. Subscribers clear local admin state and show the "session expired"
+ * toast; the layout-level useEffect then redirects to /admin/login.
+ *
+ * A window event is used instead of a direct store import to avoid a
+ * circular dependency — adminStore already imports from this module.
+ */
+export const ADMIN_SESSION_EXPIRED_EVENT = 'ihelpedai:admin-session-expired'
+
+/**
+ * Register the custom event on WindowEventMap so `addEventListener` /
+ * `dispatchEvent` infer the right signature without per-call casts. The key
+ * must be the literal string matching {@link ADMIN_SESSION_EXPIRED_EVENT};
+ * TS module augmentation does not accept computed property keys here.
+ */
+declare global {
+  interface WindowEventMap {
+    'ihelpedai:admin-session-expired': CustomEvent<void>
+  }
+}
+
 /** Execute a JSON request with credentials, throw ApiError on non-2xx. */
-function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  return request<T>(path, { ...init, credentials: 'include' })
+async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    return await request<T>(path, { ...init, credentials: 'include' })
+  } catch (err) {
+    if (err instanceof ApiError && err.kind === 'unauthorized' && typeof window !== 'undefined') {
+      // Dispatching once per 401 is harmless — subscribers are idempotent and
+      // only react when the store actually held a populated admin.
+      window.dispatchEvent(new CustomEvent(ADMIN_SESSION_EXPIRED_EVENT))
+    }
+    throw err
+  }
 }
 
 const jsonPost = (payload: unknown): RequestInit => jsonBody(payload, 'POST')

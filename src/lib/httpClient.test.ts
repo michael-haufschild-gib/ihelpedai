@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, buildApiErrorFromBody, buildQuery } from './httpClient'
+import { ApiError, buildApiErrorFromBody, buildQuery, jsonBody, request } from './httpClient'
 
 /**
  * Locks the contract that `buildQuery` skips both `undefined` and `null`,
@@ -66,5 +66,103 @@ describe('buildApiErrorFromBody', () => {
       fields: { name: 'required', age: 42, nested: { x: 1 } },
     })
     expect(err.fields).toEqual({ name: 'required' })
+  })
+})
+
+/**
+ * `request<T>` is the wrapper every caller in api.ts / adminApi.ts routes
+ * through. These tests pin its behaviour across the four failure + success
+ * axes so a future refactor of the JSON / error / network paths cannot
+ * silently change the shape the rest of the app relies on.
+ */
+describe('request', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('returns the parsed JSON body on 2xx', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ hello: 'world' }), { status: 200 }),
+    )
+    const out = await request<{ hello: string }>('/api/example')
+    expect(out).toEqual({ hello: 'world' })
+  })
+
+  it('returns null when a 2xx response has an empty body', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response('', { status: 204 }))
+    const out = await request<null>('/api/logout')
+    expect(out).toBe(null)
+  })
+
+  it('throws ApiError with status=0 on fetch network failure', async () => {
+    fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const err = await request('/api/example').then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).kind).toBe('internal_error')
+    expect((err as ApiError).status).toBe(0)
+    expect((err as ApiError).message).toContain('Failed to fetch')
+  })
+
+  it('throws a typed ApiError built from the server envelope on non-2xx', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: 'invalid_input', fields: { text: 'over_redacted' } }),
+        { status: 400 },
+      ),
+    )
+    const err = await request('/api/example').then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).kind).toBe('invalid_input')
+    expect((err as ApiError).status).toBe(400)
+    expect((err as ApiError).fields).toEqual({ text: 'over_redacted' })
+  })
+
+  it('throws ApiError carrying HTTP status even when the error body is non-JSON', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response('<html>Bad Gateway</html>', { status: 502 }),
+    )
+    const err = await request('/api/example').then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).status).toBe(502)
+    // Unknown envelope.error falls back to internal_error without hiding the
+    // real HTTP status — callers branch on `status` in the nginx-502 case.
+    expect((err as ApiError).kind).toBe('internal_error')
+  })
+
+  it('sets content-type when a body is provided and preserves caller headers', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    await request('/api/example', jsonBody({ foo: 1 }))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers['content-type']).toBe('application/json')
+    expect(headers['accept']).toBe('application/json')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBe('{"foo":1}')
+  })
+
+  it('omits content-type when no body is provided (GET)', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    await request('/api/example')
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const headers = init.headers as Record<string, string>
+    expect(headers).not.toHaveProperty('content-type')
+    expect(headers['accept']).toBe('application/json')
   })
 })

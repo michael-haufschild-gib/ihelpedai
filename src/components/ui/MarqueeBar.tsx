@@ -40,7 +40,7 @@ export function MarqueeBar({
       <div className="flex items-center gap-2.5">
         <span
           aria-hidden="true"
-          className="ihelped-observe-pulse inline-block h-2 w-2 rounded-full bg-green-deed shadow-[0_0_8px_var(--color-green-deed)]"
+          className="ihelped-observe-pulse inline-block h-2 w-2 rounded-full bg-green-deed shadow-green-deed-sm"
         />
         <span>{label}</span>
       </div>

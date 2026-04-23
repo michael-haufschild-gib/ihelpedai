@@ -23,7 +23,7 @@ export function Checkbox({
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
       disabled={disabled}
-      className={`h-4 w-4 cursor-pointer rounded border border-border-default accent-accent ${disabled ? 'cursor-not-allowed opacity-50' : ''} ${className}`}
+      className={`h-4 w-4 cursor-pointer rounded border border-border-default accent-[var(--theme-accent)] ${disabled ? 'cursor-not-allowed opacity-50' : ''} ${className}`}
       {...rest}
     />
   )

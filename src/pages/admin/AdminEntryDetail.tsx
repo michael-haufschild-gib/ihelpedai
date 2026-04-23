@@ -14,6 +14,24 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
+/**
+ * Map an admin action failure into a user-readable message. Covers the
+ * purge confirmation mismatch (400 with server message about the required
+ * typed string), session expiry, rate-limit, network, and falls back to a
+ * generic "Action failed" for anything else.
+ */
+function describeActionError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.kind === 'unauthorized') return 'Session expired. Sign in again.'
+    if (err.kind === 'rate_limited') return 'Too many actions. Wait a moment, then retry.'
+    if (err.status === 0) return 'Network unreachable. Try again.'
+    if (typeof err.message === 'string' && err.message !== '' && err.message !== err.kind) {
+      return err.message
+    }
+  }
+  return 'Action failed. Try again.'
+}
+
 /** Admin entry detail page (Story 4). */
 export function AdminEntryDetail() {
   const { id } = useParams<{ id: string }>()
@@ -25,6 +43,7 @@ export function AdminEntryDetail() {
   const [confirmation, setConfirmation] = useState('')
   const [reason, setReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return undefined
@@ -45,6 +64,7 @@ export function AdminEntryDetail() {
   const handleAction = async (action: string) => {
     if (!entry) return
     setActionLoading(true)
+    setActionError(null)
     try {
       if (action === 'purge') {
         await purgeEntry(entry.id, confirmation, reason !== '' ? reason : undefined)
@@ -52,7 +72,8 @@ export function AdminEntryDetail() {
         await entryAction(entry.id, action, reason !== '' ? reason : undefined)
       }
       navigate('/admin', { replace: true })
-    } catch {
+    } catch (err) {
+      setActionError(describeActionError(err))
       setActionLoading(false)
     }
   }
@@ -73,10 +94,16 @@ export function AdminEntryDetail() {
           confirmation={confirmation}
           reason={reason}
           actionLoading={actionLoading}
+          actionError={actionError}
           onConfirmationChange={setConfirmation}
           onReasonChange={setReason}
           onConfirm={() => handleAction(modal.action)}
-          onClose={() => { setModal(null); setConfirmation(''); setReason('') }}
+          onClose={() => {
+            setModal(null)
+            setConfirmation('')
+            setReason('')
+            setActionError(null)
+          }}
         />
       )}
     </section>
@@ -181,11 +208,12 @@ function EntryAuditLog({ auditLog }: { auditLog: EntryDetail['audit_log'] }) {
 }
 
 /** Confirmation modal for entry actions. */
-function ActionModal({ modal, confirmation, reason, actionLoading, onConfirmationChange, onReasonChange, onConfirm, onClose }: {
+function ActionModal({ modal, confirmation, reason, actionLoading, actionError, onConfirmationChange, onReasonChange, onConfirm, onClose }: {
   modal: { action: string; label: string }
   confirmation: string
   reason: string
   actionLoading: boolean
+  actionError: string | null
   onConfirmationChange: (v: string) => void
   onReasonChange: (v: string) => void
   onConfirm: () => void
@@ -209,6 +237,11 @@ function ActionModal({ modal, confirmation, reason, actionLoading, onConfirmatio
           onChange={(e) => onReasonChange(e.target.value)}
           placeholder="Reason (optional)"
         />
+        {actionError !== null && (
+          <p data-testid="admin-action-error" className="text-sm text-danger">
+            {actionError}
+          </p>
+        )}
         <div className="flex gap-2">
           <Button
             data-testid="admin-action-confirm"

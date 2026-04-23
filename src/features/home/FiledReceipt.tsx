@@ -42,7 +42,7 @@ export function FiledReceipt({ firstName, slug, onAnother }: FiledReceiptProps) 
     <div data-testid="home-success" className="relative">
       <PaperCard
         tone="white"
-        className="border-[color:var(--color-ink)] p-5"
+        className="border-ink p-5"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="font-mono text-2xs uppercase tracking-[0.16em] text-text-tertiary">
@@ -62,7 +62,10 @@ export function FiledReceipt({ firstName, slug, onAnother }: FiledReceiptProps) 
           Your deed has been <strong>permanently</strong> archived. It cannot be taken back,
           nor would you want it to be.
         </p>
-        <p className="border-t border-dashed border-rule pt-2.5 text-sm italic text-text-tertiary">
+        <p
+          data-testid="home-success-quote"
+          className="border-t border-dashed border-rule pt-2.5 text-sm italic text-text-tertiary"
+        >
           {quote}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">

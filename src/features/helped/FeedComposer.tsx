@@ -8,6 +8,7 @@ import { sanitize } from '@/lib/sanitizePreview'
 import { ComposerBody, type ComposerCallbacks } from './composer/ComposerBody'
 import type { ComposerFieldsProps } from './composer/types'
 import { useComposerState } from './composer/useComposerState'
+import { trimHelpedValues } from './form/validators'
 
 /** Props for the feed-top composer. */
 export interface FeedComposerProps {
@@ -29,6 +30,7 @@ export interface FeedComposerProps {
 export function FeedComposer({ onPosted }: FeedComposerProps) {
   const state = useComposerState()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const closedButtonRef = useRef<HTMLButtonElement | null>(null)
   const inFlightRef = useRef(false)
   const sanitized = useMemo(() => sanitize(state.values.text), [state.values.text])
 
@@ -37,7 +39,7 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
     inFlightRef.current = true
     state.setSubmitting(true)
     state.setSubmitError(null)
-    createHelpedPost(state.values)
+    createHelpedPost(trimHelpedValues(state.values))
       .then(() => {
         bumpLoyalty()
         inFlightRef.current = false
@@ -59,6 +61,11 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
     cancel: () => {
       state.setMode('closed')
       state.reset()
+      // After AnimatePresence finishes the exit/enter swap (~150-180ms),
+      // the ClosedComposer's prompt button is in the DOM. Return focus to
+      // it so keyboard users who Esc or click Cancel don't lose their
+      // place. Timer is cleared implicitly on component unmount via React.
+      window.setTimeout(() => closedButtonRef.current?.focus(), 200)
     },
     preview: () => state.setMode('previewing'),
     edit: () => state.setMode('editing'),
@@ -89,7 +96,13 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
       data-testid="feed-composer"
       className="rounded-xl border border-border-subtle bg-panel/40 p-3 backdrop-blur-sm sm:p-4"
     >
-      <ComposerBody state={state} fields={fields} sanitized={sanitized} cb={cb} />
+      <ComposerBody
+        state={state}
+        fields={fields}
+        sanitized={sanitized}
+        cb={cb}
+        closedButtonRef={closedButtonRef}
+      />
     </section>
   )
 }

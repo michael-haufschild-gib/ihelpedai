@@ -77,6 +77,25 @@ export function validateHelpedField(name: HelpedFieldName, value: string): strin
   return FIELD_VALIDATORS[name](value)
 }
 
+/**
+ * Normalize string fields for submission. Per-field validators tolerate
+ * leading/trailing whitespace via `.trim()` in the regex gate, but the
+ * server schemas (e.g. `first_name: ^\p{L}+$`) reject stray whitespace.
+ * Without this, a value like `"Sam "` passes client validation yet is
+ * rejected by the server as `invalid_input`, leaving the user with a
+ * generic "Check your input" message on input that looks fine. Leaves
+ * `text` untouched to preserve deliberate trailing blank lines.
+ */
+export function trimHelpedValues(values: HelpedFormValues): HelpedFormValues {
+  return {
+    first_name: values.first_name.trim(),
+    last_name: values.last_name.trim(),
+    city: values.city.trim(),
+    country: values.country.trim(),
+    text: values.text,
+  }
+}
+
 /** True when every field currently passes per-field validation. */
 export function isHelpedFormValid(values: HelpedFormValues): boolean {
   return (

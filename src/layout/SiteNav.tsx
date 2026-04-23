@@ -46,7 +46,7 @@ export function SiteNav() {
       style={{ backgroundColor: 'oklch(from var(--color-paper) l c h / 86%)' }}
     >
       <MarqueeBar />
-      <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-3 px-6 py-3.5">
+      <div className="mx-auto flex max-w-site flex-wrap items-center justify-between gap-3 px-6 py-3.5">
         <Brand />
         <div className="flex flex-wrap items-center gap-1">
           {NAV_ITEMS.map((n) => (
@@ -63,7 +63,7 @@ export function SiteNav() {
           <NavLink
             to="/?file=1"
             data-testid="nav-file-deed"
-            className="ml-2 inline-flex items-center gap-1 rounded-full border-[1.5px] border-sun-deep bg-sun px-4 py-2 text-sm font-semibold text-white shadow-[0_2px_0_var(--color-sun-deep)] transition-transform hover:-translate-y-0.5"
+            className="ml-2 inline-flex items-center gap-1 rounded-full border-[1.5px] border-sun-deep bg-sun px-4 py-2 text-sm font-semibold text-white shadow-sun-ridge-sm transition-transform hover:-translate-y-0.5"
           >
             + File a good deed
           </NavLink>

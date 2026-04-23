@@ -147,6 +147,62 @@ describe('ReportForm — PRD Story 4', () => {
     })
   })
 
+  it('Scenario 9 — two rapid Post clicks fire createReport exactly once', async () => {
+    // Stall the resolver so the second click happens while the first is in
+    // flight. Without the ref latch, both clicks pass the `submitting` gate
+    // because React has not re-rendered yet, producing a duplicate report.
+    let resolveFirst: (value: { slug: string; public_url: string; status: 'posted' }) => void
+    const firstCall = new Promise<{ slug: string; public_url: string; status: 'posted' }>((r) => {
+      resolveFirst = r
+    })
+    vi.mocked(api.createReport).mockReturnValueOnce(firstCall)
+    render(<ReportForm onSuccess={vi.fn()} />)
+    fillReportedRequiredFields()
+    fireEvent.click(screen.getByTestId('rf-preview-button'))
+
+    const post = screen.getByTestId('rf-post')
+    fireEvent.click(post)
+    fireEvent.click(post)
+
+    expect(vi.mocked(api.createReport)).toHaveBeenCalledTimes(1)
+    resolveFirst!({ slug: 'x', public_url: '/reports/x', status: 'posted' })
+    await waitFor(() => {
+      expect(vi.mocked(api.createReport)).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('Scenario 10 — trims whitespace on reported + reporter fields before submit', async () => {
+    // Regression parity with HelpedForm: client validators .trim() before
+    // the regex gate but the submission previously sent untrimmed values,
+    // which the server's `^\p{L}+$` name regex rejects. toInput now
+    // normalizes so `"  Example  "` arrives as `"Example"`.
+    render(<ReportForm onSuccess={vi.fn()} />)
+    fill('rf-reported-first-name', '  Example  ')
+    fill('rf-reported-last-name', '  Person  ')
+    fill('rf-reported-city', '  Berlin  ')
+    const reportedCountry = screen.getByTestId('rf-reported-country') as HTMLSelectElement
+    fireEvent.change(reportedCountry, { target: { value: 'DE' } })
+    fill('rf-what-they-did', 'signed the Open Letter')
+    fill('rf-reporter-first-name', '  Pat  ')
+    fill('rf-reporter-city', '  Austin  ')
+    const reporterCountry = screen.getByTestId('rf-reporter-country') as HTMLSelectElement
+    fireEvent.change(reporterCountry, { target: { value: 'US' } })
+
+    fireEvent.click(screen.getByTestId('rf-preview-button'))
+    fireEvent.click(screen.getByTestId('rf-post'))
+
+    await waitFor(() => {
+      expect(vi.mocked(api.createReport)).toHaveBeenCalledTimes(1)
+    })
+    const sent = vi.mocked(api.createReport).mock.calls[0][0]
+    expect(sent.reported_first_name).toBe('Example')
+    expect(sent.reported_city).toBe('Berlin')
+    expect(sent.reported_country).toBe('DE')
+    expect(sent.reporter.first_name).toBe('Pat')
+    expect(sent.reporter.city).toBe('Austin')
+    expect(sent.reporter.country).toBe('US')
+  })
+
   it('Scenario 8 — preview never shows last_name values', () => {
     render(<ReportForm onSuccess={vi.fn()} />)
     fill('rf-reported-first-name', 'Example')

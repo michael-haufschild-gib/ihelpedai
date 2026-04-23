@@ -76,31 +76,7 @@
   --radius-lg: 0.75rem;
 }
 
-/* ACCENT GLOW OVERRIDES */
-[data-app-theme][data-accent='cyan'] {
-  --theme-accent-glow: oklch(70% 0.14 200deg);
-}
-
-[data-app-theme][data-accent='green'] {
-  --theme-accent-glow: oklch(75% 0.18 145deg);
-}
-
-[data-app-theme][data-accent='magenta'] {
-  --theme-accent-glow: oklch(70% 0.22 330deg);
-}
-
-[data-app-theme][data-accent='orange'] {
-  --theme-accent-glow: oklch(75% 0.18 40deg);
-}
-
-[data-app-theme][data-accent='blue'] {
-  --theme-accent-glow: oklch(70% 0.14 260deg);
-}
-
-[data-app-theme][data-accent='violet'] {
-  --theme-accent-glow: oklch(70% 0.18 290deg);
-}
-
-[data-app-theme][data-accent='red'] {
-  --theme-accent-glow: oklch(65% 0.2 25deg);
-}
+/* --theme-accent-glow defaults to var(--theme-accent) (line 48) and that is
+   composed from tokens.css's --token-accent-{h,c,l}, which data-accent
+   already switches. Add a per-accent override here only if the design
+   requires the glow to genuinely differ from the accent itself. */

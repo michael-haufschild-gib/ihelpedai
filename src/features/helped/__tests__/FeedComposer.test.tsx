@@ -94,6 +94,28 @@ describe('FeedComposer', () => {
     expect(onPosted).toHaveBeenCalledTimes(1)
   })
 
+  it('trims whitespace on string fields before submitting', async () => {
+    // Mirrors the HelpedForm regression: untrimmed values pass the client
+    // validator (it .trim()s before the regex gate) but fail the server
+    // regex on first_name. The composer must normalize before sending.
+    const user = userEvent.setup()
+    render(<FeedComposer />)
+    await openAndFill(user, {
+      first: '  Sam  ',
+      last: '  Altman  ',
+      city: '  San Francisco  ',
+    })
+    await user.click(screen.getByTestId('composer-preview'))
+    await user.click(screen.getByTestId('composer-post'))
+    expect(mockedCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        first_name: 'Sam',
+        last_name: 'Altman',
+        city: 'San Francisco',
+      }),
+    )
+  })
+
   it('preview never shows last_name', async () => {
     const user = userEvent.setup()
     render(<FeedComposer />)
@@ -166,6 +188,31 @@ describe('FeedComposer', () => {
     await waitForAutoFocus()
     await user.selectOptions(screen.getByTestId('composer-country'), 'US')
     expect(screen.queryByTestId('composer-country-error')).toBe(null)
+  })
+
+  it('Esc inside editing returns to closed mode', async () => {
+    const user = userEvent.setup()
+    render(<FeedComposer />)
+    await user.click(screen.getByTestId('composer-open'))
+    await waitForAutoFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.getByTestId('composer-open')).toBeInTheDocument()
+  })
+
+  it('cancel restores focus to the prompt button', async () => {
+    const user = userEvent.setup()
+    render(<FeedComposer />)
+    await user.click(screen.getByTestId('composer-open'))
+    await waitForAutoFocus()
+    await user.click(screen.getByTestId('composer-cancel'))
+    // Focus restore runs on a 200ms timer scheduled after cancel. Wait a bit
+    // longer to let AnimatePresence settle and the focus() call fire.
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('composer-open')).toHaveFocus()
+      },
+      { timeout: 1000 },
+    )
   })
 
   it('shows Retry on submit error', async () => {

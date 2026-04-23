@@ -225,6 +225,10 @@ function QueueRow({ entry, isSelected, isActionTarget, pendingAction, reason, on
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+        // Plain 'a' / 'r' only. Without the modifier guard, Cmd+R (reload),
+        // Ctrl+A (select all), etc. momentarily enter approve/reject mode
+        // before the browser's default action fires.
+        if (e.ctrlKey || e.metaKey || e.altKey) return
         if (e.key === 'a') onSetAction('approve')
         if (e.key === 'r') onSetAction('reject')
       }}
