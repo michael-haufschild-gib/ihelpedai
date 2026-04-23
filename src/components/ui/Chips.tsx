@@ -1,3 +1,7 @@
+import type { KeyboardEvent } from 'react'
+
+import { Button } from './Button'
+
 /** Option in a {@link Chips} segmented control. */
 export interface ChipOption<T extends string> {
   value: T
@@ -20,10 +24,14 @@ export interface ChipsProps<T extends string> {
 
 /**
  * Pill-style segmented control for short filter / sort choices. Matches the
- * Feed design's "All deeds / Most recent" pattern. Every segment is a real
- * `<button>` primitive and carries its own `data-testid` so tests can click
- * them directly. Implements the WAI-ARIA radiogroup pattern: roving tabindex
- * and arrow/Home/End navigation between segments.
+ * Feed design's "All deeds / Most recent" pattern. Every segment renders
+ * through the {@link Button} primitive (variant `'unstyled'`) so disabled,
+ * loading, and ripple semantics stay consistent with every other clickable
+ * element in the app while the chip-specific pill styling lives here.
+ *
+ * Implements the WAI-ARIA radiogroup pattern: roving tabindex plus
+ * arrow / Home / End navigation between segments. Each chip carries its
+ * own `data-testid` so tests can click them directly.
  */
 export function Chips<T extends string>({
   value,
@@ -37,11 +45,33 @@ export function Chips<T extends string>({
     0,
     options.findIndex((o) => o.value === value),
   )
-  const selectByIndex = (nextIndex: number): void => {
+  const moveTo = (nextIndex: number, e: KeyboardEvent<HTMLButtonElement>): void => {
     if (options.length === 0) return
     const safe = ((nextIndex % options.length) + options.length) % options.length
     const next = options[safe].value
     if (next !== value) onChange(next)
+    // Roving tabindex: move focus with selection so screen-reader users
+    // and keyboard-only users follow the selected chip. `data-index` on
+    // every chip lets us find it without an imperative ref array.
+    const root = e.currentTarget.parentElement
+    const nextButton = root?.querySelector<HTMLButtonElement>(`[data-index="${String(safe)}"]`)
+    nextButton?.focus()
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLButtonElement>): void => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault()
+      moveTo(selectedIndex + 1, e)
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      moveTo(selectedIndex - 1, e)
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      moveTo(0, e)
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      moveTo(options.length - 1, e)
+    }
   }
 
   return (
@@ -55,36 +85,20 @@ export function Chips<T extends string>({
         const active = value === opt.value
         const idSuffix = opt.testId ?? opt.value
         return (
-          <button
+          <Button
             key={opt.value}
-            type="button"
+            variant="unstyled"
             role="radio"
             aria-checked={active}
             tabIndex={active ? 0 : -1}
-            onClick={() => {
-              if (!active) onChange(opt.value)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                e.preventDefault()
-                selectByIndex(selectedIndex + 1)
-              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault()
-                selectByIndex(selectedIndex - 1)
-              } else if (e.key === 'Home') {
-                e.preventDefault()
-                selectByIndex(0)
-              } else if (e.key === 'End') {
-                e.preventDefault()
-                selectByIndex(options.length - 1)
-              }
-            }}
+            onClick={() => { if (!active) onChange(opt.value) }}
+            onKeyDown={handleKeyDown}
             data-index={index}
             data-testid={`${testIdPrefix}-${idSuffix}`}
             className={`rounded-full px-3 py-1.5 font-sans text-sm transition-colors ${active ? 'bg-ink text-paper font-medium' : 'text-text-secondary hover:text-text-primary'}`}
           >
             {opt.label}
-          </button>
+          </Button>
         )
       })}
     </div>

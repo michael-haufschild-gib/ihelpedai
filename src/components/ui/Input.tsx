@@ -1,9 +1,6 @@
-import React, { useId, useState, useRef, useEffect, useCallback } from 'react'
+import React, { useId, useState, useRef, useCallback } from 'react'
 import { m, type HTMLMotionProps } from 'motion/react'
 import { LoadingSpinner } from './LoadingSpinner'
-import { soundManager } from '@/lib/audio/SoundManager'
-import { InputClearButton } from './InputClearButton'
-import { clearInputValue } from './inputHelpers'
 
 /** Props for the Input component. */
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -11,8 +8,6 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   rightIcon?: React.ReactNode
   error?: string | boolean
   loading?: boolean
-  clearable?: boolean
-  onClear?: () => void
   containerClassName?: string
   label?: string
 }
@@ -93,30 +88,23 @@ function InputField({
   )
 }
 
-/** Right-side adornments: loading spinner, clear button, or static right icon. */
+/** Right-side adornments: loading spinner or static right icon. */
 function InputAdornments({
   loading,
-  clearable,
-  hasValue,
-  disabled,
   rightIcon,
-  onClear,
 }: {
   loading: boolean
-  clearable: boolean
-  hasValue: boolean
-  disabled: boolean
   rightIcon: React.ReactNode
-  onClear: () => void
 }) {
+  const hasIcon = Boolean(rightIcon)
+  if (!loading && !hasIcon) return null
   return (
-    <div className="absolute right-3 flex items-center gap-2">
-      {loading ? (
-        <LoadingSpinner size={14} className="text-text-tertiary" />
-      ) : (
-        <InputClearButton visible={clearable && hasValue && !disabled} onClick={onClear} />
-      )}
-      {Boolean(rightIcon) && !loading && <div className="text-text-tertiary">{rightIcon}</div>}
+    // `pointer-events-none`: the slot is decorative (spinner / static icon)
+    // so clicks on the padded right edge should still land on the input
+    // and move the caret there rather than hitting this overlay.
+    <div className="pointer-events-none absolute right-3 flex items-center gap-2">
+      {loading && <LoadingSpinner size={14} className="text-text-tertiary" />}
+      {hasIcon && !loading && <div className="text-text-tertiary">{rightIcon}</div>}
     </div>
   )
 }
@@ -133,14 +121,12 @@ function composeInputRefs(
   }
 }
 
-/** Text input with icon slots, clearable state, error animation, and glass styling. */
+/** Text input with icon slots, error animation, and glass styling. */
 export const Input = ({
   leftIcon,
   rightIcon,
   error,
   loading,
-  clearable,
-  onClear,
   className = '',
   containerClassName = '',
   label,
@@ -153,34 +139,17 @@ export const Input = ({
   ...props
 }: InputProps & { ref?: React.Ref<HTMLInputElement> }) => {
   const [isFocused, setIsFocused] = useState(false)
-  const [uncontrolledHasValue, setUncontrolledHasValue] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const fallbackId = useId()
   const inputId = id ?? `input-${fallbackId}`
   const setRefs = useCallback((el: HTMLInputElement | null) => composeInputRefs(inputRef, ref)(el), [ref])
 
   const hasError = error !== undefined && error !== false && error !== ''
-  useEffect(() => {
-    if (hasError) soundManager.playSnap()
-  }, [hasError])
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (value === undefined) setUncontrolledHasValue(e.target.value.length > 0)
-    onChange?.(e)
-  }
-
-  const handleClear = () => {
-    if (inputRef.current) {
-      clearInputValue(inputRef.current, onChange, onClear)
-      if (value === undefined) setUncontrolledHasValue(false)
-    }
-  }
-
-  const hasValue = value !== undefined ? String(value).length > 0 : uncontrolledHasValue
   const inputClassName = buildInputClassName({
     hasError,
-    hasLeftIcon: leftIcon != null,
-    hasRightSlot: rightIcon != null || clearable === true || loading === true,
+    hasLeftIcon: Boolean(leftIcon),
+    hasRightSlot: Boolean(rightIcon) || loading === true,
     disabled: disabled === true,
     extra: className,
   })
@@ -194,11 +163,10 @@ export const Input = ({
           id={inputId}
           type={type}
           value={value}
-          onChange={handleInputChange}
+          onChange={onChange}
           disabled={disabled || loading}
           onFocus={(e) => {
             setIsFocused(true)
-            soundManager.playHover()
             props.onFocus?.(e)
           }}
           onBlur={(e) => {
@@ -208,14 +176,7 @@ export const Input = ({
           className={inputClassName}
           {...(props as unknown as HTMLMotionProps<'input'>)}
         />
-        <InputAdornments
-          loading={loading === true}
-          clearable={clearable === true}
-          hasValue={hasValue}
-          disabled={disabled === true}
-          rightIcon={rightIcon}
-          onClear={handleClear}
-        />
+        <InputAdornments loading={loading === true} rightIcon={rightIcon} />
       </InputField>
       {typeof error === 'string' && error !== '' && <InputError error={error} />}
     </div>

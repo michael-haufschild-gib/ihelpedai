@@ -39,10 +39,4 @@
   --shadow-xl: 0 24px 64px oklch(5% 0.02 50deg / 58%);
   --shadow-soft: 0 12px 28px oklch(8% 0.02 50deg / 42%);
   --shadow-hard: 0 24px 64px oklch(5% 0.02 50deg / 58%);
-
-  /* CANVAS (animation demo area) */
-  --app-canvas-bg: oklch(12% 0.04 55deg / 76%);
-  --app-canvas-gradient-start: oklch(72% 0.04 60deg / 18%);
-  --app-canvas-gradient-end: oklch(12% 0.04 55deg / 92%);
-  --app-shadow-canvas: oklch(100% 0 0deg / 3%);
 }

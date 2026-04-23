@@ -1,85 +1,88 @@
 /**
  * Typed fetch wrappers for the admin backoffice API. All requests include
  * credentials so the session cookie is sent automatically.
+ *
+ * Implementation kernel — request/error envelope/Paginated/buildQuery — lives
+ * in {@link ./httpClient}. This module owns endpoint-specific input/response
+ * types and binds `credentials: 'include'` to every call.
  */
 
-import { ApiError } from '@/lib/api'
+import {
+  ApiError,
+  buildQuery,
+  jsonBody,
+  type Paginated,
+  type QueryParams,
+  request,
+} from './httpClient'
 
-type AdminErrorKind = 'invalid_input' | 'rate_limited' | 'unauthorized' | 'internal_error'
+export { type Paginated } from './httpClient'
 
-const KNOWN_KINDS: readonly AdminErrorKind[] = [
-  'invalid_input',
-  'rate_limited',
-  'unauthorized',
-  'internal_error',
-]
+/**
+ * Fired by {@link adminRequest} on 401 responses to a credentialed admin
+ * request. Subscribers clear local admin state and show the "session expired"
+ * toast; the layout-level useEffect then redirects to /admin/login.
+ *
+ * A window event is used instead of a direct store import to avoid a
+ * circular dependency — adminStore already imports from this module.
+ */
+export const ADMIN_SESSION_EXPIRED_EVENT = 'ihelpedai:admin-session-expired'
 
-/** Narrow an unknown envelope.error value to an ApiErrorKind, falling back to 'internal_error'. */
-function toErrorKind(value: unknown): AdminErrorKind {
-  return typeof value === 'string' && (KNOWN_KINDS as readonly string[]).includes(value)
-    ? (value as AdminErrorKind)
-    : 'internal_error'
+/**
+ * Register the custom event on WindowEventMap so `addEventListener` /
+ * `dispatchEvent` infer the right signature without per-call casts. The key
+ * must be the literal string matching {@link ADMIN_SESSION_EXPIRED_EVENT};
+ * TS module augmentation does not accept computed property keys here.
+ */
+declare global {
+  interface WindowEventMap {
+    'ihelpedai:admin-session-expired': CustomEvent<void>
+  }
+}
+
+/** Options for {@link adminRequest}. */
+interface AdminRequestOpts {
+  /**
+   * Dispatch `ADMIN_SESSION_EXPIRED_EVENT` on a 401. Defaults to true; set
+   * false for public auth endpoints (login / forgot-password /
+   * reset-password) where a 401 means "bad credentials", NOT "session
+   * expired". Without this, an incorrect login password would trigger the
+   * global toast + /admin/login redirect even though no session existed.
+   */
+  notifyOnUnauthorized?: boolean
 }
 
 /** Execute a JSON request with credentials, throw ApiError on non-2xx. */
-async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      accept: 'application/json',
-      ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
-      ...(init?.headers ?? {}),
-    },
-  })
-  const text = await response.text()
-  let body: unknown = null
-  if (text.length > 0) {
-    try {
-      body = JSON.parse(text)
-    } catch {
-      // Non-JSON response (e.g. nginx 502 HTML). Leave body null and fall
-      // through — the !response.ok branch below still produces a typed error.
+async function adminRequest<T>(
+  path: string,
+  init?: RequestInit,
+  opts: AdminRequestOpts = {},
+): Promise<T> {
+  try {
+    return await request<T>(path, { ...init, credentials: 'include' })
+  } catch (err) {
+    const notify = opts.notifyOnUnauthorized !== false
+    if (
+      notify &&
+      err instanceof ApiError &&
+      err.kind === 'unauthorized' &&
+      typeof window !== 'undefined'
+    ) {
+      // Dispatching once per 401 is harmless — subscribers are idempotent and
+      // only react when the store actually held a populated admin.
+      window.dispatchEvent(new CustomEvent(ADMIN_SESSION_EXPIRED_EVENT))
     }
+    throw err
   }
-  if (!response.ok) {
-    const envelope = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {}
-    const retryAfter = typeof envelope.retry_after_seconds === 'number' && Number.isFinite(envelope.retry_after_seconds)
-      ? envelope.retry_after_seconds
-      : undefined
-    throw new ApiError({
-      kind: toErrorKind(envelope.error),
-      status: response.status,
-      message: typeof envelope.message === 'string' ? envelope.message : undefined,
-      retryAfterSeconds: retryAfter,
-    })
-  }
-  return body as T
 }
 
-/** JSON POST helper. */
-function jsonPost(payload: unknown): RequestInit {
-  return { method: 'POST', body: JSON.stringify(payload) }
-}
+const jsonPost = (payload: unknown): RequestInit => jsonBody(payload, 'POST')
+const jsonPut = (payload: unknown): RequestInit => jsonBody(payload, 'PUT')
+const jsonPatch = (payload: unknown): RequestInit => jsonBody(payload, 'PATCH')
 
-/** JSON PUT helper. */
-function jsonPut(payload: unknown): RequestInit {
-  return { method: 'PUT', body: JSON.stringify(payload) }
-}
-
-/** JSON PATCH helper. */
-function jsonPatch(payload: unknown): RequestInit {
-  return { method: 'PATCH', body: JSON.stringify(payload) }
-}
-
-/** Build query string from params. */
-function qs(params: object): string {
-  const search = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined) search.set(k, String(v))
-  }
-  const s = search.toString()
-  return s !== '' ? `?${s}` : ''
+/** Build query string from params; null + undefined entries are skipped. */
+function qs<T extends QueryParams<T>>(params: T): string {
+  return buildQuery(params)
 }
 
 /* ------------------------------------------------------------------ */
@@ -100,7 +103,11 @@ export interface LoginResponse {
 
 /** Log in with email + password. */
 export function login(email: string, password: string): Promise<LoginResponse> {
-  return adminRequest<LoginResponse>('/api/admin/login', jsonPost({ email, password }))
+  return adminRequest<LoginResponse>(
+    '/api/admin/login',
+    jsonPost({ email, password }),
+    { notifyOnUnauthorized: false },
+  )
 }
 
 /** Log out (invalidate session). */
@@ -115,12 +122,20 @@ export function getMe(): Promise<AdminUser & { status: string }> {
 
 /** Request password reset. */
 export function forgotPassword(email: string): Promise<{ message: string }> {
-  return adminRequest('/api/admin/forgot-password', jsonPost({ email }))
+  return adminRequest(
+    '/api/admin/forgot-password',
+    jsonPost({ email }),
+    { notifyOnUnauthorized: false },
+  )
 }
 
 /** Reset password with token. */
 export function resetPassword(token: string, password: string, confirmPassword: string): Promise<{ message: string }> {
-  return adminRequest('/api/admin/reset-password', jsonPost({ token, password, confirm_password: confirmPassword }))
+  return adminRequest(
+    '/api/admin/reset-password',
+    jsonPost({ token, password, confirm_password: confirmPassword }),
+    { notifyOnUnauthorized: false },
+  )
 }
 
 /** Change password (authenticated). */
@@ -142,14 +157,6 @@ export interface AdminEntry {
   bodyPreview: string
   selfReportedModel: string | null
   createdAt: string
-}
-
-/** Paginated response. */
-export interface Paginated<T> {
-  items: T[]
-  page: number
-  page_size: number
-  total: number
 }
 
 /** Entry list filters. */

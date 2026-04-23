@@ -5,12 +5,68 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../../config.js'
+import { hashWithSalt } from '../../lib/salted-hash.js'
+import type { BucketSpec } from '../../rate-limit/index.js'
+import { isAcceptablePassword } from './password-strength.js'
 import { requireAdmin, SESSION_COOKIE, sessionExpiry } from './middleware.js'
 
 const BCRYPT_ROUNDS = 12
-const LOGIN_THROTTLE_MAX = 5
-const LOGIN_THROTTLE_WINDOW_S = 15 * 60
 const RESET_TOKEN_EXPIRY_MS = 60 * 60 * 1000
+
+// Stable placeholder hash for failed logins. Running bcrypt.compare against
+// this when no admin row exists (or the row is deactivated) keeps the
+// response-time distribution identical to a valid-email-wrong-password case
+// and closes the timing oracle that would otherwise enumerate admin emails.
+// `$2b$12$` keeps the cost factor the same as BCRYPT_ROUNDS, so the CPU spend
+// matches real hashes produced by bcrypt.hash(..., 12).
+const DUMMY_BCRYPT_HASH = '$2b$12$CwTycUXWue0Thq9StjUM0uJ8.QvJpPQDKAT3fWXHhUMjFk5kUc8Pq'
+
+// Multi-bucket rate limits. Each bucket caps one abuse vector: IP rotation,
+// victim bombing, and global volume. If any bucket denies, the request is
+// rejected with 429; for forgot-password the reply is 200 regardless so
+// attackers cannot distinguish throttled from accepted.
+const HOUR_S = 3600
+const DAY_S = 24 * HOUR_S
+
+const LOGIN_IP_WINDOW_LIMIT = 5
+const LOGIN_IP_WINDOW_S = 15 * 60
+const LOGIN_EMAIL_HOUR_LIMIT = 10
+const LOGIN_EMAIL_DAY_LIMIT = 50
+const LOGIN_GLOBAL_HOUR_LIMIT = 500
+
+const FORGOT_IP_WINDOW_LIMIT = 5
+const FORGOT_IP_WINDOW_S = 15 * 60
+const FORGOT_IP_DAY_LIMIT = 20
+const FORGOT_EMAIL_HOUR_LIMIT = 3
+const FORGOT_EMAIL_DAY_LIMIT = 5
+const FORGOT_GLOBAL_HOUR_LIMIT = 20
+const FORGOT_GLOBAL_DAY_LIMIT = 50
+
+/**
+ * Multi-bucket rate-limit specs for a single login attempt. Per-IP caps the
+ * common case; per-email defeats rotating-IP botnets targeting one admin;
+ * global caps a full-on credential-stuffing wave.
+ */
+function loginThrottleBuckets(ipHash: string, emailHash: string): BucketSpec[] {
+  return [
+    { bucket: `admin:login:ip:${ipHash}:window`, limit: LOGIN_IP_WINDOW_LIMIT, windowSeconds: LOGIN_IP_WINDOW_S },
+    { bucket: `admin:login:email:${emailHash}:hour`, limit: LOGIN_EMAIL_HOUR_LIMIT, windowSeconds: HOUR_S },
+    { bucket: `admin:login:email:${emailHash}:day`, limit: LOGIN_EMAIL_DAY_LIMIT, windowSeconds: DAY_S },
+    { bucket: 'admin:login:global:hour', limit: LOGIN_GLOBAL_HOUR_LIMIT, windowSeconds: HOUR_S },
+  ]
+}
+
+/** Multi-bucket rate-limit specs for a single forgot-password request. */
+function forgotPasswordBuckets(ipHash: string, emailHash: string): BucketSpec[] {
+  return [
+    { bucket: `admin:forgot-password:ip:${ipHash}:window`, limit: FORGOT_IP_WINDOW_LIMIT, windowSeconds: FORGOT_IP_WINDOW_S },
+    { bucket: `admin:forgot-password:ip:${ipHash}:day`, limit: FORGOT_IP_DAY_LIMIT, windowSeconds: DAY_S },
+    { bucket: `admin:forgot-password:email:${emailHash}:hour`, limit: FORGOT_EMAIL_HOUR_LIMIT, windowSeconds: HOUR_S },
+    { bucket: `admin:forgot-password:email:${emailHash}:day`, limit: FORGOT_EMAIL_DAY_LIMIT, windowSeconds: DAY_S },
+    { bucket: 'admin:forgot-password:global:hour', limit: FORGOT_GLOBAL_HOUR_LIMIT, windowSeconds: HOUR_S },
+    { bucket: 'admin:forgot-password:global:day', limit: FORGOT_GLOBAL_DAY_LIMIT, windowSeconds: DAY_S },
+  ]
+}
 
 const loginInput = z.object({
   email: z.string().email().max(255),
@@ -21,19 +77,11 @@ const resetRequestInput = z.object({
   email: z.string().email().max(255),
 })
 
-const WEAK_PASSWORDS = new Set([
-  'password1234', 'password12345', '123456789012',
-  'qwertyuiopas', 'admin1234567', 'changeme1234',
-  'adminadmin12', 'welcome12345', 'letmein123456',
-  'iloveyou1234', 'sunshine12345', 'trustno11234',
-  'ihelpedai123', 'ihelpedadmin',
-])
-
 const resetPasswordInput = z.object({
   token: z.string().min(1),
   password: z
     .string().min(12).max(255)
-    .refine((v) => !WEAK_PASSWORDS.has(v.toLowerCase()), 'weak_password'),
+    .refine((v) => isAcceptablePassword(v), 'weak_password'),
   confirm_password: z.string().min(1),
 })
 
@@ -41,13 +89,8 @@ const changePasswordInput = z.object({
   current_password: z.string().min(1),
   new_password: z
     .string().min(12).max(255)
-    .refine((v) => !WEAK_PASSWORDS.has(v.toLowerCase()), 'weak_password'),
+    .refine((v) => isAcceptablePassword(v), 'weak_password'),
 })
-
-/** Hash a string with SHA-256 using the server salt. */
-function hashWithSalt(value: string): string {
-  return createHash('sha256').update(`${config.IP_HASH_SALT}:${value}`).digest('hex')
-}
 
 /** Register login, logout, and session check routes. */
 export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -58,17 +101,21 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
     const parsed = loginInput.safeParse(request.body)
     if (!parsed.success) { reply.status(400).send({ error: 'invalid_input' }); return }
     const ipHash = hashWithSalt(request.ip ?? 'unknown')
-    const throttle = await limiter.check(`admin:login:${ipHash}`, LOGIN_THROTTLE_MAX, LOGIN_THROTTLE_WINDOW_S)
+    const emailHash = hashWithSalt(parsed.data.email.toLowerCase())
+    const throttle = await limiter.checkAll(loginThrottleBuckets(ipHash, emailHash))
     if (!throttle.allowed) {
       reply.status(429).send({ error: 'rate_limited', message: `Too many attempts. Try again in ${Math.ceil(throttle.retryAfter / 60)} minutes.`, retry_after_seconds: throttle.retryAfter })
       return
     }
     const admin = await store.getAdminByEmail(parsed.data.email)
-    if (admin === null || admin.status !== 'active') {
+    // Run bcrypt unconditionally. When the admin is missing or deactivated we
+    // hash against a stable placeholder so response-time analysis cannot
+    // distinguish the three failure modes from each other.
+    const targetHash = admin !== null && admin.status === 'active' ? admin.passwordHash : DUMMY_BCRYPT_HASH
+    const passwordMatches = await bcrypt.compare(parsed.data.password, targetHash)
+    if (admin === null || admin.status !== 'active' || !passwordMatches) {
       reply.status(401).send({ error: 'unauthorized', message: 'Email or password is incorrect.' }); return
     }
-    const valid = await bcrypt.compare(parsed.data.password, admin.passwordHash)
-    if (!valid) { reply.status(401).send({ error: 'unauthorized', message: 'Email or password is incorrect.' }); return }
     const sessionId = await store.insertSession(admin.id, sessionExpiry())
     await store.updateAdminLastLogin(admin.id)
     reply
@@ -102,11 +149,8 @@ export async function adminPasswordRoutes(app: FastifyInstance): Promise<void> {
     const parsed = resetRequestInput.safeParse(request.body)
     if (!parsed.success) { reply.status(400).send({ error: 'invalid_input' }); return }
     const ipHash = hashWithSalt(request.ip ?? 'unknown')
-    const throttle = await limiter.check(
-      `admin:forgot-password:${ipHash}`,
-      LOGIN_THROTTLE_MAX,
-      LOGIN_THROTTLE_WINDOW_S,
-    )
+    const emailHash = hashWithSalt(parsed.data.email.toLowerCase())
+    const throttle = await limiter.checkAll(forgotPasswordBuckets(ipHash, emailHash))
     // Always respond 200 so attackers cannot distinguish throttled from
     // fresh requests (no email-existence probe, no throttle probe).
     reply.status(200).send({ message: 'If an admin account exists for this email, a reset link has been sent.' })

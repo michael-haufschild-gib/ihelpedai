@@ -79,11 +79,20 @@ SEARCH=sql
 # MEILI_URL=http://127.0.0.1:7700
 # MEILI_KEY=<scoped key for ihelpedai_* indexes>
 
-# RedisRateLimiter and SmtpMailer are stubbed in the current build; use the
-# in-memory / file backends until their prod implementations land.
+# RedisRateLimiter is implemented (atomic Lua-script multi-bucket). Default
+# stays RATE_LIMIT=memory so a fresh bootstrap on a host without Redis still
+# boots; flip to redis once the local Redis is reachable on REDIS_URL.
 RATE_LIMIT=memory
+# RATE_LIMIT=redis
+# REDIS_URL=redis://127.0.0.1:6379
 
+# SmtpMailer is implemented (nodemailer). Flip to MAILER=smtp and set
+# SMTP_URL only AFTER the self-hosted postfix + opendkim stack is configured
+# (see docs/reports/mail-setup.md). Default stays MAILER=file so a fresh
+# bootstrap never attempts to connect to an unconfigured SMTP endpoint.
 MAILER=file
+# MAILER=smtp
+# SMTP_URL=smtp://127.0.0.1:25
 MAIL_FROM=noreply@ihelped.ai
 
 DEV_RATE_MULTIPLIER=1

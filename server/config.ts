@@ -9,6 +9,7 @@ const isMissing = (value: string | undefined): boolean =>
 
 type EnvShape = {
   NODE_ENV: 'development' | 'test' | 'production'
+  PUBLIC_URL: string
   IP_HASH_SALT: string
   ADMIN_SESSION_SECRET: string
   MAILER: 'file' | 'smtp'
@@ -20,6 +21,23 @@ type EnvShape = {
   MEILI_KEY?: string
   RATE_LIMIT: 'memory' | 'redis'
   REDIS_URL?: string
+}
+
+const DEV_PUBLIC_URL_DEFAULT = 'http://localhost:5173'
+
+/**
+ * Parse a comma-separated `ADMIN_SESSION_SECRET` into an ordered list. The
+ * first element signs newly issued cookies; later elements are accepted by
+ * `@fastify/cookie` for verification only. This lets a deploy add a fresh
+ * secret to position 0, leave the previous one in position 1 until existing
+ * sessions expire, then drop it on the next deploy. Whitespace and empty
+ * entries are stripped so that `KEY1, KEY2 ,, KEY3` parses cleanly.
+ */
+export function parseAdminSessionSecrets(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
 }
 
 /** Add a `custom` issue tied to a single field with a short message. */
@@ -35,10 +53,53 @@ const PROD_DEFAULTS: ReadonlyArray<{ key: 'IP_HASH_SALT' | 'ADMIN_SESSION_SECRET
 function refineProductionSecrets(env: EnvShape, ctx: RefinementCtx): void {
   if (env.NODE_ENV !== 'production') return
   for (const { key, devValue } of PROD_DEFAULTS) {
-    if (env[key] === devValue) {
+    // ADMIN_SESSION_SECRET supports rotation via comma-separated values, so
+    // any individual entry matching the dev default is the failure condition,
+    // not equality of the raw string.
+    if (key === 'ADMIN_SESSION_SECRET') {
+      const parts = parseAdminSessionSecrets(env[key])
+      if (parts.length === 0 || parts.some((p) => p === devValue)) {
+        addRequired(ctx, key, `Production must set ${key} to a non-default value`)
+      }
+    } else if (env[key] === devValue) {
       addRequired(ctx, key, `Production must set ${key} to a non-default value`)
     }
   }
+  // PUBLIC_URL is quietly load-bearing: it prefixes password-reset email
+  // links and every public_url response field. Booting prod with any
+  // loopback / local-only origin emits unclickable reset links and
+  // misleading response URLs — reject at boot so the miss-config surfaces
+  // before users see it. We reject the dev default AND any hostname that
+  // resolves exclusively on the local box so a copy-pasted staging URL
+  // like `http://127.0.0.1:8080` is caught too.
+  if (isLocalOnlyPublicUrl(env.PUBLIC_URL)) {
+    addRequired(
+      ctx,
+      'PUBLIC_URL',
+      'Production must set PUBLIC_URL to the public origin (e.g. https://ihelped.ai)',
+    )
+  }
+}
+
+/**
+ * Detect a `PUBLIC_URL` that can only be reached from the server box
+ * itself — loopback IPv4/IPv6, `localhost`, or `.local`/`.localhost` mDNS
+ * suffixes. Any of these in production means reset/public links are dead
+ * on arrival for real users.
+ */
+function isLocalOnlyPublicUrl(raw: string): boolean {
+  let host: string
+  try {
+    host = new URL(raw).hostname.toLowerCase()
+  } catch {
+    // A malformed URL is rejected by the schema layer already; flag here
+    // too so a refactor that loosens the schema still fails prod boot.
+    return true
+  }
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true
+  if (host === '::1' || host === '[::1]') return true
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true
+  return false
 }
 
 function refineModeRequirements(env: EnvShape, ctx: RefinementCtx): void {
@@ -66,13 +127,39 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(3001),
-    PUBLIC_URL: z.string().url().default('http://localhost:5173'),
+    PUBLIC_URL: z.string().url().default(DEV_PUBLIC_URL_DEFAULT),
 
     IP_HASH_SALT: z.string().min(1).default('dev-ip-hash-salt-change-me'),
-    ADMIN_SESSION_SECRET: z.string().min(1).default('dev-session-secret-change-me'),
+    // Zod's `min(1)` accepts `","` or `" , "` — strings that contain characters
+    // but parse to zero usable secrets. `@fastify/cookie` with an empty
+    // `secret: []` is undefined behaviour, so reject at the config boundary
+    // and fail fast. The prod-only default check still runs on top of this.
+    ADMIN_SESSION_SECRET: z
+      .string()
+      .min(1)
+      .refine(
+        (raw) => parseAdminSessionSecrets(raw).length > 0,
+        'must contain at least one non-empty secret',
+      )
+      .default('dev-session-secret-change-me'),
 
     MAILER: z.enum(['file', 'smtp']).default('file'),
-    SMTP_URL: z.string().optional(),
+    // nodemailer's createTransport(url) only understands `smtp://` and
+    // `smtps://`. Validating the shape at the config boundary fails the boot
+    // fast when MAILER=smtp + SMTP_URL=http://… is set in prod, instead of
+    // silently booting and exploding at the first outbound email.
+    SMTP_URL: z
+      .string()
+      .optional()
+      .refine((raw) => {
+        if (raw === undefined || raw === '') return true
+        try {
+          const url = new URL(raw)
+          return url.protocol === 'smtp:' || url.protocol === 'smtps:'
+        } catch {
+          return false
+        }
+      }, 'must be a smtp:// or smtps:// URL'),
     MAIL_FROM: z.string().default('noreply@ihelped.ai'),
 
     STORE: z.enum(['sqlite', 'mysql']).default('sqlite'),

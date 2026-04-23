@@ -1,6 +1,6 @@
 /**
  * Minimal logger — routes messages to console in dev, swallows in prod.
- * Consumed by useScrollLock, ColorPickerPanel, and any future service code.
+ * Consumed by useScrollLock and any future service code.
  * This module is the single allowed entry point for direct `console.*` calls
  * (see the per-file override in `eslint.config.js`).
  */

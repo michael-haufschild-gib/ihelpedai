@@ -47,8 +47,12 @@ function useEntry(slug: string | undefined): EntryState {
   return state
 }
 
+type CopyFlash = 'idle' | 'copied' | 'failed'
+
 /** Copy-link button. Writes the current URL to the clipboard when available. */
-function CopyLinkButton({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
+function CopyLinkButton({ flash, onCopy }: { flash: CopyFlash; onCopy: () => void }) {
+  const label =
+    flash === 'copied' ? 'Copied.' : flash === 'failed' ? "Couldn't copy" : 'Copy link'
   return (
     <Button
       variant="secondary"
@@ -56,7 +60,7 @@ function CopyLinkButton({ copied, onCopy }: { copied: boolean; onCopy: () => voi
       onClick={onCopy}
       data-testid="feed-entry-copy-link"
     >
-      {copied ? 'Copied.' : 'Copy link'}
+      {label}
     </Button>
   )
 }
@@ -86,7 +90,7 @@ export function FeedEntry() {
   const state = useEntry(slug)
   const votedSet = useMyVotes('post', slug ?? '')
   const voted = slug !== undefined && votedSet.has(slug)
-  const [copied, setCopied] = useState(false)
+  const [copyFlash, setCopyFlash] = useState<CopyFlash>('idle')
   const copyTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -97,24 +101,29 @@ export function FeedEntry() {
     }
   }, [])
 
+  const flash = (next: Exclude<CopyFlash, 'idle'>): void => {
+    setCopyFlash(next)
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = window.setTimeout(() => {
+      setCopyFlash('idle')
+      copyTimerRef.current = null
+    }, 1500)
+  }
+
   const copy = (): void => {
     const clip = navigator.clipboard as Clipboard | undefined
     const href = typeof window !== 'undefined' ? window.location.href : ''
-    if (clip && typeof clip.writeText === 'function' && href !== '') {
-      clip.writeText(href).then(
-        () => {
-          setCopied(true)
-          if (copyTimerRef.current !== null) {
-            window.clearTimeout(copyTimerRef.current)
-          }
-          copyTimerRef.current = window.setTimeout(() => {
-            setCopied(false)
-            copyTimerRef.current = null
-          }, 1500)
-        },
-        () => undefined,
-      )
+    // Missing clipboard API (insecure context, embedded WebView) or blank
+    // href is a silent-fail vector; surface it like rejection so the button
+    // flips to "Couldn't copy" instead of nothing happening.
+    if (!clip || typeof clip.writeText !== 'function' || href === '') {
+      flash('failed')
+      return
     }
+    clip.writeText(href).then(
+      () => { flash('copied') },
+      () => { flash('failed') },
+    )
   }
 
   return (
@@ -140,7 +149,7 @@ export function FeedEntry() {
         <>
           <FeedCard post={state.post} voted={voted} />
           <div>
-            <CopyLinkButton copied={copied} onCopy={copy} />
+            <CopyLinkButton flash={copyFlash} onCopy={copy} />
           </div>
         </>
       )}

@@ -1,5 +1,4 @@
 // @vitest-environment node
-import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -25,11 +24,11 @@ const OVER_REDACTED_TEXT = 'John Smith Mary Jones'
 
 let app: FastifyInstance
 
-const hashWithSalt = (value: string): string =>
-  createHash('sha256').update(`test-salt:${value}`).digest('hex')
-
+// Share the production hash helper; process.env.IP_HASH_SALT is set above
+// so config reads 'test-salt' when the helper imports config.
 async function seedDevKey(): Promise<void> {
   const { SqliteStore } = await import('../store/sqlite-store.js')
+  const { hashWithSalt } = await import('../lib/salted-hash.js')
   const store = new SqliteStore(process.env.SQLITE_PATH ?? '')
   await store.insertApiKey({
     keyHash: hashWithSalt(DEV_API_KEY),

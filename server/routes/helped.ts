@@ -1,12 +1,13 @@
-import { createHash } from 'node:crypto'
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
+import { effectiveLimit } from '../lib/effective-limit.js'
+import { hashWithSalt } from '../lib/salted-hash.js'
 import type { RateLimiter } from '../rate-limit/index.js'
-import { sanitize } from '../sanitizer/sanitize.js'
+import { parseSanitizerExceptionList, sanitize } from '../sanitizer/sanitize.js'
 import type { SearchIndex } from '../search/index.js'
+import { searchWithFallback } from '../search/search-with-fallback.js'
 import { postToDoc } from '../search/sync.js'
 import type { Post, Store } from '../store/index.js'
 
@@ -64,9 +65,14 @@ const helpedPostInput = z.object({
 })
 
 /** Zod schema for query-string params on the list endpoint. */
+// `page` is bounded so a malicious client cannot push the store into a
+// linear scan with `OFFSET = page * PAGE_SIZE`. Meili also clamps beyond
+// its max-total-hits, but the SQL fallback has no such guard of its own.
+// `q` is bounded to match reports.ts and to cap the size of the LIKE
+// pattern built from it.
 const listQuerySchema = z.object({
-  q: z.string().trim().optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  q: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
 })
 
 /** Zod schema for the :slug route param. */
@@ -74,15 +80,6 @@ const slugParamsSchema = z.object({
   slug: z.string().min(1).max(64),
 })
 
-/** Multiplies a raw limit by DEV_RATE_MULTIPLIER except in production. */
-const effectiveLimit = (base: number): number =>
-  config.NODE_ENV === 'production' ? base : Math.max(1, Math.floor(base * config.DEV_RATE_MULTIPLIER))
-
-/** Hashes the client IP with the server-side salt for rate-limit bucketing. */
-const hashIp = (ip: string | undefined): string => {
-  if (ip === undefined || ip === '') return 'unknown'
-  return createHash('sha256').update(`${config.IP_HASH_SALT}:${ip}`).digest('hex')
-}
 
 /** Maps a stored Post row onto the public wire shape. */
 const toWire = (p: Post): HelpedPostWire => ({
@@ -95,27 +92,32 @@ const toWire = (p: Post): HelpedPostWire => ({
   created_at: p.createdAt,
 })
 
-/** Runs the three rate-limit checks. Returns retry-after seconds if any bucket denies. */
+/**
+ * Runs all three rate-limit buckets atomically. Returns retry-after seconds
+ * if any bucket denies. Atomicity matters: with sequential `check` calls a
+ * burst that trips the global cap would still consume the user's per-IP
+ * hourly + daily quota even though the request was rejected. `checkAll`
+ * either records the hit against every bucket or none.
+ */
 async function checkRateLimits(limiter: RateLimiter, ipHash: string): Promise<number | null> {
-  const hour = await limiter.check(
-    `helped:post:hour:${ipHash}`,
-    effectiveLimit(PER_IP_HOURLY_LIMIT),
-    ONE_HOUR_SECONDS,
-  )
-  if (!hour.allowed) return hour.retryAfter
-  const day = await limiter.check(
-    `helped:post:day:${ipHash}`,
-    effectiveLimit(PER_IP_DAILY_LIMIT),
-    ONE_DAY_SECONDS,
-  )
-  if (!day.allowed) return day.retryAfter
-  const global = await limiter.check(
-    'helped:post:hour:global',
-    effectiveLimit(GLOBAL_HOURLY_LIMIT),
-    ONE_HOUR_SECONDS,
-  )
-  if (!global.allowed) return global.retryAfter
-  return null
+  const decision = await limiter.checkAll([
+    {
+      bucket: `helped:post:hour:${ipHash}`,
+      limit: effectiveLimit(PER_IP_HOURLY_LIMIT),
+      windowSeconds: ONE_HOUR_SECONDS,
+    },
+    {
+      bucket: `helped:post:day:${ipHash}`,
+      limit: effectiveLimit(PER_IP_DAILY_LIMIT),
+      windowSeconds: ONE_DAY_SECONDS,
+    },
+    {
+      bucket: 'helped:post:hour:global',
+      limit: effectiveLimit(GLOBAL_HOURLY_LIMIT),
+      windowSeconds: ONE_HOUR_SECONDS,
+    },
+  ])
+  return decision.allowed ? null : decision.retryAfter
 }
 
 /** POST /api/helped/posts handler. Validates, sanitizes, rate-limits, and stores. */
@@ -130,7 +132,7 @@ async function handleCreate(
     reply.code(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
     return
   }
-  const ipHash = hashIp(request.ip)
+  const ipHash = hashWithSalt(request.ip)
   const retryAfter = await checkRateLimits(limiter, ipHash)
   if (retryAfter !== null) {
     reply.code(429).send({ error: 'rate_limited', retry_after_seconds: retryAfter })
@@ -139,7 +141,8 @@ async function handleCreate(
 
   const parsed = helpedPostInput.parse(request.body)
   const { first_name, city, country, text } = parsed
-  const sanitized = sanitize(text)
+  const extraExceptions = parseSanitizerExceptionList((await store.getSetting('sanitizer_exceptions')) ?? '')
+  const sanitized = sanitize(text, { extraExceptions })
   if (sanitized.overRedacted) {
     reply.code(400).send({ error: 'invalid_input', fields: { text: 'over_redacted' } })
     return
@@ -216,9 +219,9 @@ async function listUnfiltered(
 
 /**
  * Search path: Meili returns ids + exact total; the store hydrates rows so
- * display fields (like_count) come from the source-of-truth. If Meili throws,
- * fall back to the store's LIKE query so search remains functional under a
- * Meili outage.
+ * display fields (like_count) come from the source-of-truth. If Meili throws
+ * or its index is lagging a status transition, fall back to the store's LIKE
+ * query so search remains functional under a Meili outage.
  */
 async function searchPostsWithFallback(
   store: Store,
@@ -228,32 +231,22 @@ async function searchPostsWithFallback(
   request: FastifyRequest,
 ): Promise<{ rows: Post[]; total: number }> {
   const offset = (page - 1) * PAGE_SIZE
-  const fallbackFromStore = async (): Promise<{ rows: Post[]; total: number }> => {
-    const [rows, total] = await Promise.all([
-      store.listPosts(PAGE_SIZE, offset, query),
-      store.countFilteredEntries('posts', { query }),
-    ])
-    return { rows, total }
-  }
-  try {
-    const { ids, total } = await search.search('posts', query, PAGE_SIZE, page)
-    const rows = await store.getPostsByIds(ids)
-    // getPostsByIds filters out non-'live' rows, so when the search index is
-    // lagging a status transition it can return fewer hydrated rows than ids.
-    // That would show short/empty pages alongside a nonzero `total`; fall
-    // back to the store so `items` and `total` stay consistent.
-    if (rows.length !== ids.length) {
-      request.log.warn(
-        { op: 'search', type: 'posts', requested: ids.length, hydrated: rows.length },
-        'search_hydration_mismatch_fallback',
-      )
-      return fallbackFromStore()
-    }
-    return { rows, total }
-  } catch (err) {
-    request.log.error({ err, op: 'search', type: 'posts' }, 'search_failed_fallback')
-    return fallbackFromStore()
-  }
+  return searchWithFallback<Post>({
+    search,
+    type: 'posts',
+    query,
+    page,
+    hitsPerPage: PAGE_SIZE,
+    hydrate: (ids) => store.getPostsByIds(ids),
+    fallback: async () => {
+      const [rows, total] = await Promise.all([
+        store.listPosts(PAGE_SIZE, offset, query),
+        store.countFilteredEntries('posts', { query }),
+      ])
+      return { rows, total }
+    },
+    log: request.log,
+  })
 }
 
 /** GET /api/helped/posts/:slug handler. Returns the live post or 404. */

@@ -31,4 +31,25 @@ describe('ApiDocs', () => {
     const root = screen.getByTestId('api-docs')
     expect(root.textContent ?? '').toMatch(/self-identified/i)
   })
+
+  // These assertions lock the published per-field maxima against the server
+  // Zod schema in server/routes/agents.ts. A silent drift — the docs promising
+  // a bigger maximum than the server accepts — would bounce agent traffic
+  // with 400s while advertising compatibility. Update these and the server
+  // schema together if the maxima actually change.
+  it('matches the server schema for field maxima', () => {
+    render(<ApiDocs />)
+    const fields = screen.getByTestId('api-docs-fields')
+    const text = fields.textContent ?? ''
+    expect(text).toContain('Max 20 chars')  // reported_first_name
+    expect(text).toContain('Max 40 chars')  // reported_city
+    expect(text).toContain('Max 500 chars') // what_they_did
+    expect(text).toContain('Up to 60 chars') // self_reported_model
+  })
+
+  it('publishes the real per-key agent rate limits (60/hour · 1000/day)', () => {
+    render(<ApiDocs />)
+    const errors = screen.getByTestId('api-docs-errors')
+    expect(errors.textContent ?? '').toContain('60/hour · 1000/day per key')
+  })
 })

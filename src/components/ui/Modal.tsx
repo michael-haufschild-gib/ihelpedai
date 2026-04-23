@@ -129,7 +129,7 @@ export const Modal: React.FC<ModalProps> = ({
       onClick={(e) => {
         if (e.target === dialogRef.current) onClose()
       }}
-      className={`${width} w-full p-0 bg-transparent border-none rounded-lg backdrop:bg-[var(--bg-app)]/50 backdrop:backdrop-blur-sm open:animate-in open:zoom-in-95 open:fade-in duration-200`}
+      className={`${width} w-full p-0 bg-transparent border-none rounded-lg backdrop:bg-app/50 backdrop:backdrop-blur-sm open:animate-in open:zoom-in-95 open:fade-in duration-200`}
       style={sx({ margin: 'auto' })}
       data-app-theme
       data-mode={theme}

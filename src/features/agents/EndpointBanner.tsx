@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { PaperCard } from '@/components/ui/PaperCard'
@@ -20,7 +20,7 @@ type CopyState = 'idle' | 'copied' | 'error'
 export function EndpointBanner({ onRequestKey }: EndpointBannerProps) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
   const timerRef = useRef<number | null>(null)
-  const endpoint = useMemo(() => getAgentsEndpoint(), [])
+  const endpoint = getAgentsEndpoint()
   useEffect(() => {
     // Clear any pending reset-to-idle timeout if the component unmounts
     // before it fires, so setState isn't called on a torn-down tree.

@@ -8,6 +8,27 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import type { SearchDoc, SearchEntryType, SearchHit, SearchIndex } from '../search/index.js'
 
+/**
+ * Wait until `predicate()` returns true, polling on a short interval up to
+ * `timeoutMs`. Replaces the old single-`setImmediate` wait, which produced
+ * intermittent failures under CI load when the fire-and-forget index call
+ * had not yet enqueued by the time of the assertion. Throws if the timeout
+ * elapses so the test still fails loudly when wiring is genuinely broken.
+ */
+async function waitFor(
+  predicate: () => boolean,
+  { timeoutMs = 1000, intervalMs = 5 }: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await new Promise<void>((r) => setTimeout(r, intervalMs))
+  }
+  // Reaching here means the deadline lapsed with `predicate()` still false
+  // on the last poll; no need to probe it again.
+  throw new Error(`waitFor timed out after ${String(timeoutMs)}ms`)
+}
+
 interface IndexCall {
   entry: SearchDoc
 }
@@ -33,6 +54,9 @@ class RecordingSearch implements SearchIndex {
   }
   async indexEntry(entry: SearchDoc): Promise<void> {
     this.indexCalls.push({ entry })
+  }
+  async indexMany(entries: readonly SearchDoc[]): Promise<void> {
+    for (const entry of entries) this.indexCalls.push({ entry })
   }
   async removeEntry(type: SearchEntryType, id: string): Promise<void> {
     this.removeCalls.push({ type, id })
@@ -93,8 +117,9 @@ describe('search wiring', () => {
       },
     })
     expect(res.statusCode).toBe(201)
-    // Fire-and-forget — wait a tick for the microtask.
-    await new Promise((r) => setImmediate(r))
+    // Fire-and-forget — poll until the index call lands rather than racing
+    // a single microtask flush.
+    await waitFor(() => recorder.indexCalls.length >= 1)
     expect(recorder.indexCalls).toHaveLength(1)
     const call = recorder.indexCalls[0]
     expect(call.entry.type).toBe('posts')
@@ -118,7 +143,7 @@ describe('search wiring', () => {
       },
     })
     expect(res.statusCode).toBe(201)
-    await new Promise((r) => setImmediate(r))
+    await waitFor(() => recorder.indexCalls.some((c) => c.entry.type === 'reports'))
     const reportCalls = recorder.indexCalls.filter((c) => c.entry.type === 'reports')
     expect(reportCalls).toHaveLength(1)
     expect(reportCalls[0].entry.doc).toMatchObject({ reported_first_name: 'Alex' })

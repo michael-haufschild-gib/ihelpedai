@@ -138,4 +138,24 @@ describe('vote endpoints', () => {
     expect(res.statusCode).toBe(200)
     expect((res.json() as { voted: string[] }).voted).toEqual([s1])
   })
+
+  it('returns 404 for an invalid slug format (dashes disallowed)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/helped/posts/bad-slug/like',
+      headers: { 'x-forwarded-for': '6.6.6.6' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('POST /api/votes/mine short-circuits on an empty slugs array', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/votes/mine',
+      headers: { 'x-forwarded-for': '7.7.7.7' },
+      payload: { kind: 'post', slugs: [] },
+    })
+    expect(res.statusCode).toBe(200)
+    expect((res.json() as { voted: string[] }).voted).toEqual([])
+  })
 })

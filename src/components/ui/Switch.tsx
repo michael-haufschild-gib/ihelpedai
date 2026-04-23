@@ -1,6 +1,5 @@
 import type React from 'react'
 import { m } from 'motion/react'
-import { soundManager } from '@/lib/audio/SoundManager'
 
 /** Props for the Switch toggle component. */
 export interface SwitchProps {
@@ -26,7 +25,7 @@ function SwitchThumb({
       initial={false}
       transition={{ type: 'spring', stiffness: 700, damping: 30 }}
       animate={{ x: checked ? 22 : 2 }}
-      className={`absolute top-0.5 left-0 w-5 h-5 rounded-full shadow-md z-10 flex items-center justify-center overflow-hidden transition-colors duration-200 pointer-events-none ${checked ? 'bg-white' : 'bg-text-secondary group-hover/switch:bg-text-primary'}`}
+      className={`absolute top-0.5 left-0 w-5 h-5 rounded-full shadow-md z-10 flex items-center justify-center overflow-hidden transition-colors duration-200 pointer-events-none ${checked ? 'bg-white' : 'bg-[var(--text-secondary)] group-hover/switch:bg-[var(--text-primary)]'}`}
     >
       <div className="relative w-full h-full flex items-center justify-center">
         {Boolean(iconOn) && (
@@ -66,15 +65,12 @@ export const Switch: React.FC<SwitchProps> = ({
 }) => {
   const accessibleName = ariaLabel ?? label ?? 'Toggle'
   const trackClass = checked
-    ? 'bg-[var(--theme-accent)] border-[var(--theme-accent)] shadow-[0_0_15px_var(--theme-accent-glow)]'
-    : 'bg-[var(--bg-surface)] border-[var(--border-default)] group-hover/switch:bg-[var(--bg-hover)]'
+    ? 'bg-accent border-accent shadow-accent-glow'
+    : 'bg-surface border-border-default group-hover/switch:bg-[var(--bg-hover)]'
 
   return (
     <label
       className={`flex items-center gap-3 cursor-pointer select-none group/switch relative ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
-      onMouseEnter={() => {
-        if (!disabled) soundManager.playHover()
-      }}
       data-testid={dataTestId}
     >
       <div className="relative isolate w-11 h-6">
@@ -83,10 +79,7 @@ export const Switch: React.FC<SwitchProps> = ({
           className="sr-only"
           checked={checked}
           onChange={(e) => {
-            if (!disabled) {
-              onCheckedChange(e.target.checked)
-              soundManager.playClick()
-            }
+            if (!disabled) onCheckedChange(e.target.checked)
           }}
           disabled={disabled}
           role="switch"

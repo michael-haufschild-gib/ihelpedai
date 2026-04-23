@@ -3,24 +3,57 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Switch } from '@/components/ui/Switch'
 import { Textarea } from '@/components/ui/Textarea'
+import { ApiError } from '@/lib/api'
 import type { AdminSettings as Settings } from '@/lib/adminApi'
 import { getSettings, updateSetting } from '@/lib/adminApi'
+import { logger } from '@/services/logger'
+import { showToast } from '@/stores/toastStore'
+
+/** One-line, audience-appropriate failure message for an admin save. */
+function describeSettingsSaveError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.kind === 'unauthorized') return 'Session expired. Sign in again.'
+    if (err.kind === 'invalid_input') return 'Invalid value — fix and retry.'
+    if (err.status === 0) return 'Network unreachable. Try again.'
+  }
+  return 'Save failed. Try again.'
+}
+
+/**
+ * Fetch the current admin settings once and drive `settings` +
+ * `exceptions` state, so the AdminSettings body stays under the
+ * function-line cap. Surfaces a toast on load failure; the page still
+ * renders a null-fallback message when `settings` stays null.
+ */
+function useAdminSettingsLoader(
+  setSettings: (s: Settings) => void,
+  setExceptions: (s: string) => void,
+): boolean {
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    getSettings()
+      .then((s) => {
+        if (cancelled) return
+        setSettings(s)
+        setExceptions(s.sanitizer_exceptions)
+      })
+      .catch((err: unknown) => {
+        logger.error('admin settings load failed', err)
+        if (!cancelled) showToast('Failed to load settings.')
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [setSettings, setExceptions])
+  return loading
+}
 
 /** Admin settings page (Story 11). */
 export function AdminSettings() {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState<string | null>(null)
   const [exceptions, setExceptions] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    getSettings()
-      .then((s) => { if (!cancelled) { setSettings(s); setExceptions(s.sanitizer_exceptions) } })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [])
+  const [saving, setSaving] = useState<string | null>(null)
+  const loading = useAdminSettingsLoader(setSettings, setExceptions)
 
   const toggle = async (key: keyof Settings) => {
     if (!settings) return
@@ -29,8 +62,10 @@ export function AdminSettings() {
     try {
       await updateSetting(key, newVal)
       setSettings({ ...settings, [key]: newVal })
-    } catch {
-      // Keep the old value visible on failure; admin can retry.
+    } catch (err: unknown) {
+      // Keep the old value visible on failure; surface a toast so the admin
+      // knows the toggle did not actually take effect.
+      showToast(describeSettingsSaveError(err))
     } finally {
       setSaving(null)
     }
@@ -41,8 +76,9 @@ export function AdminSettings() {
     try {
       await updateSetting('sanitizer_exceptions', exceptions)
       if (settings) setSettings({ ...settings, sanitizer_exceptions: exceptions })
-    } catch {
+    } catch (err: unknown) {
       // Leave the unsaved draft in the textarea so the admin can retry.
+      showToast(describeSettingsSaveError(err))
     } finally {
       setSaving(null)
     }
@@ -73,7 +109,9 @@ export function AdminSettings() {
       <div className="rounded border border-border-default bg-surface p-4">
         <p className="mb-2 font-medium">Sanitizer exception list</p>
         <p className="mb-3 text-sm text-text-secondary">
-          One entry per line. These terms will be preserved by the sanitizer.
+          One entry per line. Preserved by the server sanitizer when a post is stored. Live form
+          previews use the client's static list, so admin-added terms may still appear as
+          [name] during preview but will survive in the final post.
         </p>
         <Textarea
           data-testid="admin-settings-exceptions"

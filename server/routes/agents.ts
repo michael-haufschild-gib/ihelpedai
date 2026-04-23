@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto'
-
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
-import { sanitize } from '../sanitizer/sanitize.js'
+import { isValidIsoDate } from '../lib/iso-date.js'
+import { hashWithSalt } from '../lib/salted-hash.js'
+import { parseSanitizerExceptionList, sanitize } from '../sanitizer/sanitize.js'
 import { reportToDoc } from '../search/sync.js'
 import type { NewReport, Report as StoredReport } from '../store/index.js'
 
@@ -25,22 +25,6 @@ type PublicReport = {
 }
 
 const NAME_REGEX = /^\p{L}+$/u
-
-// Reject impossible calendar dates like "2026-13-40" that the regex alone
-// would accept; once the MySQL `DATE` path lands, those would fail at insert.
-const isValidIsoDate = (value: string): boolean => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (match === null) return false
-  const [, year, month, day] = match
-  const date = new Date(`${value}T00:00:00Z`)
-  return (
-    Number.isFinite(date.getTime()) &&
-    date.getUTCFullYear() === Number(year) &&
-    date.getUTCMonth() + 1 === Number(month) &&
-    date.getUTCDate() === Number(day)
-  )
-}
-
 const COUNTRY_REGEX = /^[A-Za-z]{2,3}$/
 
 const agentReportSchema = z.object({
@@ -59,11 +43,6 @@ const agentReportSchema = z.object({
 })
 
 type AgentReportBody = z.infer<typeof agentReportSchema>
-
-/** Hash a value with sha256 using the server-side salt. */
-function hashWithSalt(value: string): string {
-  return createHash('sha256').update(`${config.IP_HASH_SALT}:${value}`).digest('hex')
-}
 
 /** Convert a stored report row into the public wire format. */
 function toPublicReport(row: StoredReport): PublicReport {
@@ -120,11 +99,13 @@ function buildNewReport(body: AgentReportBody, sanitizedText: string): NewReport
  */
 export async function agentsRoutes(app: FastifyInstance): Promise<void> {
   async function checkAgentRateLimit(keyHash: string): Promise<number | null> {
-    const hour = await app.limiter.check(`agent_report:hour:${keyHash}`, 60, 3600)
-    if (!hour.allowed) return hour.retryAfter
-    const day = await app.limiter.check(`agent_report:day:${keyHash}`, 1000, 86400)
-    if (!day.allowed) return day.retryAfter
-    return null
+    // Atomic across the hour + day buckets so a 60/h overage does not also
+    // burn a slot of the daily 1000 cap.
+    const decision = await app.limiter.checkAll([
+      { bucket: `agent_report:hour:${keyHash}`, limit: 60, windowSeconds: 3600 },
+      { bucket: `agent_report:day:${keyHash}`, limit: 1000, windowSeconds: 86400 },
+    ])
+    return decision.allowed ? null : decision.retryAfter
   }
 
   async function handleReport(body: unknown, reply: ReplyShape, logger: FastifyInstance['log']): Promise<void> {
@@ -145,7 +126,8 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
       reply.status(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
       return
     }
-    const sanitized = sanitize(parsed.what_they_did)
+    const extraExceptions = parseSanitizerExceptionList((await app.store.getSetting('sanitizer_exceptions')) ?? '')
+    const sanitized = sanitize(parsed.what_they_did, { extraExceptions })
     if (sanitized.overRedacted) {
       reply
         .status(400)

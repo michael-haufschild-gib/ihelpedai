@@ -1,0 +1,18 @@
+{
+  // Typecheck-only config for server tests. Tests live alongside production
+  // server code but are excluded from `pnpm build:server` because they import
+  // shared modules (e.g. src/lib/wireSchemas.ts) that the production rootDir
+  // forbids. This config drops the rootDir constraint and widens the include.
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.test.tsbuildinfo"
+  },
+  "include": [
+    "server/**/*.ts",
+    "src/lib/wireSchemas.ts",
+    "src/lib/__fixtures__/**/*.ts"
+  ],
+  "exclude": ["server/dist"]
+}

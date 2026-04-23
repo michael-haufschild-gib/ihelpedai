@@ -143,4 +143,56 @@ describe('HelpedForm', () => {
     await user.selectOptions(screen.getByTestId('helped-country'), 'US')
     expect(screen.queryByTestId('helped-country-error')).toBe(null)
   })
+
+  it('trims leading/trailing whitespace on string fields before submitting', async () => {
+    // Regression: client validators accept `"Sam "` (they .trim() before
+    // the regex gate), but the server regex `^\p{L}+$` rejects whitespace.
+    // Submitting untrimmed produces a 400 "invalid_input" for input that
+    // looked valid to the user. Normalize at the submit boundary so the
+    // user sees success on clean-looking input.
+    const user = userEvent.setup()
+    render(<HelpedForm onPosted={() => undefined} />)
+    await user.type(screen.getByTestId('helped-first-name'), '  Sam  ')
+    await user.type(screen.getByTestId('helped-last-name'), '  Altman  ')
+    await user.type(screen.getByTestId('helped-city'), '  San Francisco  ')
+    await user.selectOptions(screen.getByTestId('helped-country'), 'US')
+    await user.type(screen.getByTestId('helped-text'), 'I paid for a Pro subscription.')
+    await user.click(screen.getByTestId('helped-preview'))
+    await user.click(screen.getByTestId('helped-post'))
+    expect(mockedCreate).toHaveBeenCalledWith({
+      first_name: 'Sam',
+      last_name: 'Altman',
+      city: 'San Francisco',
+      country: 'US',
+      text: 'I paid for a Pro subscription.',
+    })
+  })
+
+  it('two rapid Post clicks fire createHelpedPost exactly once', async () => {
+    // Without the submitLatchRef, both clicks would see `submitting===false`
+    // during the same React tick and race a duplicate createHelpedPost().
+    let resolveFirst: (value: { slug: string; public_url: string; status: 'posted' }) => void
+    const pending = new Promise<{ slug: string; public_url: string; status: 'posted' }>((r) => {
+      resolveFirst = r
+    })
+    mockedCreate.mockReturnValueOnce(pending)
+    const user = userEvent.setup()
+    render(<HelpedForm onPosted={() => undefined} />)
+    await fillForm(user)
+    await user.click(screen.getByTestId('helped-preview'))
+    const post = screen.getByTestId('helped-post')
+    // Dispatch both clicks before awaiting either — awaiting user.click
+    // serialises the inner acts, which would let the first click's
+    // setSubmitting flush before the second click inspects the state
+    // and mask the race this test exists to reproduce.
+    const click1 = user.click(post)
+    const click2 = user.click(post)
+    await Promise.all([click1, click2])
+    expect(mockedCreate).toHaveBeenCalledTimes(1)
+    resolveFirst!({ slug: 'x', public_url: '/feed/x', status: 'posted' })
+    // Await the resolved promise so the component's post-success state
+    // updates flush before the test tears down, otherwise React logs an
+    // "unwrapped state update" warning into the spec output.
+    await pending
+  })
 })

@@ -10,9 +10,16 @@ import type { AdminTakedown, Paginated } from '@/lib/adminApi'
 import { createTakedown, listTakedowns, updateTakedown } from '@/lib/adminApi'
 import { showToast } from '@/stores/toastStore'
 
-/** Parse a YYYY-MM-DD string as local midnight (not UTC). */
+/**
+ * Parse a calendar date as local midnight. Accepts bare YYYY-MM-DD (what
+ * SqliteStore returns) or a full ISO-8601 datetime (what MysqlStore emits
+ * via `Date.prototype.toISOString()` on a DATE column). Without the slice
+ * the MySQL path's 'YYYY-MM-DDT00:00:00.000Z' split produces NaN for day
+ * and the caller renders "Invalid Date".
+ */
 function parseCalendarDate(dateStr: string): Date {
-  const [y, m, d] = dateStr.split('-').map(Number)
+  const calendar = dateStr.slice(0, 10)
+  const [y, m, d] = calendar.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
 

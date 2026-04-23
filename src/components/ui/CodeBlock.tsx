@@ -23,7 +23,7 @@ function tokenise(code: string): ReactNode[] {
       return (
         <span
           key={`t-${String(i)}`}
-          className={isKey ? 'text-[#f3c242]' : 'text-[#a9d48c]'}
+          className={isKey ? 'text-code-key' : 'text-code-string'}
         >
           {part}
         </span>
@@ -31,14 +31,14 @@ function tokenise(code: string): ReactNode[] {
     }
     if (/^\d/.test(part)) {
       return (
-        <span key={`t-${String(i)}`} className="text-[#a69cff]">
+        <span key={`t-${String(i)}`} className="text-code-number">
           {part}
         </span>
       )
     }
     if (part === 'true' || part === 'false' || part === 'null') {
       return (
-        <span key={`t-${String(i)}`} className="text-[#ff9a6b]">
+        <span key={`t-${String(i)}`} className="text-code-literal">
           {part}
         </span>
       )
@@ -68,7 +68,7 @@ export function CodeBlock({
       )}
       <pre
         data-testid={testId}
-        className="m-0 overflow-x-auto whitespace-pre-wrap break-words text-[#e9e2cf]"
+        className="m-0 overflow-x-auto whitespace-pre-wrap break-words text-code-default"
       >
         {tokenise(code)}
       </pre>

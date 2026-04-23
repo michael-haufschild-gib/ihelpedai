@@ -69,7 +69,7 @@ function CertificateFooter() {
 function PolaroidCard() {
   return (
     <div
-      className="absolute top-[220px] right-[180px] w-[170px] bg-surface pb-8 shadow-[0_14px_30px_-10px_rgba(28,26,20,0.35)]"
+      className="absolute top-[220px] right-[180px] w-[170px] bg-surface pb-8 shadow-polaroid"
       style={{ transform: 'rotate(-7deg)', padding: '10px 10px 32px' }}
     >
       <div
@@ -97,7 +97,7 @@ function PolaroidCard() {
 function StickyNote() {
   return (
     <div
-      className="absolute top-0 left-2.5 w-[170px] bg-[#fff7a8] p-3.5 font-serif text-base leading-snug shadow-[0_8px_20px_-8px_rgba(28,26,20,0.3)]"
+      className="absolute top-0 left-2.5 w-[170px] bg-note-yellow p-3.5 font-serif text-base leading-snug shadow-note"
       style={{ transform: 'rotate(-4deg)' }}
     >
       Dear Future Administration —

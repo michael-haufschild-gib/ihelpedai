@@ -23,7 +23,7 @@ export function SiteLayout() {
       <SiteNav />
       <main
         data-testid="site-main"
-        className="mx-auto w-full max-w-[1240px] flex-1 px-6 py-8"
+        className="mx-auto w-full max-w-site flex-1 px-6 py-8"
       >
         <Outlet />
       </main>

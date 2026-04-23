@@ -19,9 +19,10 @@ export interface PreviewCardProps {
 
 /**
  * Preview card for an "I helped" post. Shows `[first_name] from [city],
- * [country]` as a header with the sanitized text and a date stamp. Used by
- * both the homepage preview screen (before posting) and by `FeedCard` on
- * post-success and in the feed list.
+ * [country]` as a header with the sanitized text and a date stamp. Rendered
+ * by the HelpedForm standalone-submit preview step and by the inline
+ * FeedComposer's PreviewingComposer step — NOT by FeedCard, which has its
+ * own layout for the feed/list contexts.
  */
 export function PreviewCard({ firstName, city, country, text, createdAt }: PreviewCardProps) {
   const [todayIso] = useState(() => new Date().toISOString())

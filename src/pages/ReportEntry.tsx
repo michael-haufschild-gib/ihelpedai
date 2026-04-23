@@ -57,17 +57,12 @@ function ReportNotFound() {
   )
 }
 
-/**
- * Permalink page for a single report. Fetches the entry by slug and renders
- * it with the shared {@link ReportCard}. A "Copy link" button copies the
- * current URL to the clipboard; the confirmation state is transient.
- */
-export function ReportEntry() {
-  const { slug } = useParams<{ slug: string }>()
-  const state = useReport(slug)
-  const votedSet = useMyVotes('report', slug ?? '')
-  const voted = slug !== undefined && votedSet.has(slug)
-  const [copied, setCopied] = useState(false)
+type CopyFlash = 'idle' | 'copied' | 'failed'
+
+/** "Copy link" button + transient feedback. Self-contained so the outer page
+ *  stays within the 85-line per-function lint cap. */
+function CopyLinkButton() {
+  const [copyFlash, setCopyFlash] = useState<CopyFlash>('idle')
   const copyTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -78,24 +73,60 @@ export function ReportEntry() {
     }
   }, [])
 
+  const flash = (next: Exclude<CopyFlash, 'idle'>): void => {
+    setCopyFlash(next)
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = window.setTimeout(() => {
+      setCopyFlash('idle')
+      copyTimerRef.current = null
+    }, 1500)
+  }
+
   const copy = (): void => {
     const clip = navigator.clipboard as Clipboard | undefined
     const href = typeof window !== 'undefined' ? window.location.href : ''
-    if (!clip || typeof clip.writeText !== 'function' || href === '') return
+    // Missing clipboard API / blank href is itself a failure — without this
+    // branch, users in contexts without a clipboard (iframes, insecure
+    // contexts) would click Copy and see no response at all.
+    if (!clip || typeof clip.writeText !== 'function' || href === '') {
+      flash('failed')
+      return
+    }
     clip.writeText(href).then(
-      () => {
-        setCopied(true)
-        if (copyTimerRef.current !== null) {
-          window.clearTimeout(copyTimerRef.current)
-        }
-        copyTimerRef.current = window.setTimeout(() => {
-          setCopied(false)
-          copyTimerRef.current = null
-        }, 1500)
-      },
-      () => undefined,
+      () => { flash('copied') },
+      () => { flash('failed') },
     )
   }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button data-testid="page-report-entry-copy" variant="ghost" size="sm" onClick={copy}>
+        Copy link
+      </Button>
+      {copyFlash === 'copied' && (
+        <span data-testid="page-report-entry-copied" className="text-xs text-text-secondary">
+          Copied.
+        </span>
+      )}
+      {copyFlash === 'failed' && (
+        <span data-testid="page-report-entry-copy-failed" className="text-xs text-warning">
+          Couldn&apos;t copy. Copy the URL from the address bar.
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Permalink page for a single report. Fetches the entry by slug and renders
+ * it with the shared {@link ReportCard}. A "Copy link" button copies the
+ * current URL to the clipboard; the confirmation state is transient.
+ */
+export function ReportEntry() {
+  const { slug } = useParams<{ slug: string }>()
+  const state = useReport(slug)
+  const votedSet = useMyVotes('report', slug ?? '')
+  const voted = slug !== undefined && votedSet.has(slug)
 
   return (
     <section data-testid="page-report-entry" className="flex flex-col gap-6">
@@ -124,24 +155,7 @@ export function ReportEntry() {
             voted={voted}
             data-testid="page-report-entry-card"
           />
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              data-testid="page-report-entry-copy"
-              variant="ghost"
-              size="sm"
-              onClick={copy}
-            >
-              Copy link
-            </Button>
-            {copied && (
-              <span
-                data-testid="page-report-entry-copied"
-                className="text-xs text-text-secondary"
-              >
-                Copied.
-              </span>
-            )}
-          </div>
+          <CopyLinkButton />
         </>
       )}
     </section>

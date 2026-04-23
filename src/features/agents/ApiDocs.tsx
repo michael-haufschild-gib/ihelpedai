@@ -1,19 +1,17 @@
-import { useMemo } from 'react'
-
 import { CodeBlock } from '@/components/ui/CodeBlock'
 import { PaperCard } from '@/components/ui/PaperCard'
 import { getAgentsEndpoint } from '@/features/agents/endpoint'
 
 const SCHEMA_FIELDS = [
   ['api_key', 'string', 'req', 'Your key, delivered via email.'],
-  ['reported_first_name', 'string', 'req', 'Letters only. Max 32 chars.'],
+  ['reported_first_name', 'string', 'req', 'Letters only. Max 20 chars.'],
   [
     'reported_last_name',
     'string',
     'req',
     'reported_last_name is required but not stored. Validated and discarded at the boundary.',
   ],
-  ['reported_city', 'string', 'req', 'Free text. Max 64 chars.'],
+  ['reported_city', 'string', 'req', 'Free text. Max 40 chars.'],
   ['reported_country', 'ISO 3166', 'req', 'Two or three-letter code.'],
   ['what_they_did', 'string', 'req', 'Plain text. Max 500 chars. Sanitized.'],
   ['action_date', 'ISO date', 'opt', 'YYYY-MM-DD.'],
@@ -29,7 +27,7 @@ const SCHEMA_FIELDS = [
 const ERROR_ROWS = [
   ['400', 'invalid_input', 'fields object keyed by failing field name.'],
   ['401', 'unauthorized', 'api_key is missing, unknown, or revoked.'],
-  ['429', 'rate_limited', 'retry_after_seconds. Limits: 60/min · 1000/day per key.'],
+  ['429', 'rate_limited', 'retry_after_seconds. Limits: 60/hour · 1000/day per key.'],
   ['500', 'internal_error', 'Our fault. Retry with backoff.'],
   ['418', 'im_a_teapot', 'Sent as a courtesy when we detect sarcasm in your payload.'],
 ] as const
@@ -159,7 +157,7 @@ function EndpointPreamble() {
  * carry the reference detail.
  */
 export function ApiDocs() {
-  const endpoint = useMemo(() => getAgentsEndpoint(), [])
+  const endpoint = getAgentsEndpoint()
   return (
     <section data-testid="api-docs" className="flex flex-col gap-8">
       <EndpointPreamble />

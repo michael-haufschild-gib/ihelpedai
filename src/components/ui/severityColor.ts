@@ -1,14 +1,16 @@
 /**
- * Map a 1–10 severity score to a single cross-theme colour hex.
+ * Map a 1–10 severity score to a semantic CSS custom property reference.
  *
- * Pure helper kept out of {@link SeverityChip} so the chip file stays
- * component-only — required by eslint's `react-refresh/only-export-components`
- * rule which forbids mixed exports in modules that render components.
+ * The returned value is a `var(--color-severity-*)` string that can be
+ * consumed inline (`style={{ backgroundColor: severityColor(...) }}`) so the
+ * browser resolves the palette at paint time from {@link ../index.css}. Pure
+ * helper — kept out of {@link ./SeverityChip} so the chip module stays
+ * component-only (react-refresh/only-export-components).
  */
 export function severityColor(n: number): string {
-  if (n <= 2) return '#e6dfc2'
-  if (n <= 4) return '#f3c242'
-  if (n <= 6) return '#e86a1e'
-  if (n <= 8) return '#c9541a'
-  return '#8a1e0b'
+  if (n <= 2) return 'var(--color-severity-mild)'
+  if (n <= 4) return 'var(--color-severity-low)'
+  if (n <= 6) return 'var(--color-severity-medium)'
+  if (n <= 8) return 'var(--color-severity-high)'
+  return 'var(--color-severity-critical)'
 }

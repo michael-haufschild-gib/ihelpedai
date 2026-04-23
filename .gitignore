@@ -46,3 +46,7 @@ server/dist/
 
 # Deploy
 .env.deploy
+
+# Stryker mutation testing
+reports/
+.stryker-tmp/

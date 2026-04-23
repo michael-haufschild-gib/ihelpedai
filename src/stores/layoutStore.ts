@@ -1,25 +1,23 @@
 /**
  * Layout Store
- * Persists panel visibility, theme mode, accent color, and motion preference.
+ * Persists the admin theme + accent for portal-rendered UI (Modal, Toast).
+ * Public pages set their own `data-mode` + `data-accent` on SiteLayout, so
+ * this store's values only affect the admin shell (which inherits root
+ * attributes) and the portal surfaces that need to re-declare them inside
+ * the top layer.
  */
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-/** Available theme modes — mapped to `data-mode` attribute on `[data-app-theme]`. */
-export const THEME_MODES = ['dark-purple', 'dark-blue', 'dark-brown', 'dark-black'] as const
-/** Allowed values for the `data-mode` theme attribute. */
-export type ThemeMode = (typeof THEME_MODES)[number]
+// Theme modes + accent colors are the data-attribute vocabulary driven by
+// main.tsx and the [data-app-theme] CSS scope. Kept module-private until a
+// consumer (e.g. a future theme picker) actually needs the arrays or types
+// outside this store.
+const THEME_MODES = ['dark-purple', 'dark-blue', 'dark-brown', 'dark-black'] as const
+type ThemeMode = (typeof THEME_MODES)[number]
 
-export const THEME_LABELS: Record<ThemeMode, string> = {
-  'dark-purple': 'Dark Purple',
-  'dark-blue': 'Dark Blue',
-  'dark-brown': 'Dark Brown',
-  'dark-black': 'Dark Black',
-}
-
-/** Available accent colors — mapped to `data-accent` attribute on `[data-app-theme]`. */
-export const ACCENT_COLORS = [
+const ACCENT_COLORS = [
   'cyan',
   'green',
   'magenta',
@@ -28,77 +26,51 @@ export const ACCENT_COLORS = [
   'violet',
   'red',
 ] as const
-/** Allowed values for the `data-accent` theme attribute. */
-export type AccentColor = (typeof ACCENT_COLORS)[number]
+type AccentColor = (typeof ACCENT_COLORS)[number]
 
-export const REDUCED_MOTION_OPTIONS = ['no-preference', 'reduce'] as const
-/** User motion preference: full animations or reduced. */
-export type ReducedMotionPreference = (typeof REDUCED_MOTION_OPTIONS)[number]
+// Defaults match the root attributes set in main.tsx so portaled admin UI
+// (Modal, Toast) render with the same palette as their host page instead of
+// drifting back to an earlier starter default.
+const DEFAULT_THEME: ThemeMode = 'dark-black'
+const DEFAULT_ACCENT: AccentColor = 'violet'
 
-export const REDUCED_MOTION_LABELS: Record<ReducedMotionPreference, string> = {
-  reduce: 'Reduced',
-  'no-preference': 'Full',
-}
-
-/** Persisted shell state: panel visibility, theme, accent, motion preference. */
+/** Persisted shell state consumed by Modal + Toast for portal theme scoping. */
 export interface LayoutStore {
-  showLeftPanel: boolean
   theme: ThemeMode
   accent: AccentColor
-  reducedMotion: ReducedMotionPreference
-
-  toggleLeftPanel: () => void
-  setLeftPanel: (show: boolean) => void
-  setTheme: (theme: ThemeMode) => void
-  setAccent: (accent: AccentColor) => void
-  setReducedMotion: (pref: ReducedMotionPreference) => void
 }
-
-/** Below this width the layout auto-collapses the left panel (mid-desktop threshold). */
-export const LEFT_PANEL_AUTO_COLLAPSE_PX = 1220
-const isMobileViewport =
-  typeof window !== 'undefined' && window.innerWidth < LEFT_PANEL_AUTO_COLLAPSE_PX
-
-export const DEFAULT_THEME: ThemeMode = 'dark-blue'
-export const DEFAULT_ACCENT: AccentColor = 'blue'
 
 const VALID_THEMES = new Set<string>(THEME_MODES)
 const VALID_ACCENTS = new Set<string>(ACCENT_COLORS)
-const VALID_REDUCED_MOTION = new Set<string>(REDUCED_MOTION_OPTIONS)
 
 export const useLayoutStore = create<LayoutStore>()(
   persist(
-    (set) => ({
-      showLeftPanel: !isMobileViewport,
+    (): LayoutStore => ({
       theme: DEFAULT_THEME,
       accent: DEFAULT_ACCENT,
-      reducedMotion: 'no-preference' as ReducedMotionPreference,
-
-      toggleLeftPanel: () => {
-        set((state) => ({ showLeftPanel: !state.showLeftPanel }))
-      },
-      setLeftPanel: (show) => {
-        set({ showLeftPanel: show })
-      },
-      setTheme: (theme) => {
-        set({ theme })
-      },
-      setAccent: (accent) => {
-        set({ accent })
-      },
-      setReducedMotion: (reducedMotion) => {
-        set({ reducedMotion })
-      },
     }),
     {
       name: 'ihelpedai-layout',
+      // Only persist the two fields we declare. Spreading the whole state
+      // would re-hydrate any deprecated key that ever lived in a previous
+      // version's snapshot and that a future reader might accidentally
+      // trust. `partialize` is the explicit whitelist.
+      partialize: (state) => ({ theme: state.theme, accent: state.accent }),
       merge: (persistedState, currentState) => {
-        const merged = {
+        const persisted =
+          persistedState !== null && typeof persistedState === 'object'
+            ? (persistedState as Record<string, unknown>)
+            : {}
+        const merged: LayoutStore = {
           ...currentState,
-          ...(persistedState as Partial<LayoutStore>),
-        }
-        if (isMobileViewport) {
-          merged.showLeftPanel = false
+          theme:
+            typeof persisted.theme === 'string'
+              ? (persisted.theme as LayoutStore['theme'])
+              : currentState.theme,
+          accent:
+            typeof persisted.accent === 'string'
+              ? (persisted.accent as LayoutStore['accent'])
+              : currentState.accent,
         }
         if (!VALID_THEMES.has(merged.theme)) {
           merged.theme = DEFAULT_THEME
@@ -106,11 +78,8 @@ export const useLayoutStore = create<LayoutStore>()(
         if (!VALID_ACCENTS.has(merged.accent)) {
           merged.accent = DEFAULT_ACCENT
         }
-        if (!VALID_REDUCED_MOTION.has(merged.reducedMotion)) {
-          merged.reducedMotion = 'no-preference' as ReducedMotionPreference
-        }
         return merged
       },
-    }
-  )
+    },
+  ),
 )

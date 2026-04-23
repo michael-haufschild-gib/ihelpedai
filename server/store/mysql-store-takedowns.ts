@@ -2,7 +2,6 @@
  * Takedown + admin-settings storage for MySQL, split out from
  * mysql-store-admin.ts to keep both files under the 500-line lint cap.
  */
-import { customAlphabet } from 'nanoid'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 
 import type {
@@ -12,10 +11,7 @@ import type {
   TakedownDisposition,
   TakedownStatus,
 } from './index.js'
-
-const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-const newId = customAlphabet(ID_ALPHABET, 10)
-const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString())
+import { iso, isoDate, newId } from './mysql-utils.js'
 
 type TakedownRow = RowDataPacket & {
   id: string; requester_email: string | null; entry_id: string | null
@@ -29,7 +25,7 @@ const takedownFromRow = (r: TakedownRow): Takedown => ({
   id: r.id, requesterEmail: r.requester_email, entryId: r.entry_id,
   entryKind: r.entry_kind, reason: r.reason, notes: r.notes,
   status: r.status as Takedown['status'], disposition: r.disposition as Takedown['disposition'],
-  closedBy: r.closed_by, dateReceived: iso(r.date_received)!,
+  closedBy: r.closed_by, dateReceived: isoDate(r.date_received)!,
   createdAt: iso(r.created_at)!, updatedAt: iso(r.updated_at)!,
 })
 

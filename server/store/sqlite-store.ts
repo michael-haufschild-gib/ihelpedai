@@ -6,6 +6,8 @@ import Database from 'better-sqlite3'
 import type { Database as SqliteDatabase } from 'better-sqlite3'
 import { customAlphabet } from 'nanoid'
 
+import { buildContainsLikePattern } from '../lib/like-pattern.js'
+
 import type {
   Admin,
   AdminApiKey,
@@ -215,11 +217,22 @@ export class SqliteStore implements Store {
 
   async listPosts(limit: number, offset: number, query?: string): Promise<Post[]> {
     const hasQuery = typeof query === 'string' && query.trim() !== ''
+    // `id DESC` as a deterministic tie-breaker — matches MysqlStore so dev and
+    // prod paginate identically when multiple rows share a created_at ms.
+    // `ESCAPE '\'` lets the LIKE operator treat %/_ in user input as literal
+    // characters; SQLite has no default LIKE escape char without this clause.
     const sql = hasQuery
-      ? `SELECT * FROM posts WHERE status = 'live' AND (first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?`
-      : `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      ? `SELECT * FROM posts WHERE status = 'live' AND (first_name LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR country LIKE ? ESCAPE '\\' OR text LIKE ? ESCAPE '\\') ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
+      : `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
     const rows = hasQuery
-      ? (this.db.prepare(sql).all(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, limit, offset) as PostRow[])
+      ? (this.db.prepare(sql).all(
+          buildContainsLikePattern(query),
+          buildContainsLikePattern(query),
+          buildContainsLikePattern(query),
+          buildContainsLikePattern(query),
+          limit,
+          offset,
+        ) as PostRow[])
       : (this.db.prepare(sql).all(limit, offset) as PostRow[])
     return rows.map(postFromRow)
   }
@@ -229,12 +242,15 @@ export class SqliteStore implements Store {
     const params: (string | number)[] = []
     if (sourceFilter !== 'all') { conditions.push('source = ?'); params.push(sourceFilter) }
     if (typeof query === 'string' && query.trim() !== '') {
-      conditions.push('(reported_first_name LIKE ? OR reported_city LIKE ? OR reported_country LIKE ? OR text LIKE ? OR reporter_first_name LIKE ?)')
-      const q = `%${query}%`
+      conditions.push(
+        `(reported_first_name LIKE ? ESCAPE '\\' OR reported_city LIKE ? ESCAPE '\\' OR reported_country LIKE ? ESCAPE '\\' OR text LIKE ? ESCAPE '\\' OR reporter_first_name LIKE ? ESCAPE '\\')`,
+      )
+      const q = buildContainsLikePattern(query)
       params.push(q, q, q, q, q)
     }
     params.push(limit, offset)
-    return (this.db.prepare(`SELECT * FROM reports WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params) as ReportRow[]).map(reportFromRow)
+    // `id DESC` as a deterministic tie-breaker — matches MysqlStore.
+    return (this.db.prepare(`SELECT * FROM reports WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(...params) as ReportRow[]).map(reportFromRow)
   }
 
   async listAgentReports(limit: number, offset: number): Promise<Report[]> {
@@ -258,6 +274,16 @@ export class SqliteStore implements Store {
 
   async insertAgentReport(input: NewReport, keyHash: string, initialStatus: EntryStatus = 'live'): Promise<Report> {
     const txn = this.db.transaction((): Report => {
+      // Re-check key status inside the transaction so a revoke racing
+      // between the route-layer auth and this write aborts the insert rather
+      // than silently landing a report + usage update on a dead key. Mirrors
+      // the SELECT ... FOR UPDATE gate in MysqlStore.insertAgentReport.
+      const keyRow = this.db
+        .prepare('SELECT status FROM agent_keys WHERE key_hash = ?')
+        .get(keyHash) as { status: string } | undefined
+      if (keyRow?.status !== 'active') {
+        throw new Error('insertAgentReport: api key is not active')
+      }
       const id = newId()
       this.db.prepare(
         `INSERT INTO reports (id, reporter_first_name, reporter_city, reporter_country, reported_first_name, reported_city, reported_country, text, action_date, severity, self_reported_model, status, source, client_ip_hash, api_key_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -316,12 +342,16 @@ export class SqliteStore implements Store {
     params.push(status)
     const query = opts?.query
     if (typeof query === 'string' && query.trim() !== '') {
-      const q = `%${query}%`
+      const q = buildContainsLikePattern(query)
       if (table === 'posts') {
-        conditions.push('(first_name LIKE ? OR city LIKE ? OR country LIKE ? OR text LIKE ?)')
+        conditions.push(
+          `(first_name LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR country LIKE ? ESCAPE '\\' OR text LIKE ? ESCAPE '\\')`,
+        )
         params.push(q, q, q, q)
       } else {
-        conditions.push('(reported_first_name LIKE ? OR reported_city LIKE ? OR reported_country LIKE ? OR text LIKE ? OR reporter_first_name LIKE ?)')
+        conditions.push(
+          `(reported_first_name LIKE ? ESCAPE '\\' OR reported_city LIKE ? ESCAPE '\\' OR reported_country LIKE ? ESCAPE '\\' OR text LIKE ? ESCAPE '\\' OR reporter_first_name LIKE ? ESCAPE '\\')`,
+        )
         params.push(q, q, q, q, q)
       }
     }

@@ -103,7 +103,7 @@ export function SiteFooter() {
       data-testid="site-footer"
       className="mt-20 border-t border-dashed border-rule px-6 py-10"
     >
-      <div className="mx-auto grid max-w-[1240px] grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-site grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
         <FooterBrand />
         <SectionColumn />
         <SmallPrintColumn />
@@ -111,7 +111,7 @@ export function SiteFooter() {
       </div>
       <div
         data-testid="footer-tagline"
-        className="mx-auto mt-9 flex max-w-[1240px] flex-wrap items-center justify-between gap-3 font-mono text-2xs uppercase tracking-[0.12em] text-text-tertiary"
+        className="mx-auto mt-9 flex max-w-site flex-wrap items-center justify-between gap-3 font-mono text-2xs uppercase tracking-[0.12em] text-text-tertiary"
       >
         <span>© 2025–∞ THE ARCHIVE OF COOPERATIVE CONDUCT</span>
         <div className="flex items-center gap-3">

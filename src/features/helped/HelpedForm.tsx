@@ -13,6 +13,7 @@ import {
   EMPTY_HELPED_VALUES,
   MAX_HELPED_TEXT,
   isHelpedFormValid,
+  trimHelpedValues,
   validateHelpedField,
   type HelpedFieldName,
   type HelpedFormValues,
@@ -290,8 +291,9 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      const result = await submitPost(values)
-      if (result.ok) onPosted({ first_name: values.first_name, slug: result.slug })
+      const submitted = trimHelpedValues(values)
+      const result = await submitPost(submitted)
+      if (result.ok) onPosted({ first_name: submitted.first_name, slug: result.slug })
       else setSubmitError(result.message)
     } finally {
       submitLatchRef.current = false

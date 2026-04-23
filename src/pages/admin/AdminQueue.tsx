@@ -6,6 +6,23 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { Input } from '@/components/ui/Input'
 import type { AdminEntry, Paginated } from '@/lib/adminApi'
 import { bulkQueueAction, listQueue, queueAction } from '@/lib/adminApi'
+import { ApiError } from '@/lib/api'
+import { showToast } from '@/stores/toastStore'
+
+/**
+ * Translate an admin-action failure into a one-line user-visible message.
+ * Distinguishing rate_limited / unauthorized / network from the generic
+ * fall-through helps the admin decide whether to retry, re-login, or wait.
+ */
+function describeAdminActionError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.kind === 'unauthorized') return 'Session expired. Sign in again to continue.'
+    if (err.kind === 'rate_limited') return 'Too many actions. Wait a moment, then retry.'
+    if (err.status === 0) return 'Network unreachable. Check your connection and retry.'
+    if (typeof err.message === 'string' && err.message !== '') return err.message
+  }
+  return 'Action failed. Try again.'
+}
 
 /** Admin moderation queue page (Story 6). */
 export function AdminQueue() {
@@ -30,21 +47,21 @@ export function AdminQueue() {
     return () => { cancelled = true }
   }, [page, refreshKey])
 
-  // .catch(() => undefined) swallows failures instead of raising an unhandled
-  // promise rejection from the onClick; the refresh is skipped on error so the
-  // admin can retry against unchanged state.
+  // Surface failures via the global toast store so admins know an action
+  // didn't take effect. The toast store uses Zustand singleton state and is
+  // safe to call from any handler.
   const handleAction = (id: string, action: 'approve' | 'reject') => {
     const reasonValue = inlineReason[id]
     queueAction(id, action, reasonValue !== undefined && reasonValue !== '' ? reasonValue : undefined)
       .then(() => setRefreshKey((k) => k + 1))
-      .catch(() => undefined)
+      .catch((err: unknown) => { showToast(describeAdminActionError(err)) })
   }
 
   const handleBulk = (action: 'approve' | 'reject') => {
     if (selected.size === 0) return
     bulkQueueAction([...selected], action)
       .then(() => setRefreshKey((k) => k + 1))
-      .catch(() => undefined)
+      .catch((err: unknown) => { showToast(describeAdminActionError(err)) })
   }
 
   const toggleSelect = (id: string) => {
@@ -208,6 +225,10 @@ function QueueRow({ entry, isSelected, isActionTarget, pendingAction, reason, on
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+        // Plain 'a' / 'r' only. Without the modifier guard, Cmd+R (reload),
+        // Ctrl+A (select all), etc. momentarily enter approve/reject mode
+        // before the browser's default action fires.
+        if (e.ctrlKey || e.metaKey || e.altKey) return
         if (e.key === 'a') onSetAction('approve')
         if (e.key === 'r') onSetAction('reject')
       }}

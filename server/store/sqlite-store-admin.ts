@@ -11,9 +11,11 @@ import type {
   AdminApiKey,
   AdminEntry,
   AdminEntryDetail,
+  AdminEntryFilter,
   AdminSession,
   AdminSetting,
   AuditEntryWithEmail,
+  AuditLogFilter,
   EntrySource,
   EntryStatus,
   NewTakedown,
@@ -121,14 +123,21 @@ const reportFromRow = (r: ReportRowLike): Report => ({
 /** Build WHERE clause for admin entry listing. */
 function buildEntryFilter(
   type: 'post' | 'report',
-  filters?: { status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string },
+  filters?: Omit<AdminEntryFilter, 'entryType'>,
 ): { where: string; params: (string | number)[] } {
   const conditions: string[] = []
   const params: (string | number)[] = []
   if (filters?.status !== undefined) { conditions.push('status = ?'); params.push(filters.status) }
   if (filters?.source !== undefined) { conditions.push('source = ?'); params.push(filters.source) }
   if (filters?.dateFrom !== undefined) { conditions.push('created_at >= ?'); params.push(filters.dateFrom) }
-  if (filters?.dateTo !== undefined) { conditions.push('created_at <= ?'); params.push(filters.dateTo) }
+  // dateTo is a bare YYYY-MM-DD; created_at is 'YYYY-MM-DDTHH:MM:SS.mmmZ'.
+  // A lexicographic `<= dateTo` drops any row created later on that same
+  // day. Use an exclusive upper bound on the next calendar day to mirror
+  // the MySQL DATE_ADD(?, INTERVAL 1 DAY) path.
+  if (filters?.dateTo !== undefined) {
+    conditions.push(`created_at < date(?, '+1 day')`)
+    params.push(filters.dateTo)
+  }
   if (filters?.query !== undefined && filters.query !== '') {
     const q = `%${filters.query}%`
     if (type === 'post') {
@@ -143,14 +152,18 @@ function buildEntryFilter(
 
 /** Build WHERE clause for audit log filters. */
 function buildAuditFilters(
-  filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
+  filters?: AuditLogFilter,
 ): { conditions: string[]; params: (string | number)[] } {
   const conditions: string[] = []
   const params: (string | number)[] = []
   if (filters?.adminId !== undefined) { conditions.push('al.admin_id = ?'); params.push(filters.adminId) }
   if (filters?.action !== undefined) { conditions.push('al.action = ?'); params.push(filters.action) }
   if (filters?.dateFrom !== undefined) { conditions.push('al.created_at >= ?'); params.push(filters.dateFrom) }
-  if (filters?.dateTo !== undefined) { conditions.push('al.created_at <= ?'); params.push(filters.dateTo) }
+  // See buildEntryFilter: inclusive-day dateTo via next-day exclusive bound.
+  if (filters?.dateTo !== undefined) {
+    conditions.push(`al.created_at < date(?, '+1 day')`)
+    params.push(filters.dateTo)
+  }
   return { conditions, params }
 }
 
@@ -254,7 +267,7 @@ export function insertAuditEntry(db: SqliteDatabase, adminId: string | null, act
 }
 
 /** List audit log entries. */
-export function listAuditLog(db: SqliteDatabase, limit: number, offset: number, filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): AuditEntryWithEmail[] {
+export function listAuditLog(db: SqliteDatabase, limit: number, offset: number, filters?: AuditLogFilter): AuditEntryWithEmail[] {
   const { conditions, params } = buildAuditFilters(filters)
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   params.push(limit, offset)
@@ -262,7 +275,7 @@ export function listAuditLog(db: SqliteDatabase, limit: number, offset: number, 
 }
 
 /** Count audit log entries. */
-export function countAuditLog(db: SqliteDatabase, filters?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): number {
+export function countAuditLog(db: SqliteDatabase, filters?: AuditLogFilter): number {
   const { conditions, params } = buildAuditFilters(filters)
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   return (db.prepare(`SELECT COUNT(*) AS n FROM audit_log al ${where}`).get(...params) as { n: number }).n
@@ -274,7 +287,7 @@ export function listAuditLogForTarget(db: SqliteDatabase, targetId: string): Aud
 }
 
 /** List admin entries (unified posts + reports). */
-export function listAdminEntries(db: SqliteDatabase, limit: number, offset: number, filters?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string; sort?: 'asc' | 'desc' }): AdminEntry[] {
+export function listAdminEntries(db: SqliteDatabase, limit: number, offset: number, filters?: AdminEntryFilter & { sort?: 'asc' | 'desc' }): AdminEntry[] {
   const sort = filters?.sort ?? 'desc'
   const parts: string[] = []
   const allParams: (string | number)[] = []
@@ -293,7 +306,7 @@ export function listAdminEntries(db: SqliteDatabase, limit: number, offset: numb
 }
 
 /** Count admin entries matching filters. */
-export function countAdminEntries(db: SqliteDatabase, filters?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string }): number {
+export function countAdminEntries(db: SqliteDatabase, filters?: AdminEntryFilter): number {
   let total = 0
   if (filters?.entryType === undefined || filters.entryType === 'post') {
     const { where, params } = buildEntryFilter('post', filters)
