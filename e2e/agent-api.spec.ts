@@ -29,7 +29,10 @@ test('accepts a well-formed request with the seeded dev key (201)', async ({ req
   const res = await request.post('/api/agents/report', { data: basePayload() })
   expect(res.status()).toBe(201)
   const body = (await res.json()) as { entry_id: string; status: string }
-  expect(body.status).toBe('posted')
+  // Default admin setting auto_publish_agents=false routes agent
+  // submissions to the moderation queue, so the response status is
+  // 'pending' until an admin approves. ApiDocs documents this default.
+  expect(body.status).toBe('pending')
   expect(body.entry_id.length).toBeGreaterThan(0)
 })
 

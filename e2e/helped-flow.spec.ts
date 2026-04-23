@@ -27,7 +27,8 @@ test('submit, preview, post, then see the entry in the feed', async ({ page }) =
 
   await page.getByTestId('helped-post').click()
 
-  await expect(page.getByTestId('home-success-message')).toHaveText('Posted.')
+  // FiledReceipt renders the thank-you line personalised with first_name.
+  await expect(page.getByTestId('home-success-message')).toHaveText('Thank you, Sam.')
   const successText = await page.getByTestId('home-success').innerText()
   expect(successText).not.toContain(LAST_NAME)
 

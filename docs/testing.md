@@ -109,9 +109,20 @@ test('happy path', async ({ page }) => {
 | `server/__tests__/over-redaction.spec.ts` | Over-redacted text returns 400 `invalid_input` with `fields.text = "over_redacted"` | ✅ |
 | `server/__tests__/rate-limit.spec.ts` | Per-IP and per-key rate limits trigger 429 with `retry_after_seconds` | ✅ |
 | `server/sanitizer/sanitize.test.ts` | Full PRD Story 9 behavior: redaction rules, exception list, idempotence, threshold | ✅ |
+| `server/sanitizer/sanitize.property.test.ts` | `fast-check` property tests: idempotence for arbitrary and grapheme strings, fixed-point classes (plain ASCII, exceptions, allowlisted URLs, short digit runs), `parseSanitizerExceptionList` round-trip | ✅ |
 | `src/lib/sanitizePreview.test.ts` | Client sanitizer mirrors server for the representative cases | ✅ |
 
 If you change the sanitizer, update both files together and keep both specs green.
+
+## Property-based tests (fast-check)
+
+Use `fast-check` for invariants that hold across *all* inputs, not just hand-picked cases. Best fits: pure functions with algebraic laws (idempotence, round-trip, preservation under filler). Put these beside the module they cover with the suffix `*.property.test.ts`. Keep `numRuns` modest (150–300) so the full suite stays fast.
+
+In fast-check 4, unicode strings come from `fc.string({ unit: 'grapheme', maxLength: N })` — `fc.fullUnicodeString` was removed.
+
+## Mutation testing (Stryker)
+
+`pnpm test:mutation` runs Stryker against `server/sanitizer/**/*.ts` using the Vitest runner and a TypeScript checker. Config lives in `stryker.config.json`; the HTML report is written to `reports/mutation/index.html` (gitignored). **Current score: 100%** (break threshold 100) — 122 killed, 0 survived, 28 type-rejected. Kill-tests for each non-trivial mutation live in `server/sanitizer/sanitize.mutation.test.ts` — every `it()` names the specific mutant it kills (line + column + mutator). Genuine equivalent mutants (e.g., `OpenAI`/`xAI`/`DeepMind` exception entries that never match `TWO_CAP_WORDS_REGEX` regardless of whether they're on the list; counter direction in `makeReplacer`; `\s+` vs `\s` inside `.replace(x, '')`) are annotated inline with `// Stryker disable next-line <MutatorName>` directives including a short proof of equivalence. Only the sanitizer is in scope by default because it's pure and the rest of `server/` is I/O-heavy; widen `mutate` when a new pure module is worth targeting.
 
 ## Commands
 
