@@ -103,11 +103,13 @@ export function buildApiErrorFromBody(status: number, body: unknown): ApiError {
   })
 }
 
-const safeParseJson = (text: string): unknown => {
+type JsonParseResult = { ok: true; value: unknown } | { ok: false }
+
+const safeParseJson = (text: string): JsonParseResult => {
   try {
-    return JSON.parse(text)
+    return { ok: true, value: JSON.parse(text) as unknown }
   } catch {
-    return null
+    return { ok: false }
   }
 }
 
@@ -124,14 +126,17 @@ export interface RequestOptions extends Omit<RequestInit, 'credentials'> {
 export async function request<T>(path: string, init?: RequestOptions): Promise<T> {
   let response: Response
   try {
-    response = await fetch(path, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
-        ...(init?.headers ?? {}),
-      },
-    })
+    // `RequestInit.headers` can be a Headers instance or a `[name, value][]`
+    // tuple array, not just a plain object — spreading the init headers in
+    // an object literal silently drops Headers entries and coerces tuple
+    // arrays to numeric-indexed props, losing caller-supplied auth/CSRF
+    // headers. Normalising through `new Headers(...)` accepts every shape.
+    const headers = new Headers(init?.headers)
+    if (!headers.has('accept')) headers.set('accept', 'application/json')
+    if (init?.body !== undefined && !headers.has('content-type')) {
+      headers.set('content-type', 'application/json')
+    }
+    response = await fetch(path, { ...init, headers })
   } catch (cause) {
     throw new ApiError({
       kind: 'internal_error',
@@ -140,13 +145,37 @@ export async function request<T>(path: string, init?: RequestOptions): Promise<T
     })
   }
 
-  const text = await response.text()
-  const body: unknown = text.length > 0 ? safeParseJson(text) : null
+  let text: string
+  try {
+    text = await response.text()
+  } catch (cause) {
+    // `response.text()` can throw when the upstream connection drops
+    // mid-stream. Surface that as an ApiError instead of letting the raw
+    // DOMException propagate into caller code paths that only handle
+    // ApiError.
+    throw new ApiError({
+      kind: 'internal_error',
+      status: response.status,
+      message: cause instanceof Error ? cause.message : 'read_error',
+    })
+  }
+  const parsed = text.length > 0 ? safeParseJson(text) : { ok: true as const, value: null }
 
   if (!response.ok) {
-    throw buildApiErrorFromBody(response.status, body)
+    throw buildApiErrorFromBody(response.status, parsed.ok ? parsed.value : null)
   }
-  return body as T
+  // A 2xx with a non-empty body that does not parse as JSON is a server
+  // bug (or an upstream that stripped the body). The documented contract
+  // is "on 2xx, returns the decoded JSON body" — collapsing that to
+  // `null as T` hid real transport failures from callers, so throw.
+  if (!parsed.ok) {
+    throw new ApiError({
+      kind: 'internal_error',
+      status: response.status,
+      message: 'invalid_json_in_success_response',
+    })
+  }
+  return parsed.value as T
 }
 
 /** Helper: build a JSON body request init (POST by default). */

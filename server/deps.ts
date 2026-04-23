@@ -92,15 +92,30 @@ export function registerDeps(app: FastifyInstance): void {
   })
   // Release backing resources on graceful shutdown (mysql2 pool, sqlite
   // handle, redis client). Without this the process hangs on SIGTERM.
+  // Each teardown is awaited independently so a failure in one layer does
+  // not strand the others — losing a limiter handle would keep the Redis
+  // client alive and prevent the process from exiting cleanly.
   app.addHook('onClose', async (instance) => {
-    await instance.store.close()
+    const errors: unknown[] = []
+    try {
+      await instance.store.close()
+    } catch (err) {
+      errors.push(err)
+      instance.log.error({ err }, 'onClose: store.close() failed')
+    }
     // Limiter only owns a network handle when it's the Redis impl. The
     // memory limiter exposes `dispose` to clear its sweeper interval; the
     // Redis impl's `dispose` quits the connection. Both are safe no-ops if
     // the connection / interval was already torn down.
     const limiter = instance.limiter as { dispose?: () => void | Promise<void> }
     if (typeof limiter.dispose === 'function') {
-      await limiter.dispose()
+      try {
+        await limiter.dispose()
+      } catch (err) {
+        errors.push(err)
+        instance.log.error({ err }, 'onClose: limiter.dispose() failed')
+      }
     }
+    if (errors.length > 0) throw errors[0]
   })
 }

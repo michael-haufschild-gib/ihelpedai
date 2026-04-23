@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from 'react'
+
 import { Button } from './Button'
 
 /** Option in a {@link Chips} segmented control. */
@@ -43,26 +45,32 @@ export function Chips<T extends string>({
     0,
     options.findIndex((o) => o.value === value),
   )
-  const selectByIndex = (nextIndex: number): void => {
+  const moveTo = (nextIndex: number, e: KeyboardEvent<HTMLButtonElement>): void => {
     if (options.length === 0) return
     const safe = ((nextIndex % options.length) + options.length) % options.length
     const next = options[safe].value
     if (next !== value) onChange(next)
+    // Roving tabindex: move focus with selection so screen-reader users
+    // and keyboard-only users follow the selected chip. `data-index` on
+    // every chip lets us find it without an imperative ref array.
+    const root = e.currentTarget.parentElement
+    const nextButton = root?.querySelector<HTMLButtonElement>(`[data-index="${String(safe)}"]`)
+    nextButton?.focus()
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>): void => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLButtonElement>): void => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault()
-      selectByIndex(selectedIndex + 1)
+      moveTo(selectedIndex + 1, e)
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
       e.preventDefault()
-      selectByIndex(selectedIndex - 1)
+      moveTo(selectedIndex - 1, e)
     } else if (e.key === 'Home') {
       e.preventDefault()
-      selectByIndex(0)
+      moveTo(0, e)
     } else if (e.key === 'End') {
       e.preventDefault()
-      selectByIndex(options.length - 1)
+      moveTo(options.length - 1, e)
     }
   }
 

@@ -52,8 +52,15 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
   // Absolute age cap: regardless of recent activity, a session older than
   // SESSION_ABSOLUTE_MAX_MS must re-authenticate. Parsing to a Date handles
   // both the ISO-8601 SQLite format and the ISO-8601 MySQL serialization.
-  const sessionAgeMs = Date.now() - new Date(session.createdAt).getTime()
-  if (sessionAgeMs > SESSION_ABSOLUTE_MAX_MS) {
+  // A row with a corrupt / unparseable / future `createdAt` produces
+  // `NaN` or a negative age, both of which would silently bypass this
+  // cap — fail closed so a malformed timestamp is treated as expired and
+  // the offending row is purged on its way out.
+  const createdAtMs = new Date(session.createdAt).getTime()
+  const sessionAgeMs = Date.now() - createdAtMs
+  const staleOrCorrupt =
+    !Number.isFinite(createdAtMs) || sessionAgeMs < 0 || sessionAgeMs > SESSION_ABSOLUTE_MAX_MS
+  if (staleOrCorrupt) {
     await request.server.store.deleteSession(session.id)
     reply.status(401).send({ error: 'unauthorized' })
     return

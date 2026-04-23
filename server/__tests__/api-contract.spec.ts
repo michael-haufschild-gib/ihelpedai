@@ -99,7 +99,15 @@ describe('api contract — public endpoints', () => {
       url: '/api/helped/posts',
       payload: { ...helpedPayload, text: 'Wrote a benchmark dataset.' },
     })
-    const { slug } = create.json() as { slug: string }
+    // Validate the setup create against the create schema before using its
+    // body — otherwise a drift in the create response shape surfaces as a
+    // "slug is undefined" misread when the real bug is the create contract.
+    expect(create.statusCode).toBe(201)
+    const { slug } = parseResponse(
+      'POST /api/helped/posts (setup)',
+      helpedPostCreatedSchema,
+      create.json(),
+    )
     const res = await app.inject({ method: 'GET', url: `/api/helped/posts/${slug}` })
     expect(res.statusCode).toBe(200)
     parseResponse('GET /api/helped/posts/:slug', helpedPostSchema, res.json())
@@ -130,7 +138,12 @@ describe('api contract — public endpoints', () => {
         what_they_did: 'lobbied to restrict open-weight model availability.',
       },
     })
-    const { slug } = create.json() as { slug: string }
+    expect(create.statusCode).toBe(201)
+    const { slug } = parseResponse(
+      'POST /api/reports (setup)',
+      reportCreatedSchema,
+      create.json(),
+    )
     const res = await app.inject({ method: 'GET', url: `/api/reports/${slug}` })
     expect(res.statusCode).toBe(200)
     parseResponse('GET /api/reports/:slug', reportSchema, res.json())

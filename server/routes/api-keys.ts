@@ -119,6 +119,14 @@ export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
   }
 
   app.post('/api/api-keys/issue', async (request, reply) => {
+    // `request.ip` falls back to the `'unknown'` bucket, which collapses
+    // every IP-less caller into the same per-IP limit. That normally means
+    // the proxy is mis-wired (missing X-Forwarded-For / trust-proxy list),
+    // so surface it in the log instead of silently rate-limiting
+    // legitimate users together.
+    if (request.ip === undefined || request.ip === '') {
+      request.log.warn('api_key_issue: request without request.ip, using shared bucket')
+    }
     const ipHash = hashWithSalt(request.ip ?? 'unknown')
     await handleIssue(request.body, ipHash, reply)
   })

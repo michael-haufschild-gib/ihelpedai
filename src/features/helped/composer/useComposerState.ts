@@ -24,9 +24,14 @@ export function useComposerState() {
 
   const setValue = (name: HelpedFieldName, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }))
-    if (errors[name] !== undefined) {
-      setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, value) }))
-    }
+    // Read the latest errors via the functional updater — the
+    // `errors` captured in render scope can lag a just-dispatched
+    // setErrors in tight event sequencing (e.g. blur-then-type on the
+    // same render), which would re-run validation against a stale map.
+    setErrors((prev) => {
+      if (prev[name] === undefined) return prev
+      return { ...prev, [name]: validateHelpedField(name, value) }
+    })
   }
   const setBlurred = (name: HelpedFieldName, value: string) => {
     setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, value) }))

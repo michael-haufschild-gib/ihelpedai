@@ -96,11 +96,12 @@ function InputAdornments({
   loading: boolean
   rightIcon: React.ReactNode
 }) {
-  if (!loading && rightIcon == null) return null
+  const hasIcon = Boolean(rightIcon)
+  if (!loading && !hasIcon) return null
   return (
     <div className="absolute right-3 flex items-center gap-2">
       {loading && <LoadingSpinner size={14} className="text-text-tertiary" />}
-      {Boolean(rightIcon) && !loading && <div className="text-text-tertiary">{rightIcon}</div>}
+      {hasIcon && !loading && <div className="text-text-tertiary">{rightIcon}</div>}
     </div>
   )
 }
@@ -144,8 +145,8 @@ export const Input = ({
 
   const inputClassName = buildInputClassName({
     hasError,
-    hasLeftIcon: leftIcon != null,
-    hasRightSlot: rightIcon != null || loading === true,
+    hasLeftIcon: Boolean(leftIcon),
+    hasRightSlot: Boolean(rightIcon) || loading === true,
     disabled: disabled === true,
     extra: className,
   })

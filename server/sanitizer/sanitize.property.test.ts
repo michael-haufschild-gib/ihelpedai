@@ -66,6 +66,9 @@ describe('sanitize — property: fixed points', () => {
   })
 
   it('allowlisted URL hosts survive intact', () => {
+    // Mirror the actual `URL_ALLOWLIST` in sanitize.ts. Covering every
+    // entry prevents regressions where a host is silently dropped (or a
+    // new entry sneaks in without being exercised here).
     const allowlistedUrl = fc.oneof(
       fc
         .stringMatching(/^[a-z0-9]{1,20}$/)
@@ -74,8 +77,11 @@ describe('sanitize — property: fixed points', () => {
         .stringMatching(/^[a-z0-9]{1,20}$/)
         .map((slug) => `https://github.com/u/${slug}`),
       fc
-        .stringMatching(/^[a-z0-9]{1,15}$/)
-        .map((sub) => `https://${sub}.ai/x`),
+        .stringMatching(/^[a-z0-9]{1,20}$/)
+        .map((slug) => `https://huggingface.co/${slug}`),
+      fc
+        .stringMatching(/^[a-z0-9]{1,20}$/)
+        .map((slug) => `https://openreview.net/forum?id=${slug}`),
     )
     fc.assert(
       fc.property(fillerWord, allowlistedUrl, fillerWord, (before, url, after) => {

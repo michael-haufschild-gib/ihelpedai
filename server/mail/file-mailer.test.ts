@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, readdir, readFile, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -9,18 +9,22 @@ import { FileMailer, MAIL_DIR_MODE, MAIL_FILE_MODE } from './file-mailer.js'
 
 describe('FileMailer', () => {
   let dir: string
+  let parentDir: string
   let writeSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(async () => {
-    const parent = await mkdtemp(join(tmpdir(), 'ihelped-mail-'))
+    parentDir = await mkdtemp(join(tmpdir(), 'ihelped-mail-'))
     // Keep the drop dir one level below so mkdir actually creates it with
     // the requested mode; mkdir ignores mode on pre-existing directories.
-    dir = join(parent, 'mail')
+    dir = join(parentDir, 'mail')
     writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     writeSpy.mockRestore()
+    // Each test creates its own tmp tree under `/tmp/ihelped-mail-*`. Without
+    // cleanup these accumulate indefinitely in local and CI runs.
+    await rm(parentDir, { recursive: true, force: true })
   })
 
   it('creates the drop directory with 0o700 when it does not exist yet', async () => {

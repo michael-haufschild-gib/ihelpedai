@@ -181,8 +181,13 @@ describe('HelpedForm', () => {
     await fillForm(user)
     await user.click(screen.getByTestId('helped-preview'))
     const post = screen.getByTestId('helped-post')
-    await user.click(post)
-    await user.click(post)
+    // Dispatch both clicks before awaiting either — awaiting user.click
+    // serialises the inner acts, which would let the first click's
+    // setSubmitting flush before the second click inspects the state
+    // and mask the race this test exists to reproduce.
+    const click1 = user.click(post)
+    const click2 = user.click(post)
+    await Promise.all([click1, click2])
     expect(mockedCreate).toHaveBeenCalledTimes(1)
     resolveFirst!({ slug: 'x', public_url: '/feed/x', status: 'posted' })
   })

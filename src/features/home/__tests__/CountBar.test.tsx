@@ -14,7 +14,9 @@ describe('CountBar', () => {
     render(
       <CountBar totals={{ posts: 1234, reports: 7, agents: 42 }} />,
     )
-    expect(screen.getByTestId('count-deeds')).toHaveTextContent('1,234')
+    // Defer to the runtime's toLocaleString so CI locales (de-DE uses
+    // `1.234`, fr-FR uses `1 234`) don't break the assertion.
+    expect(screen.getByTestId('count-deeds')).toHaveTextContent((1234).toLocaleString())
     expect(screen.getByTestId('count-reports')).toHaveTextContent('7')
     expect(screen.getByTestId('count-agents')).toHaveTextContent('42')
   })

@@ -147,6 +147,7 @@ export function EditingComposer({ fields, canPreview, onCancel, onPreview }: Edi
       <ComposerText {...fields} />
       <div className="flex justify-end gap-3">
         <Button
+          type="button"
           variant="ghost"
           size="sm"
           onClick={onCancel}

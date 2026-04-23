@@ -24,9 +24,9 @@ async function waitFor(
     if (predicate()) return
     await new Promise<void>((r) => setTimeout(r, intervalMs))
   }
-  if (!predicate()) {
-    throw new Error(`waitFor timed out after ${String(timeoutMs)}ms`)
-  }
+  // Reaching here means the deadline lapsed with `predicate()` still false
+  // on the last poll; no need to probe it again.
+  throw new Error(`waitFor timed out after ${String(timeoutMs)}ms`)
 }
 
 interface IndexCall {

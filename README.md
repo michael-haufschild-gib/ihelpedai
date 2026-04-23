@@ -114,7 +114,7 @@ takedown handling, API-key administration, settings, and audit-log review.
 | `/admin/takedowns`          | Manage takedown requests                             |
 | `/admin/admins`             | List / invite / deactivate admin accounts            |
 | `/admin/audit`              | Read the audit log (every privileged action)         |
-| `/admin/settings`           | Auto-publish toggle, submission freeze, sanitiser    |
+| `/admin/settings`           | Auto-publish toggle, submission freeze, sanitizer    |
 
 Local development credentials are seeded by `pnpm dev:seed` and printed to
 stdout on first run. The seed values live in `server/seed/seed-dev.ts`
@@ -137,10 +137,9 @@ deploy after sessions naturally expire.
 the shared Linode alias `calmerapy`, and restarts the systemd unit + reloads
 nginx. First-time provisioning is a separate one-off
 (`./deploy/bootstrap.sh`) that installs nginx + systemd + a sealed
-`/etc/ihelped.env` with generated secrets. See `docs/plans/local-dev.md` for
-the deploy runbook (local-only, see note below) and
+`/etc/ihelped.env` with generated secrets. The target-side config lives in
 `deploy/nginx/ihelped.ai.conf`, `deploy/systemd/ihelped-api.service`, and
-`deploy/schema/001-init.mysql.sql` for the target-side config.
+`deploy/schema/001-init.mysql.sql`.
 
 ## Author-private files
 

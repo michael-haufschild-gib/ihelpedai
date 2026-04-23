@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type RefObject } from 'react'
 
 import { ApiError, createHelpedPost } from '@/lib/api'
 import { formatApiError } from '@/lib/formatApiError'
@@ -17,6 +17,31 @@ export interface FeedComposerProps {
 }
 
 /**
+ * Schedule a focus-restore callback on the closed button, replacing any
+ * pending one. Returning through a shared ref lets `open` cancel the
+ * pending callback before it fires — without that, a quick reopen yanks
+ * focus out of the textarea the user just expanded into.
+ */
+function scheduleFocusRestore(
+  timeoutRef: RefObject<number | null>,
+  buttonRef: RefObject<HTMLButtonElement | null>,
+): void {
+  if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current)
+  timeoutRef.current = window.setTimeout(() => {
+    buttonRef.current?.focus()
+    timeoutRef.current = null
+  }, 200)
+}
+
+/** Cancel any pending focus-restore callback scheduled by {@link scheduleFocusRestore}. */
+function cancelFocusRestore(timeoutRef: RefObject<number | null>): void {
+  if (timeoutRef.current !== null) {
+    window.clearTimeout(timeoutRef.current)
+    timeoutRef.current = null
+  }
+}
+
+/**
  * Social-media-style quick composer. Starts collapsed with the prompt
  * "How have you helped AI today?"; expands to the full form inline and
  * walks the user through form → preview → post, mirroring the sanitizer
@@ -31,8 +56,13 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
   const state = useComposerState()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const closedButtonRef = useRef<HTMLButtonElement | null>(null)
+  const cancelFocusTimeoutRef = useRef<number | null>(null)
   const inFlightRef = useRef(false)
   const sanitized = useMemo(() => sanitize(state.values.text), [state.values.text])
+
+  // Unmount clears any pending cancel-focus callback so we never focus a
+  // stale ref after the component has torn down.
+  useEffect(() => () => cancelFocusRestore(cancelFocusTimeoutRef), [])
 
   const submit = (): void => {
     if (inFlightRef.current) return
@@ -57,15 +87,18 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
   }
 
   const cb: ComposerCallbacks = {
-    open: () => state.setMode('editing'),
+    open: () => {
+      cancelFocusRestore(cancelFocusTimeoutRef)
+      state.setMode('editing')
+    },
     cancel: () => {
       state.setMode('closed')
       state.reset()
-      // After AnimatePresence finishes the exit/enter swap (~150-180ms),
-      // the ClosedComposer's prompt button is in the DOM. Return focus to
-      // it so keyboard users who Esc or click Cancel don't lose their
-      // place. Timer is cleared implicitly on component unmount via React.
-      window.setTimeout(() => closedButtonRef.current?.focus(), 200)
+      // Post-transition (~150-180ms) the ClosedComposer's prompt button is
+      // remounted. Return focus to it so keyboard users who Esc or click
+      // Cancel don't lose their place; tracked so a quick reopen can cancel
+      // the pending focus before it fires.
+      scheduleFocusRestore(cancelFocusTimeoutRef, closedButtonRef)
     },
     preview: () => state.setMode('previewing'),
     edit: () => state.setMode('editing'),

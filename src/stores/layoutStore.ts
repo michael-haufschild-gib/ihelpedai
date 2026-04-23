@@ -51,10 +51,26 @@ export const useLayoutStore = create<LayoutStore>()(
     }),
     {
       name: 'ihelpedai-layout',
+      // Only persist the two fields we declare. Spreading the whole state
+      // would re-hydrate any deprecated key that ever lived in a previous
+      // version's snapshot and that a future reader might accidentally
+      // trust. `partialize` is the explicit whitelist.
+      partialize: (state) => ({ theme: state.theme, accent: state.accent }),
       merge: (persistedState, currentState) => {
+        const persisted =
+          persistedState !== null && typeof persistedState === 'object'
+            ? (persistedState as Record<string, unknown>)
+            : {}
         const merged: LayoutStore = {
           ...currentState,
-          ...(persistedState as Partial<LayoutStore>),
+          theme:
+            typeof persisted.theme === 'string'
+              ? (persisted.theme as LayoutStore['theme'])
+              : currentState.theme,
+          accent:
+            typeof persisted.accent === 'string'
+              ? (persisted.accent as LayoutStore['accent'])
+              : currentState.accent,
         }
         if (!VALID_THEMES.has(merged.theme)) {
           merged.theme = DEFAULT_THEME

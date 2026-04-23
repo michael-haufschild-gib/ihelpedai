@@ -65,10 +65,15 @@ describeIfRedis('RedisRateLimiter — real Redis', () => {
     ])
     expect(decision.allowed).toBe(true)
     // Each bucket should now sit at count=1; two more single-bucket hits
-    // each must allow, the fourth must deny.
+    // each must allow, the fourth must deny. Run the same drain on `b`
+    // too — without that, the spec would still pass if `checkAll` had
+    // only incremented the first bucket and skipped the rest.
     expect((await limiter.check(a, 3, 60)).allowed).toBe(true)
     expect((await limiter.check(a, 3, 60)).allowed).toBe(true)
     expect((await limiter.check(a, 3, 60)).allowed).toBe(false)
+    expect((await limiter.check(b, 3, 60)).allowed).toBe(true)
+    expect((await limiter.check(b, 3, 60)).allowed).toBe(true)
+    expect((await limiter.check(b, 3, 60)).allowed).toBe(false)
   })
 
   it('checkAll commits NOTHING when any bucket would deny', async () => {
@@ -95,19 +100,25 @@ describeIfRedis('RedisRateLimiter — real Redis', () => {
     expect((await limiter.check(userBucket, 5, 60)).allowed).toBe(false)
   })
 
-  it('returns retryAfter from the first denying bucket', async () => {
-    const first = `${prefix}window-first`
-    const second = `${prefix}window-second`
-    // Saturate `first` against a short 60s window.
+  it('returns the longest blocking TTL when multiple buckets deny', async () => {
+    const shortWin = `${prefix}window-short`
+    const longWin = `${prefix}window-long`
+    // Saturate both buckets so both would deny the next hit. The two
+    // windows (60s vs 600s) let the assertion distinguish "first denying"
+    // from "longest denying".
     for (let i = 0; i < 2; i += 1) {
-      await limiter.check(first, 2, 60)
+      await limiter.check(shortWin, 2, 60)
     }
+    await limiter.check(longWin, 1, 600)
+
     const decision = await limiter.checkAll([
-      { bucket: first, limit: 2, windowSeconds: 60 },
-      { bucket: second, limit: 1, windowSeconds: 600 }, // long window
+      { bucket: shortWin, limit: 2, windowSeconds: 60 },
+      { bucket: longWin, limit: 1, windowSeconds: 600 }, // long window
     ])
     expect(decision.allowed).toBe(false)
-    // retryAfter must reflect the first (60s) window, not the second (600s).
-    expect(decision.retryAfter).toBeLessThanOrEqual(60)
+    // retryAfter must reflect the longer (600s) window so a client that
+    // retries at `retryAfter` lands after every denying bucket resets.
+    expect(decision.retryAfter).toBeGreaterThan(60)
+    expect(decision.retryAfter).toBeLessThanOrEqual(600)
   })
 })

@@ -66,17 +66,40 @@ function refineProductionSecrets(env: EnvShape, ctx: RefinementCtx): void {
     }
   }
   // PUBLIC_URL is quietly load-bearing: it prefixes password-reset email
-  // links and every public_url response field. Booting prod with the
-  // localhost default emits unclickable reset links and misleading
-  // response URLs — reject at boot so the miss-config surfaces before
-  // users see it.
-  if (env.PUBLIC_URL === DEV_PUBLIC_URL_DEFAULT) {
+  // links and every public_url response field. Booting prod with any
+  // loopback / local-only origin emits unclickable reset links and
+  // misleading response URLs — reject at boot so the miss-config surfaces
+  // before users see it. We reject the dev default AND any hostname that
+  // resolves exclusively on the local box so a copy-pasted staging URL
+  // like `http://127.0.0.1:8080` is caught too.
+  if (isLocalOnlyPublicUrl(env.PUBLIC_URL)) {
     addRequired(
       ctx,
       'PUBLIC_URL',
       'Production must set PUBLIC_URL to the public origin (e.g. https://ihelped.ai)',
     )
   }
+}
+
+/**
+ * Detect a `PUBLIC_URL` that can only be reached from the server box
+ * itself — loopback IPv4/IPv6, `localhost`, or `.local`/`.localhost` mDNS
+ * suffixes. Any of these in production means reset/public links are dead
+ * on arrival for real users.
+ */
+function isLocalOnlyPublicUrl(raw: string): boolean {
+  let host: string
+  try {
+    host = new URL(raw).hostname.toLowerCase()
+  } catch {
+    // A malformed URL is rejected by the schema layer already; flag here
+    // too so a refactor that loosens the schema still fails prod boot.
+    return true
+  }
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true
+  if (host === '::1' || host === '[::1]') return true
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true
+  return false
 }
 
 function refineModeRequirements(env: EnvShape, ctx: RefinementCtx): void {

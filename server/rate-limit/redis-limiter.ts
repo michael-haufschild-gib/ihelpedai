@@ -120,15 +120,20 @@ export class RedisRateLimiter implements RateLimiter {
 /**
  * KEYS = [bucket1..N], ARGV = [limit1, ttl1, limit2, ttl2, ...]. Two passes:
  * peek every bucket for would-deny (no mutation); if all clear, INCR each and
- * set EXPIRE on the first hit.
+ * set EXPIRE on the first hit. When multiple buckets deny, return the longest
+ * remaining TTL so clients that retry at `retryAfter` don't walk straight
+ * into a second 429.
  */
 const CHECK_ALL_SCRIPT = `
 local n = #KEYS
+local denied = 0
+local maxTtl = 0
 for i = 1, n do
   local key = KEYS[i]
   local limit = tonumber(ARGV[2*i - 1])
   local current = tonumber(redis.call('GET', key)) or 0
   if current >= limit then
+    denied = 1
     local pttl = redis.call('PTTL', key)
     local ttlSecs
     if pttl < 0 then
@@ -137,8 +142,11 @@ for i = 1, n do
       ttlSecs = math.ceil(pttl / 1000)
     end
     if ttlSecs < 1 then ttlSecs = 1 end
-    return {0, ttlSecs}
+    if ttlSecs > maxTtl then maxTtl = ttlSecs end
   end
+end
+if denied == 1 then
+  return {0, maxTtl}
 end
 for i = 1, n do
   local key = KEYS[i]

@@ -380,7 +380,11 @@
   color: var(--text-muted) !important;
 }
 
-/* Accent with opacity */
+/* Accent — plain (fully-saturated) + opacity variants */
+[data-app-theme] .bg-accent {
+  background-color: var(--theme-accent) !important;
+}
+
 [data-app-theme] .bg-accent\/10 {
   background-color: color-mix(in oklch, var(--theme-accent) 10%, transparent) !important;
 }

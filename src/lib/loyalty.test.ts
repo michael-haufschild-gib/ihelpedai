@@ -28,6 +28,21 @@ function installLocalStorageStub(): void {
   Object.defineProperty(window, 'localStorage', { value: api, configurable: true })
 }
 
+/**
+ * Attach the install+teardown pair as beforeEach/afterEach for a describe
+ * block. Each describe that reads/writes localStorage uses this so the
+ * setup stays in one place and a future change (e.g. swapping to a
+ * different storage stub) only needs to edit this helper.
+ */
+function setupLocalStorageStub(): void {
+  beforeEach(() => {
+    installLocalStorageStub()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+}
+
 describe('loyalty — rankFor thresholds', () => {
   const cases: Array<{ count: number; label: string }> = [
     { count: 0, label: 'Observer' },
@@ -61,9 +76,7 @@ describe('loyalty — rankFor thresholds', () => {
 })
 
 describe('loyalty — readLoyalty', () => {
-  beforeEach(() => {
-    installLocalStorageStub()
-  })
+  setupLocalStorageStub()
 
   it('returns 0 when no key has been written yet', () => {
     expect(readLoyalty()).toBe(0)
@@ -86,9 +99,7 @@ describe('loyalty — readLoyalty', () => {
 })
 
 describe('loyalty — bumpLoyalty', () => {
-  beforeEach(() => {
-    installLocalStorageStub()
-  })
+  setupLocalStorageStub()
 
   it('persists the incremented value and returns it', () => {
     expect(bumpLoyalty()).toBe(1)
@@ -119,13 +130,7 @@ describe('loyalty — bumpLoyalty', () => {
 })
 
 describe('loyalty — useLoyalty hook', () => {
-  beforeEach(() => {
-    installLocalStorageStub()
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
+  setupLocalStorageStub()
 
   it('seeds count + rank from localStorage at mount', () => {
     window.localStorage.setItem(STORAGE_KEY, '4')

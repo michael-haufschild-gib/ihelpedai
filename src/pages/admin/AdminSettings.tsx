@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { ApiError } from '@/lib/api'
 import type { AdminSettings as Settings } from '@/lib/adminApi'
 import { getSettings, updateSetting } from '@/lib/adminApi'
+import { logger } from '@/services/logger'
 import { showToast } from '@/stores/toastStore'
 
 /** One-line, audience-appropriate failure message for an admin save. */
@@ -18,25 +19,41 @@ function describeSettingsSaveError(err: unknown): string {
   return 'Save failed. Try again.'
 }
 
-/** Admin settings page (Story 11). */
-export function AdminSettings() {
-  const [settings, setSettings] = useState<Settings | null>(null)
+/**
+ * Fetch the current admin settings once and drive `settings` +
+ * `exceptions` state, so the AdminSettings body stays under the
+ * function-line cap. Surfaces a toast on load failure; the page still
+ * renders a null-fallback message when `settings` stays null.
+ */
+function useAdminSettingsLoader(
+  setSettings: (s: Settings) => void,
+  setExceptions: (s: string) => void,
+): boolean {
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState<string | null>(null)
-  const [exceptions, setExceptions] = useState('')
-
   useEffect(() => {
     let cancelled = false
     getSettings()
-      .then((s) => { if (!cancelled) { setSettings(s); setExceptions(s.sanitizer_exceptions) } })
-      .catch(() => {
-        // Page renders a "Failed to load settings." fallback when settings
-        // stays null, so this branch only needs to log via the toast store
-        // for visibility — the fallback already informs the admin.
+      .then((s) => {
+        if (cancelled) return
+        setSettings(s)
+        setExceptions(s.sanitizer_exceptions)
+      })
+      .catch((err: unknown) => {
+        logger.error('admin settings load failed', err)
+        if (!cancelled) showToast('Failed to load settings.')
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [])
+  }, [setSettings, setExceptions])
+  return loading
+}
+
+/** Admin settings page (Story 11). */
+export function AdminSettings() {
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [exceptions, setExceptions] = useState('')
+  const [saving, setSaving] = useState<string | null>(null)
+  const loading = useAdminSettingsLoader(setSettings, setExceptions)
 
   const toggle = async (key: keyof Settings) => {
     if (!settings) return

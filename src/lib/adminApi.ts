@@ -40,12 +40,34 @@ declare global {
   }
 }
 
+/** Options for {@link adminRequest}. */
+interface AdminRequestOpts {
+  /**
+   * Dispatch `ADMIN_SESSION_EXPIRED_EVENT` on a 401. Defaults to true; set
+   * false for public auth endpoints (login / forgot-password /
+   * reset-password) where a 401 means "bad credentials", NOT "session
+   * expired". Without this, an incorrect login password would trigger the
+   * global toast + /admin/login redirect even though no session existed.
+   */
+  notifyOnUnauthorized?: boolean
+}
+
 /** Execute a JSON request with credentials, throw ApiError on non-2xx. */
-async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
+async function adminRequest<T>(
+  path: string,
+  init?: RequestInit,
+  opts: AdminRequestOpts = {},
+): Promise<T> {
   try {
     return await request<T>(path, { ...init, credentials: 'include' })
   } catch (err) {
-    if (err instanceof ApiError && err.kind === 'unauthorized' && typeof window !== 'undefined') {
+    const notify = opts.notifyOnUnauthorized !== false
+    if (
+      notify &&
+      err instanceof ApiError &&
+      err.kind === 'unauthorized' &&
+      typeof window !== 'undefined'
+    ) {
       // Dispatching once per 401 is harmless — subscribers are idempotent and
       // only react when the store actually held a populated admin.
       window.dispatchEvent(new CustomEvent(ADMIN_SESSION_EXPIRED_EVENT))
@@ -81,7 +103,11 @@ export interface LoginResponse {
 
 /** Log in with email + password. */
 export function login(email: string, password: string): Promise<LoginResponse> {
-  return adminRequest<LoginResponse>('/api/admin/login', jsonPost({ email, password }))
+  return adminRequest<LoginResponse>(
+    '/api/admin/login',
+    jsonPost({ email, password }),
+    { notifyOnUnauthorized: false },
+  )
 }
 
 /** Log out (invalidate session). */
@@ -96,12 +122,20 @@ export function getMe(): Promise<AdminUser & { status: string }> {
 
 /** Request password reset. */
 export function forgotPassword(email: string): Promise<{ message: string }> {
-  return adminRequest('/api/admin/forgot-password', jsonPost({ email }))
+  return adminRequest(
+    '/api/admin/forgot-password',
+    jsonPost({ email }),
+    { notifyOnUnauthorized: false },
+  )
 }
 
 /** Reset password with token. */
 export function resetPassword(token: string, password: string, confirmPassword: string): Promise<{ message: string }> {
-  return adminRequest('/api/admin/reset-password', jsonPost({ token, password, confirm_password: confirmPassword }))
+  return adminRequest(
+    '/api/admin/reset-password',
+    jsonPost({ token, password, confirm_password: confirmPassword }),
+    { notifyOnUnauthorized: false },
+  )
 }
 
 /** Change password (authenticated). */

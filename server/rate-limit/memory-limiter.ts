@@ -28,6 +28,17 @@ export class MemoryRateLimiter implements RateLimiter {
 
   async checkAll(specs: ReadonlyArray<BucketSpec>): Promise<RateLimitDecision> {
     if (specs.length === 0) return { allowed: true, retryAfter: 0 }
+    // Duplicate bucket names in a single call are a caller bug: the preview
+    // pass snapshots `existing` once per spec, so a repeated bucket would
+    // only count a single hit. Fail closed rather than silently weakening
+    // the limit. The Redis impl's Lua script has the same property because
+    // `GET` reflects earlier `INCR`s within a call, but in-memory the
+    // preview is static — so reject here explicitly.
+    const seen = new Set<string>()
+    for (const spec of specs) {
+      if (seen.has(spec.bucket)) return { allowed: false, retryAfter: 1 }
+      seen.add(spec.bucket)
+    }
     const now = Date.now()
     // First pass: peek at every bucket's current state and decide whether
     // this request would be allowed across all of them. No mutation happens

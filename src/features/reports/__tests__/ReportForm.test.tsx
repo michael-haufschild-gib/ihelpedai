@@ -184,6 +184,7 @@ describe('ReportForm — PRD Story 4', () => {
     fireEvent.change(reportedCountry, { target: { value: 'DE' } })
     fill('rf-what-they-did', 'signed the Open Letter')
     fill('rf-reporter-first-name', '  Pat  ')
+    fill('rf-reporter-last-name', '  Doe  ')
     fill('rf-reporter-city', '  Austin  ')
     const reporterCountry = screen.getByTestId('rf-reporter-country') as HTMLSelectElement
     fireEvent.change(reporterCountry, { target: { value: 'US' } })
@@ -196,9 +197,11 @@ describe('ReportForm — PRD Story 4', () => {
     })
     const sent = vi.mocked(api.createReport).mock.calls[0][0]
     expect(sent.reported_first_name).toBe('Example')
+    expect(sent.reported_last_name).toBe('Person')
     expect(sent.reported_city).toBe('Berlin')
     expect(sent.reported_country).toBe('DE')
     expect(sent.reporter.first_name).toBe('Pat')
+    expect(sent.reporter.last_name).toBe('Doe')
     expect(sent.reporter.city).toBe('Austin')
     expect(sent.reporter.country).toBe('US')
   })

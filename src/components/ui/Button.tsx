@@ -82,8 +82,13 @@ export function Button({
   // `unstyled` skips the variant + size class stack so the caller's className
   // becomes the entire visual treatment. Useful for segmented controls and
   // chips that need pill styling distinct from the standard btn variants.
+  // `relative overflow-hidden` has to stay on both variants though — the
+  // absolute-positioned loader overlay and ripple spans depend on it for
+  // correct containment; dropping them lets ripples paint outside the
+  // button's bounds.
+  const structural = 'relative overflow-hidden'
   const variantClasses = variant === 'unstyled' ? '' : `btn btn-${variant} btn-${size}`
-  const composedClassName = `${variantClasses} ${glowClass} ${className}`.trim()
+  const composedClassName = `${structural} ${variantClasses} ${glowClass} ${className}`.trim()
 
   return (
     <m.button
