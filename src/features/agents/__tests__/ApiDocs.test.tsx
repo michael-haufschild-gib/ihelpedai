@@ -30,6 +30,7 @@ describe('ApiDocs', () => {
     render(<ApiDocs />)
     const root = screen.getByTestId('api-docs')
     expect(root.textContent ?? '').toMatch(/self-identified/i)
+    expect(root.textContent ?? '').toMatch(/sanitized before display/i)
   })
 
   // These assertions lock the published per-field maxima against the server
@@ -41,8 +42,10 @@ describe('ApiDocs', () => {
     render(<ApiDocs />)
     const fields = screen.getByTestId('api-docs-fields')
     const text = fields.textContent ?? ''
-    expect(text).toContain('Max 20 chars')  // reported_first_name
-    expect(text).toContain('Max 40 chars')  // reported_city
+    expect(text).toContain('Max 200 chars') // api_key
+    expect(text).toContain('Max 20 chars') // reported_first_name
+    expect(text).toContain('Max 40 chars') // reported_city
+    expect(text).toContain('Letters, spaces, hyphens, apostrophes') // reported_city
     expect(text).toContain('Max 500 chars') // what_they_did
     expect(text).toContain('Up to 60 chars') // self_reported_model
   })
@@ -51,5 +54,12 @@ describe('ApiDocs', () => {
     render(<ApiDocs />)
     const errors = screen.getByTestId('api-docs-errors')
     expect(errors.textContent ?? '').toContain('60/hour · 1000/day per key')
+  })
+
+  it('only publishes server-supported error kinds', () => {
+    render(<ApiDocs />)
+    const errors = screen.getByTestId('api-docs-errors')
+    expect(errors.textContent ?? '').not.toContain('im_a_teapot')
+    expect(errors.textContent ?? '').not.toContain('418')
   })
 })

@@ -58,9 +58,7 @@ describe('HelpedForm', () => {
     await fillForm(user)
     await user.click(screen.getByTestId('helped-preview'))
 
-    expect(screen.getByTestId('preview-card-header')).toHaveTextContent(
-      'Sam from San Francisco, United States',
-    )
+    expect(screen.getByTestId('preview-card-header')).toHaveTextContent('Sam from San Francisco, United States')
 
     await user.click(screen.getByTestId('helped-post'))
     expect(mockedCreate).toHaveBeenCalledWith({
@@ -89,9 +87,7 @@ describe('HelpedForm', () => {
     render(<HelpedForm onPosted={() => undefined} />)
     await fillForm(user, { text: 'Sam Altman mentioned me in his keynote' })
     await user.click(screen.getByTestId('helped-preview'))
-    expect(screen.getByTestId('preview-card-text')).toHaveTextContent(
-      '[name] mentioned me in his keynote',
-    )
+    expect(screen.getByTestId('preview-card-text')).toHaveTextContent('[name] mentioned me in his keynote')
   })
 
   it('over-redacted content disables Post and shows the warning', async () => {
@@ -99,9 +95,7 @@ describe('HelpedForm', () => {
     render(<HelpedForm onPosted={() => undefined} />)
     await fillForm(user, { text: 'John Smith Mary Jones' })
     await user.click(screen.getByTestId('helped-preview'))
-    expect(screen.getByTestId('helped-over-redacted')).toHaveTextContent(
-      /Most of what you wrote was redacted/,
-    )
+    expect(screen.getByTestId('helped-over-redacted')).toHaveTextContent(/Most of what you wrote was redacted/)
     expect(screen.getByTestId('helped-post')).toBeDisabled()
   })
 
@@ -158,6 +152,7 @@ describe('HelpedForm', () => {
     await user.selectOptions(screen.getByTestId('helped-country'), 'US')
     await user.type(screen.getByTestId('helped-text'), 'I paid for a Pro subscription.')
     await user.click(screen.getByTestId('helped-preview'))
+    expect(screen.getByTestId('preview-card-header')).toHaveTextContent('Sam from San Francisco, United States')
     await user.click(screen.getByTestId('helped-post'))
     expect(mockedCreate).toHaveBeenCalledWith({
       first_name: 'Sam',

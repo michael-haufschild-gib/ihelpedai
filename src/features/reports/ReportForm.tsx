@@ -44,6 +44,16 @@ const emptyState: FormState = {
   action_date: '',
 }
 
+/** Reporter identity is optional, but partial named reporter payloads fail server validation. */
+function reporterIdentityComplete(s: FormState): boolean {
+  const publicParts = [
+    s.reporter_first_name.trim(),
+    s.reporter_city.trim(),
+    s.reporter_country.trim(),
+  ]
+  if (publicParts.every((value) => value === '')) return true
+  return s.reporter_last_name.trim() !== '' && publicParts.every((value) => value !== '')
+}
 
 /** True when every required reported-person field is filled. */
 function canPreview(s: FormState): boolean {
@@ -52,7 +62,8 @@ function canPreview(s: FormState): boolean {
     s.reported_last_name.trim() !== '' &&
     s.reported_city.trim() !== '' &&
     s.reported_country.trim() !== '' &&
-    s.what_they_did.trim() !== ''
+    s.what_they_did.trim() !== '' &&
+    reporterIdentityComplete(s)
   )
 }
 

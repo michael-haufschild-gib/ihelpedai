@@ -33,7 +33,7 @@ test('submit, preview, post, then see the entry in the feed', async ({ page }) =
   expect(successText).not.toContain(LAST_NAME)
 
   await page.getByTestId('home-success-see-feed').click()
-  await expect(page.getByTestId('feed-list')).toContainText(UNIQUE_TEXT)
-  const feedText = await page.getByTestId('feed-list').innerText()
-  expect(feedText).not.toContain(LAST_NAME)
+  await expect(page.getByTestId('page-feed-entry')).toContainText(UNIQUE_TEXT)
+  const entryText = await page.getByTestId('page-feed-entry').innerText()
+  expect(entryText).not.toContain(LAST_NAME)
 })

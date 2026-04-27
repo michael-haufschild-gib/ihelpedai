@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Textarea'
-import type { AdminEntryDetail as EntryDetail } from '@/lib/adminApi'
+import type { AdminEntryDetail as EntryDetail, AdminEntryStatusAction } from '@/lib/adminApi'
 import { ApiError } from '@/lib/api'
 import { entryAction, getEntry, purgeEntry } from '@/lib/adminApi'
+
+type EntryModalAction = AdminEntryStatusAction | 'purge'
 
 /** Format a date string for display. */
 function formatDate(iso: string): string {
@@ -39,7 +41,7 @@ export function AdminEntryDetail() {
   const [entry, setEntry] = useState<EntryDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  const [modal, setModal] = useState<{ action: string; label: string } | null>(null)
+  const [modal, setModal] = useState<{ action: EntryModalAction; label: string } | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [reason, setReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
@@ -49,7 +51,9 @@ export function AdminEntryDetail() {
     if (!id) return undefined
     let cancelled = false
     getEntry(id)
-      .then((e) => { if (!cancelled) setEntry(e) })
+      .then((e) => {
+        if (!cancelled) setEntry(e)
+      })
       .catch((err) => {
         if (!cancelled) {
           setEntry(null)
@@ -57,11 +61,15 @@ export function AdminEntryDetail() {
           else if (!(err instanceof ApiError)) setFetchError('Network error.')
         }
       })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
-  const handleAction = async (action: string) => {
+  const handleAction = async (action: EntryModalAction) => {
     if (!entry) return
     setActionLoading(true)
     setActionError(null)
@@ -79,8 +87,18 @@ export function AdminEntryDetail() {
   }
 
   if (loading) return <p className="text-text-secondary">Loading...</p>
-  if (fetchError !== null) return <p data-testid="admin-entry-error" className="text-sm text-danger">{fetchError}</p>
-  if (!entry) return <p data-testid="admin-entry-not-found" className="text-text-secondary">Not found.</p>
+  if (fetchError !== null)
+    return (
+      <p data-testid="admin-entry-error" className="text-sm text-danger">
+        {fetchError}
+      </p>
+    )
+  if (!entry)
+    return (
+      <p data-testid="admin-entry-not-found" className="text-text-secondary">
+        Not found.
+      </p>
+    )
 
   return (
     <section data-testid="admin-entry-detail" className="flex flex-col gap-6">
@@ -132,7 +150,11 @@ function EntryFields({ entry }: { entry: EntryDetail }) {
         <dt className="text-text-secondary">Type</dt>
         <dd className="capitalize">{entry.entryType}</dd>
         <dt className="text-text-secondary">Source</dt>
-        <dd>{entry.source === 'api' ? `API${entry.selfReportedModel !== null ? ` — ${entry.selfReportedModel}` : ''}` : 'Form'}</dd>
+        <dd>
+          {entry.source === 'api'
+            ? `API${entry.selfReportedModel !== null ? ` — ${entry.selfReportedModel}` : ''}`
+            : 'Form'}
+        </dd>
         <dt className="text-text-secondary">Created</dt>
         <dd>{createdDisplay}</dd>
         {entry.clientIpHash !== null && (
@@ -153,7 +175,13 @@ function EntryFields({ entry }: { entry: EntryDetail }) {
 }
 
 /** Action buttons for entry (approve, reject, delete, restore, purge). */
-function EntryActions({ entry, onAction }: { entry: EntryDetail; onAction: (action: string, label: string) => void }) {
+function EntryActions({
+  entry,
+  onAction,
+}: {
+  entry: EntryDetail
+  onAction: (action: EntryModalAction, label: string) => void
+}) {
   const isPending = entry.status === 'pending'
   const isLive = entry.status === 'live'
   const isDeleted = entry.status === 'deleted'
@@ -162,17 +190,27 @@ function EntryActions({ entry, onAction }: { entry: EntryDetail; onAction: (acti
     <div className="flex flex-wrap gap-2">
       {isPending && (
         <>
-          <Button data-testid="admin-entry-approve" onClick={() => onAction('approve', 'APPROVE')}>Approve</Button>
-          <Button data-testid="admin-entry-reject" variant="danger" onClick={() => onAction('reject', 'REJECT')}>Reject</Button>
+          <Button data-testid="admin-entry-approve" onClick={() => onAction('approve', 'APPROVE')}>
+            Approve
+          </Button>
+          <Button data-testid="admin-entry-reject" variant="danger" onClick={() => onAction('reject', 'REJECT')}>
+            Reject
+          </Button>
         </>
       )}
-      {(isLive || isPending) && (
-        <Button data-testid="admin-entry-delete" variant="danger" onClick={() => onAction('delete', 'DELETE')}>Delete</Button>
+      {isLive && (
+        <Button data-testid="admin-entry-delete" variant="danger" onClick={() => onAction('delete', 'DELETE')}>
+          Delete
+        </Button>
       )}
       {isDeleted && (
-        <Button data-testid="admin-entry-restore" onClick={() => onAction('restore', 'RESTORE')}>Restore</Button>
+        <Button data-testid="admin-entry-restore" onClick={() => onAction('restore', 'RESTORE')}>
+          Restore
+        </Button>
       )}
-      <Button data-testid="admin-entry-purge" variant="danger" onClick={() => onAction('purge', `${entry.id} PURGE`)}>Purge</Button>
+      <Button data-testid="admin-entry-purge" variant="danger" onClick={() => onAction('purge', `${entry.id} PURGE`)}>
+        Purge
+      </Button>
     </div>
   )
 }
@@ -208,8 +246,18 @@ function EntryAuditLog({ auditLog }: { auditLog: EntryDetail['audit_log'] }) {
 }
 
 /** Confirmation modal for entry actions. */
-function ActionModal({ modal, confirmation, reason, actionLoading, actionError, onConfirmationChange, onReasonChange, onConfirm, onClose }: {
-  modal: { action: string; label: string }
+function ActionModal({
+  modal,
+  confirmation,
+  reason,
+  actionLoading,
+  actionError,
+  onConfirmationChange,
+  onReasonChange,
+  onConfirm,
+  onClose,
+}: {
+  modal: { action: EntryModalAction; label: string }
   confirmation: string
   reason: string
   actionLoading: boolean

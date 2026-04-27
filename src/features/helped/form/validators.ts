@@ -32,7 +32,7 @@ export const EMPTY_HELPED_VALUES: HelpedFormValues = {
 export const MAX_HELPED_TEXT = 500
 
 const NAME_REGEX = /^\p{L}+$/u
-const CITY_REGEX = /^[\p{L}\s'-]+$/u
+const CITY_REGEX = /^[\p{L} '-]+$/u
 
 export { COUNTRY_OPTIONS }
 

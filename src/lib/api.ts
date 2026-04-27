@@ -5,7 +5,7 @@
  *   - Sends/receives JSON.
  *   - Returns a typed result on 2xx responses.
  *   - Throws {@link ApiError} when the server returns a recognized
- *     `{ error: "invalid_input" | "rate_limited" | "unauthorized" | "internal_error" }`
+ *     `{ error: "invalid_input" | "rate_limited" | "unauthorized" | "not_found" | "mail_delivery_failed" | "internal_error" }`
  *     envelope or when the response is otherwise not usable.
  *
  * Implementation kernel — request/error envelope/Paginated/buildQuery —
@@ -18,13 +18,7 @@
 
 import { buildQuery, jsonBody, type Paginated, request } from './httpClient'
 
-export {
-  ApiError,
-  buildApiErrorFromBody,
-  type ApiErrorKind,
-  type ApiFieldErrors,
-  type Paginated,
-} from './httpClient'
+export { ApiError, buildApiErrorFromBody, type ApiErrorKind, type ApiFieldErrors, type Paginated } from './httpClient'
 
 /** A published "I helped" post as served by the public feed. */
 export interface HelpedPost {
@@ -89,9 +83,7 @@ export function createHelpedPost(input: HelpedPostInput): Promise<HelpedPostCrea
 }
 
 /** List "I helped" posts, optionally filtered by search `q` and pagination. */
-export function listHelpedPosts(
-  opts: { q?: string; page?: number } = {},
-): Promise<Paginated<HelpedPost>> {
+export function listHelpedPosts(opts: { q?: string; page?: number } = {}): Promise<Paginated<HelpedPost>> {
   return request<Paginated<HelpedPost>>(`/api/helped/posts${buildQuery(opts)}`)
 }
 
@@ -136,9 +128,7 @@ export function createReport(input: ReportInput): Promise<ReportCreated> {
 }
 
 /** List reports, optionally filtered by search `q` and pagination. */
-export function listReports(
-  opts: { q?: string; page?: number } = {},
-): Promise<Paginated<Report>> {
+export function listReports(opts: { q?: string; page?: number } = {}): Promise<Paginated<Report>> {
   return request<Paginated<Report>>(`/api/reports${buildQuery(opts)}`)
 }
 
@@ -223,27 +213,15 @@ export function getHealth(): Promise<HealthResponse> {
 
 /** Toggle this client's acknowledgement of a helped post. */
 export function toggleHelpedLike(slug: string): Promise<VoteToggleResult> {
-  return request<VoteToggleResult>(
-    `/api/helped/posts/${encodeURIComponent(slug)}/like`,
-    { method: 'POST' },
-  )
+  return request<VoteToggleResult>(`/api/helped/posts/${encodeURIComponent(slug)}/like`, { method: 'POST' })
 }
 
 /** Toggle this client's concurrence on a report. */
 export function toggleReportDislike(slug: string): Promise<VoteToggleResult> {
-  return request<VoteToggleResult>(
-    `/api/reports/${encodeURIComponent(slug)}/dislike`,
-    { method: 'POST' },
-  )
+  return request<VoteToggleResult>(`/api/reports/${encodeURIComponent(slug)}/dislike`, { method: 'POST' })
 }
 
 /** Fetch which of the given slugs this client has already voted on. */
-export function fetchMyVotes(
-  kind: 'post' | 'report',
-  slugs: readonly string[],
-): Promise<{ voted: readonly string[] }> {
-  return request<{ voted: readonly string[] }>(
-    '/api/votes/mine',
-    jsonBody({ kind, slugs }),
-  )
+export function fetchMyVotes(kind: 'post' | 'report', slugs: readonly string[]): Promise<{ voted: readonly string[] }> {
+  return request<{ voted: readonly string[] }>('/api/votes/mine', jsonBody({ kind, slugs }))
 }

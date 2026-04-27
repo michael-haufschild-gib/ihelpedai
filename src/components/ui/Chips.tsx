@@ -48,7 +48,8 @@ export function Chips<T extends string>({
   const moveTo = (nextIndex: number, e: KeyboardEvent<HTMLButtonElement>): void => {
     if (options.length === 0) return
     const safe = ((nextIndex % options.length) + options.length) % options.length
-    const next = options[safe].value
+    const next = options[safe]?.value
+    if (next === undefined) return
     if (next !== value) onChange(next)
     // Roving tabindex: move focus with selection so screen-reader users
     // and keyboard-only users follow the selected chip. `data-index` on
@@ -91,11 +92,13 @@ export function Chips<T extends string>({
             role="radio"
             aria-checked={active}
             tabIndex={active ? 0 : -1}
-            onClick={() => { if (!active) onChange(opt.value) }}
+            onClick={() => {
+              if (!active) onChange(opt.value)
+            }}
             onKeyDown={handleKeyDown}
             data-index={index}
             data-testid={`${testIdPrefix}-${idSuffix}`}
-            className={`rounded-full px-3 py-1.5 font-sans text-sm transition-colors ${active ? 'bg-ink text-paper font-medium' : 'text-text-secondary hover:text-text-primary'}`}
+            className={`rounded-full px-3 py-1.5 font-sans text-sm transition-colors ${active ? 'bg-ink text-paper font-medium cursor-default' : 'cursor-pointer text-text-secondary hover:text-text-primary'}`}
           >
             {opt.label}
           </Button>

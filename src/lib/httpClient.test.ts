@@ -15,9 +15,7 @@ describe('buildQuery', () => {
   })
 
   it('skips undefined and null entries; serialises the rest', () => {
-    expect(buildQuery({ q: 'cats', page: 2, missing: undefined, cleared: null })).toBe(
-      '?q=cats&page=2',
-    )
+    expect(buildQuery({ q: 'cats', page: 2, missing: undefined, cleared: null })).toBe('?q=cats&page=2')
   })
 
   it('serialises booleans as true/false strings', () => {
@@ -88,9 +86,7 @@ describe('request', () => {
   })
 
   it('returns the parsed JSON body on 2xx', async () => {
-    fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ hello: 'world' }), { status: 200 }),
-    )
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ hello: 'world' }), { status: 200 }))
     const out = await request<{ hello: string }>('/api/example')
     expect(out).toEqual({ hello: 'world' })
   })
@@ -115,10 +111,7 @@ describe('request', () => {
 
   it('throws a typed ApiError built from the server envelope on non-2xx', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ error: 'invalid_input', fields: { text: 'over_redacted' } }),
-        { status: 400 },
-      ),
+      new Response(JSON.stringify({ error: 'invalid_input', fields: { text: 'over_redacted' } }), { status: 400 }),
     )
     const err = await request('/api/example').then(
       () => null,
@@ -131,9 +124,7 @@ describe('request', () => {
   })
 
   it('throws ApiError carrying HTTP status even when the error body is non-JSON', async () => {
-    fetchSpy.mockResolvedValueOnce(
-      new Response('<html>Bad Gateway</html>', { status: 502 }),
-    )
+    fetchSpy.mockResolvedValueOnce(new Response('<html>Bad Gateway</html>', { status: 502 }))
     const err = await request('/api/example').then(
       () => null,
       (e: unknown) => e,
@@ -149,7 +140,9 @@ describe('request', () => {
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     await request('/api/example', jsonBody({ foo: 1 }))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const firstCall = fetchSpy.mock.calls[0]
+    if (firstCall === undefined) throw new Error('expected fetch call')
+    const init = firstCall[1] as RequestInit
     const headers = init.headers as Headers
     expect(headers.get('content-type')).toBe('application/json')
     expect(headers.get('accept')).toBe('application/json')
@@ -160,7 +153,9 @@ describe('request', () => {
   it('omits content-type when no body is provided (GET)', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     await request('/api/example')
-    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const firstCall = fetchSpy.mock.calls[0]
+    if (firstCall === undefined) throw new Error('expected fetch call')
+    const init = firstCall[1] as RequestInit
     const headers = init.headers as Headers
     expect(headers.has('content-type')).toBe(false)
     expect(headers.get('accept')).toBe('application/json')
@@ -170,7 +165,9 @@ describe('request', () => {
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     const supplied = new Headers({ 'x-caller': 'kept', 'content-type': 'text/plain' })
     await request('/api/example', { method: 'POST', body: 'raw', headers: supplied })
-    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const firstCall = fetchSpy.mock.calls[0]
+    if (firstCall === undefined) throw new Error('expected fetch call')
+    const init = firstCall[1] as RequestInit
     const headers = init.headers as Headers
     expect(headers.get('x-caller')).toBe('kept')
     // Caller overrides the default content-type — we only set it when absent.
@@ -179,9 +176,7 @@ describe('request', () => {
   })
 
   it('throws ApiError with internal_error on an unparseable 2xx body', async () => {
-    fetchSpy.mockResolvedValueOnce(
-      new Response('<html>200 OK but HTML?</html>', { status: 200 }),
-    )
+    fetchSpy.mockResolvedValueOnce(new Response('<html>200 OK but HTML?</html>', { status: 200 }))
     const err = await request('/api/example').then(
       () => null,
       (e: unknown) => e,

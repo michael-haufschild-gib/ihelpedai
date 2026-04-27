@@ -141,10 +141,7 @@ function TextArea({ values, errors, setValue, setBlurred }: StepProps) {
         >
           {errors.text ?? ''}
         </span>
-        <span
-          data-testid="helped-text-counter"
-          className={atMax ? 'text-warning' : 'text-text-secondary'}
-        >
+        <span data-testid="helped-text-counter" className={atMax ? 'text-warning' : 'text-text-secondary'}>
           {String(count)} / {String(MAX_TEXT)}
         </span>
       </div>
@@ -167,13 +164,7 @@ function FormStep(props: StepProps) {
       <PlaceRow {...props} />
       <TextArea {...props} />
       <div>
-        <Button
-          type="submit"
-          variant="primary"
-          size="md"
-          disabled={disabled}
-          data-testid="helped-preview"
-        >
+        <Button type="submit" variant="primary" size="md" disabled={disabled} data-testid="helped-preview">
           Preview
         </Button>
       </div>
@@ -192,24 +183,11 @@ type PreviewStepProps = {
 }
 
 /** Preview step: shows the card, Post/Edit controls, over-redacted warning, and error on retry. */
-function PreviewStep({
-  values,
-  sanitizedText,
-  overRedacted,
-  submitting,
-  error,
-  onEdit,
-  onPost,
-}: PreviewStepProps) {
+function PreviewStep({ values, sanitizedText, overRedacted, submitting, error, onEdit, onPost }: PreviewStepProps) {
   const disabled = submitting || overRedacted
   return (
     <div className="flex flex-col gap-4">
-      <PreviewCard
-        firstName={values.first_name}
-        city={values.city}
-        country={values.country}
-        text={sanitizedText}
-      />
+      <PreviewCard firstName={values.first_name} city={values.city} country={values.country} text={sanitizedText} />
       {overRedacted && (
         <p data-testid="helped-over-redacted" className="text-sm text-warning">
           Most of what you wrote was redacted for privacy. You can edit and re-preview.
@@ -233,13 +211,7 @@ function PreviewStep({
         >
           {typeof error === 'string' && error !== '' ? 'Retry' : 'Post'}
         </Button>
-        <Button
-          variant="secondary"
-          size="md"
-          disabled={submitting}
-          onClick={onEdit}
-          data-testid="helped-edit"
-        >
+        <Button variant="secondary" size="md" disabled={submitting} onClick={onEdit} data-testid="helped-edit">
           Edit
         </Button>
       </div>
@@ -283,6 +255,7 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
     setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }))
   }
 
+  const previewValues = useMemo(() => trimHelpedValues(values), [values])
   const sanitized = useMemo(() => sanitize(values.text), [values.text])
 
   const handlePost = async () => {
@@ -304,7 +277,7 @@ export function HelpedForm({ onPosted }: HelpedFormProps) {
   if (mode === 'preview') {
     return (
       <PreviewStep
-        values={values}
+        values={previewValues}
         sanitizedText={sanitized.clean}
         overRedacted={sanitized.overRedacted}
         submitting={submitting}
