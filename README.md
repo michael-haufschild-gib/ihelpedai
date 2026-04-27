@@ -117,13 +117,16 @@ takedown handling, API-key administration, settings, and audit-log review.
 | `/admin/audit`           | Read the audit log (every privileged action)      |
 | `/admin/settings`        | Auto-publish toggle, submission freeze, sanitizer |
 
-Local development credentials are seeded by `pnpm dev:seed` and printed to
-stdout on first run. The seed values live in `server/seed/seed-dev.ts`
-(constants `DEV_ADMIN_EMAIL` and `DEV_ADMIN_PASSWORD`). The seed password is
-also explicitly listed in the password-strength hard blocklist
-(`server/routes/admin/password-strength.ts`) so the seed default cannot be
-reused as a real production credential — even if it happens to score above
-the entropy threshold.
+Local development credentials are seeded by `pnpm dev:seed`. The admin email
+is the stable constant `DEV_ADMIN_EMAIL` in `server/seed/seed-dev.ts`; the
+admin password is a workstation-unique random string generated on first seed
+and persisted to `./dev-credentials.json` (gitignored, mode 0600). Each
+seed run echoes the password on stdout and rewrites the stored bcrypt hash
+so deleting the credentials file forces a regen without locking you out.
+The legacy default `'devpassword12'` remains on the password-strength hard
+blocklist (`server/routes/admin/password-strength.ts`) for leak protection
+even though no checkout has ever used it as a working credential since the
+random-per-checkout rotation landed.
 
 Production session cookies are signed with `ADMIN_SESSION_SECRET`. The value
 is parsed as a comma-separated list (`@fastify/cookie` rotation): the first

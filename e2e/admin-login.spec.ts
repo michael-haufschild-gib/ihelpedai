@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { readDevAdminPassword } from './_helpers/dev-credentials'
+
 /**
  * E2E happy path for /admin/login (PRD 02 Story 1).
  *
@@ -12,14 +14,17 @@ import { expect, test } from '@playwright/test'
  *     authenticated /api/admin/me + /api/admin/entries
  *
  * The dev seed (pnpm dev:seed, run by playwright.config webServer) plants
- * the admin account `admin@ihelped.ai / devpassword12`. The blocklist
- * password lives in server/seed/seed-dev.ts as DEV_ADMIN_PASSWORD.
+ * the admin account `admin@ihelped.ai` with a workstation-unique password
+ * persisted to `./dev-credentials.json`. The legacy literal
+ * `'devpassword12'` stays on the password-strength hard blocklist for
+ * leak protection, never as a working credential.
  */
 test('admin login → entries list', async ({ page }) => {
+  const password = readDevAdminPassword()
   await page.goto('/admin/login')
 
   await page.getByTestId('admin-login-email').fill('admin@ihelped.ai')
-  await page.getByTestId('admin-login-password').fill('devpassword12')
+  await page.getByTestId('admin-login-password').fill(password)
   await page.getByTestId('admin-login-submit').click()
 
   // Successful login replaces the URL with /admin and renders the

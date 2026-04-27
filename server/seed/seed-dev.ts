@@ -6,6 +6,7 @@ import { config } from '../config.js'
 import { sanitize } from '../sanitizer/sanitize.js'
 import type { NewPost, NewReport, Store } from '../store/index.js'
 import { SqliteStore } from '../store/sqlite-store.js'
+import { readOrCreateDevCredentials } from './dev-credentials.js'
 
 /**
  * Pre-issued API key for local development. Committed intentionally so the
@@ -175,24 +176,51 @@ async function seedDevApiKey(store: Store): Promise<void> {
 }
 
 /**
- * Pre-configured dev admin credentials. Committed intentionally for local
- * development; never used in production.
+ * Dev admin email. Stable across workstations so docs and e2e harnesses
+ * can hardcode it. The password is generated per-workstation and lives
+ * in `./dev-credentials.json` (gitignored) — see `dev-credentials.ts`
+ * for the lifecycle.
+ *
+ * Historically the password was the literal string `'devpassword12'`
+ * committed into source. That string remains on the password-strength
+ * hard blocklist (`server/routes/admin/password-strength.ts`) so any
+ * old leak cannot be reused even if pasted into a real admin form.
  */
 export const DEV_ADMIN_EMAIL = 'admin@ihelped.ai'
-export const DEV_ADMIN_PASSWORD = 'devpassword12'
 
-/** Inserts a dev admin account if none exists. */
-async function seedDevAdmin(store: Store): Promise<void> {
+/**
+ * Inserts (or rewrites) the dev admin account so its bcrypt hash always
+ * matches the password persisted in `dev-credentials.json`. The seed is
+ * idempotent across `pnpm dev:reset` cycles AND across fresh checkouts:
+ * even if `dev.db` already contains a stale admin row from an earlier
+ * password rotation, the row is updated to the current value.
+ *
+ * Returns the plaintext password so the caller can echo it on stdout.
+ */
+async function seedDevAdmin(store: Store): Promise<string> {
+  const { adminPassword } = readOrCreateDevCredentials()
+  const hash = await bcrypt.hash(adminPassword, 10)
   const existing = await store.getAdminByEmail(DEV_ADMIN_EMAIL)
-  if (existing) return
-  const hash = await bcrypt.hash(DEV_ADMIN_PASSWORD, 10)
-  await store.insertAdmin(DEV_ADMIN_EMAIL, hash, null)
+  if (existing === null) {
+    await store.insertAdmin(DEV_ADMIN_EMAIL, hash, null)
+  } else {
+    // Always rotate the stored hash to the current file. Without this,
+    // a developer who deletes dev-credentials.json (forcing a regen)
+    // would suddenly fail to log in because the DB still trusted the
+    // previous password.
+    await store.updateAdminPassword(existing.id, hash)
+  }
+  return adminPassword
 }
 
 /**
  * Dev seed (PRD 01 Story 13). Idempotent: each table block is only populated
  * when empty, so repeated `pnpm dev:seed` runs never duplicate content. Prints
- * the pre-issued API key on stdout so developers can copy it immediately.
+ * the pre-issued API key and the workstation-unique admin password on stdout
+ * so developers can copy them immediately. The admin password also lives in
+ * `./dev-credentials.json` (gitignored, mode 0600) so child processes that
+ * don't see this stdout (e.g. Playwright's `webServer.command`) can read it
+ * out of band.
  */
 export async function seedDev(): Promise<void> {
   const store = new SqliteStore(config.SQLITE_PATH)
@@ -200,9 +228,10 @@ export async function seedDev(): Promise<void> {
     await seedPosts(store)
     await seedReports(store)
     await seedDevApiKey(store)
-    await seedDevAdmin(store)
+    const adminPassword = await seedDevAdmin(store)
     process.stdout.write(`[seed-dev] done. Dev API key: ${DEV_API_KEY}\n`)
-    process.stdout.write(`[seed-dev] Dev admin: ${DEV_ADMIN_EMAIL} / ${DEV_ADMIN_PASSWORD}\n`)
+    process.stdout.write(`[seed-dev] Dev admin: ${DEV_ADMIN_EMAIL} / ${adminPassword}\n`)
+    process.stdout.write(`[seed-dev] (also written to ./dev-credentials.json — gitignored)\n`)
   } finally {
     await store.close()
   }

@@ -4,6 +4,8 @@ import { resolve } from 'node:path'
 
 import { expect, test } from '@playwright/test'
 
+import { readDevAdminPassword } from './_helpers/dev-credentials'
+
 /**
  * E2E for the admin password-reset flow (PRD 02 Story 2). Server integration
  * tests in `forgot-password.spec.ts` cover the rate-limit envelope and the
@@ -11,11 +13,10 @@ import { expect, test } from '@playwright/test'
  * round-trip in a real browser: form submit → emailed token → reset form →
  * login with the new password.
  *
- * To keep the seeded `admin@ihelped.ai / devpassword12` credentials intact
- * (other specs depend on them, and `devpassword12` is on the password-strength
- * blocklist so it cannot be set via /api/admin/reset-password again), this
- * spec uses the seed admin's session to invite a brand-new throwaway admin
- * via /api/admin/admins/invite, then runs the forgot-password flow against
+ * To keep the seeded `admin@ihelped.ai` credentials intact (other specs
+ * depend on the seed admin still being able to log in), this spec uses the
+ * seed admin's session to invite a brand-new throwaway admin via
+ * `/api/admin/admins/invite`, then runs the forgot-password flow against
  * that throwaway. The throwaway admin remains in the DB but never collides
  * with anything because its email is randomized per run.
  *
@@ -26,7 +27,10 @@ import { expect, test } from '@playwright/test'
 
 const MAIL_DIR = resolve(process.cwd(), 'tmp', 'mail')
 const SEED_ADMIN_EMAIL = 'admin@ihelped.ai'
-const SEED_ADMIN_PASSWORD = 'devpassword12'
+// Workstation-unique password persisted by `pnpm dev:seed`. The legacy
+// literal `'devpassword12'` is on the password-strength hard blocklist
+// for leak protection and is never accepted as a real credential.
+const SEED_ADMIN_PASSWORD = readDevAdminPassword()
 // High-entropy passphrase that clears the zxcvbn gate in
 // server/routes/admin/password-strength.ts. Keep it distinct from any
 // other test password so a future copy/paste doesn't conflate flows.
