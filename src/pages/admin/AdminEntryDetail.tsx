@@ -162,7 +162,10 @@ export function AdminEntryDetail() {
           actionLoading={actionLoading}
           actionError={actionError}
           onConfirmationChange={setConfirmation}
-          onReasonChange={setReason}
+          // Mirror the server sanitizer as the admin types so the textarea
+          // always shows the exact text that will land in the audit log —
+          // same parity contract that public HelpedForm/ReportForm honor.
+          onReasonChange={(value) => setReason(sanitize(value).clean)}
           onConfirm={() => handleAction(modal.action)}
           onClose={() => {
             setModal(null)

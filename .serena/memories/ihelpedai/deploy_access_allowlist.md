@@ -28,9 +28,22 @@ self-health checks against the public domain don't hairpin into a 403.
    warnings safe to ignore are clearly identified certificate warnings
    referencing other vhosts; any error, syntax issue, or warning naming
    `ihelped.ai` aborts the procedure — restore the backup and re-run.
+   Restore command (replace `<timestamp>` with the suffix from step 2):
+   ```sh
+   sudo cp /etc/nginx/snippets/ihelped-allowlist.conf.bak-<timestamp> \
+           /etc/nginx/snippets/ihelped-allowlist.conf
+   sudo nginx -t
+   ```
 5. Only after step 4 exited 0: `sudo systemctl reload nginx`; confirm
    `systemctl is-active nginx` and `systemctl is-active ihelped-api`
    both report `active`.
-6. From calmerapy: `curl -4 --http1.1 https://ihelped.ai/api/health` should
-   return HTTP 200 with `Content-Security-Policy` and `Strict-Transport-Security`
-   headers and a JSON body that includes `"ok": true`.
+6. From calmerapy, run both curls — the default-protocol check confirms
+   HTTP/2 is actually negotiated (matching the listen-line `http2`
+   directive), and the `--http1.1` check exercises the fallback path:
+   ```sh
+   curl -4 https://ihelped.ai/api/health             # negotiates h2
+   curl -4 --http1.1 https://ihelped.ai/api/health   # explicit fallback
+   ```
+   Both should return HTTP 200 with `Content-Security-Policy` and
+   `Strict-Transport-Security` headers and a JSON body that includes
+   `"ok": true`.
