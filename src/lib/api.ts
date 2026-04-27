@@ -208,6 +208,27 @@ export function getHealth(): Promise<HealthResponse> {
 }
 
 /* ------------------------------------------------------------------------- */
+/* Totals — small numeric strip used by the home Hero and the site footer.   */
+/* ------------------------------------------------------------------------- */
+
+/** Counts of `live` rows in posts, reports, and api-source reports. */
+export interface LedgerTotalsResponse {
+  posts: number
+  reports: number
+  agents: number
+}
+
+/**
+ * Fetch the lightweight totals strip. The SPA caches the response in
+ * `useLedgerTotals` so the footer can render real numbers on every page
+ * without paying a fetch per navigation. Server-side this is three
+ * indexed `COUNT(*)` queries; cheap enough to be uncached on the wire.
+ */
+export function getLedgerTotals(): Promise<LedgerTotalsResponse> {
+  return request<LedgerTotalsResponse>('/api/totals')
+}
+
+/* ------------------------------------------------------------------------- */
 /* Votes — IP-deduped acknowledge / concur.                                  */
 /* ------------------------------------------------------------------------- */
 

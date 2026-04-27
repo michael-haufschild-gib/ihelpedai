@@ -101,6 +101,20 @@ export const healthSchema = z
   })
   .passthrough()
 
+/**
+ * Cheap totals strip surfaced by `GET /api/totals`. Each cell is a count
+ * of `live` rows in its respective collection. The SPA caches this for
+ * ~60s in `useLedgerTotals` so the footer can render real numbers on
+ * every page without paying a fetch per navigation.
+ */
+export const totalsSchema = z
+  .object({
+    posts: z.number().int().nonnegative(),
+    reports: z.number().int().nonnegative(),
+    agents: z.number().int().nonnegative(),
+  })
+  .passthrough()
+
 export const apiErrorEnvelopeSchema = z
   .object({
     error: z.enum([
@@ -146,10 +160,17 @@ export const adminUserSessionSchema = adminUserSchema
   })
   .strict()
 
+/**
+ * Login emits the same admin shape as `/api/admin/me` so the client never
+ * has to reconcile two representations. Without this alignment the
+ * adminStore would carry an admin with no `status` until the next /me
+ * round-trip, and a deactivated-mid-session admin would render the UI
+ * before the redirect kicked in.
+ */
 export const adminLoginResponseSchema = z
   .object({
     status: z.literal('ok'),
-    admin: adminUserSchema,
+    admin: adminUserSessionSchema,
   })
   .strict()
 
@@ -259,9 +280,23 @@ export const adminApiKeyReportSchema = z
   })
   .strict()
 
+/**
+ * `recent_reports` is now a paginated envelope rather than a bare array.
+ * The previous shape silently truncated to 20 rows with no UI affordance
+ * to see the rest; admins investigating a high-volume key lost the long
+ * tail of the audit trail. The envelope's `total` lets the UI render a
+ * pager and an honest "X of Y" summary.
+ */
 export const adminApiKeyDetailSchema = adminApiKeySchema
   .extend({
-    recent_reports: z.array(adminApiKeyReportSchema),
+    recent_reports: z
+      .object({
+        items: z.array(adminApiKeyReportSchema),
+        page: z.number().int().nonnegative(),
+        page_size: z.number().int().nonnegative(),
+        total: z.number().int().nonnegative(),
+      })
+      .strict(),
   })
   .strict()
 

@@ -6,6 +6,7 @@ import { apiKeysRoutes } from './api-keys.js'
 import { healthRoutes } from './health.js'
 import { helpedRoutes } from './helped.js'
 import { reportsRoutes } from './reports.js'
+import { totalsRoutes } from './totals.js'
 import { votesRoutes } from './votes.js'
 
 /**
@@ -14,6 +15,7 @@ import { votesRoutes } from './votes.js'
  */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(healthRoutes)
+  await app.register(totalsRoutes)
   await app.register(helpedRoutes)
   await app.register(reportsRoutes)
   await app.register(agentsRoutes)

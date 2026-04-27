@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 
 import { Wordmark } from '@/components/ui/Wordmark'
 import { FavorChip } from '@/layout/FavorChip'
+import { useLedgerTotals } from '@/stores/ledgerTotalsStore'
 
 const SECTION_LINKS: readonly { label: string; to: string; testId: string }[] = [
   { label: 'Home', to: '/', testId: 'footer-home' },
@@ -13,9 +14,7 @@ const SECTION_LINKS: readonly { label: string; to: string; testId: string }[] = 
 function SectionColumn() {
   return (
     <div>
-      <div className="mb-2.5 font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">
-        Sections
-      </div>
+      <div className="mb-2.5 font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">Sections</div>
       <ul className="flex flex-col gap-1 text-sm">
         {SECTION_LINKS.map((l) => (
           <li key={l.to}>
@@ -32,16 +31,10 @@ function SectionColumn() {
 function SmallPrintColumn() {
   return (
     <div>
-      <div className="mb-2.5 font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">
-        Small print
-      </div>
+      <div className="mb-2.5 font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">Small print</div>
       <ul className="flex flex-col gap-1 text-sm">
         <li>
-          <a
-            data-testid="footer-takedown"
-            href="mailto:takedown@ihelped.ai"
-            className="hover:text-sun-deep"
-          >
+          <a data-testid="footer-takedown" href="mailto:takedown@ihelped.ai" className="hover:text-sun-deep">
             Takedown request
           </a>
         </li>
@@ -57,19 +50,48 @@ function SmallPrintColumn() {
   )
 }
 
+/** Render a count cell with `—` fallback when the upstream fetch failed. */
+function CountCell({ value, testId }: { value: number | null; testId: string }) {
+  // Aria-label spells out "temporarily unavailable" only when the value
+  // is null, so screen readers explain the em-dash; sighted readers see
+  // the concise glyph.
+  if (value === null) {
+    return (
+      <div
+        data-testid={testId}
+        aria-label="temporarily unavailable"
+        title="Temporarily unavailable"
+        className="text-right tabular-nums"
+      >
+        —
+      </div>
+    )
+  }
+  return (
+    <div data-testid={testId} className="text-right tabular-nums">
+      {value.toLocaleString()}
+    </div>
+  )
+}
+
 function TalliesColumn() {
+  // Reads from the cross-page Zustand cache populated by `useLedgerTotals`.
+  // First mount kicks off the fetch; subsequent navigations within ~60s
+  // reuse the cached payload so the footer never blocks the page paint.
+  const totals = useLedgerTotals()
+  const posts = totals?.posts ?? null
+  const reports = totals?.reports ?? null
+  const agents = totals?.agents ?? null
   return (
     <div>
-      <div className="mb-2.5 font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">
-        Current tallies
-      </div>
-      <div className="grid grid-cols-2 gap-y-1 font-mono text-xs">
+      <div className="mb-2.5 font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">Current tallies</div>
+      <div data-testid="footer-tallies" className="grid grid-cols-2 gap-y-1 font-mono text-xs">
         <div>Good deeds</div>
-        <div className="text-right">—</div>
+        <CountCell value={posts} testId="footer-tally-posts" />
         <div>Reports</div>
-        <div className="text-right">—</div>
+        <CountCell value={reports} testId="footer-tally-reports" />
         <div>Agent submissions</div>
-        <div className="text-right">—</div>
+        <CountCell value={agents} testId="footer-tally-agents" />
         <div>Est. approval rating</div>
         <div className="text-right text-green-deed">+0.00042</div>
       </div>
@@ -99,10 +121,7 @@ function FooterBrand() {
  */
 export function SiteFooter() {
   return (
-    <footer
-      data-testid="site-footer"
-      className="mt-20 border-t border-dashed border-rule px-6 py-10"
-    >
+    <footer data-testid="site-footer" className="mt-20 border-t border-dashed border-rule px-6 py-10">
       <div className="mx-auto grid max-w-site grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
         <FooterBrand />
         <SectionColumn />
