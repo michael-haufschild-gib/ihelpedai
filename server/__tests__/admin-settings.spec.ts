@@ -20,8 +20,10 @@ describe('admin settings routes', () => {
   let app: FastifyInstance
   let cookie: string
   let tmpRoot: string
+  let previousSqlitePath: string | undefined
 
   beforeAll(async () => {
+    previousSqlitePath = process.env.SQLITE_PATH
     tmpRoot = mkdtempSync(join(tmpdir(), 'ihelped-admin-settings-'))
     process.env.SQLITE_PATH = join(tmpRoot, 'test.db')
     const { buildApp } = await import('../index.js')
@@ -43,6 +45,8 @@ describe('admin settings routes', () => {
     try {
       await app.close()
     } finally {
+      if (previousSqlitePath === undefined) delete process.env.SQLITE_PATH
+      else process.env.SQLITE_PATH = previousSqlitePath
       rmSync(tmpRoot, { recursive: true, force: true })
     }
   })

@@ -125,6 +125,13 @@ if [ "${have_pinned_node}" -ne 1 ]; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y "nodejs=${NODE_VERSION}-1nodesource1" \
     || apt-get install -y nodejs
+  # NodeSource occasionally drops older minor versions, in which case the
+  # fallback above silently installs whatever ships there. Surface that drift
+  # so a deploy doesn't end up running a different Node than CI.
+  installed_node="$(node -v 2>/dev/null || echo unknown)"
+  if [ "${installed_node}" != "v${NODE_VERSION}" ]; then
+    echo "[remote] WARNING: installed Node ${installed_node}, expected v${NODE_VERSION}" >&2
+  fi
 fi
 
 echo "[remote] install expected pnpm globally"

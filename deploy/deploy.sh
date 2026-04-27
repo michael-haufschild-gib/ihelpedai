@@ -114,11 +114,27 @@ if [ ! -f "$schema_path" ]; then
   exit 1
 fi
 
-db_user="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(decodeURIComponent(u.username));')"
-db_pass="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(decodeURIComponent(u.password));')"
-db_host="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(u.hostname || "localhost");')"
-db_port="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(u.port || "3306");')"
-db_name="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(u.pathname.replace(/^\//, ""));')"
+# Parse MYSQL_URL once and emit one TSV row so a malformed URL surfaces a
+# single clear "Invalid MYSQL_URL" message instead of five opaque
+# Node-stack-trace exits in a row.
+mysql_parts="$(node -e '
+try {
+  const u = new URL(process.env.MYSQL_URL)
+  const fields = [
+    decodeURIComponent(u.username),
+    decodeURIComponent(u.password),
+    u.hostname || "localhost",
+    u.port || "3306",
+    u.pathname.replace(/^\//, ""),
+  ]
+  process.stdout.write(fields.join("\t"))
+} catch (e) {
+  process.stderr.write("[deploy] invalid MYSQL_URL: " + (e && e.message ? e.message : e) + "\n")
+  process.exit(1)
+}')"
+IFS=$(printf '\t') read -r db_user db_pass db_host db_port db_name <<EOF_PARTS
+${mysql_parts}
+EOF_PARTS
 
 if [ -z "$db_user" ] || [ -z "$db_name" ]; then
   echo "[deploy] MYSQL_URL must include user and database name" >&2

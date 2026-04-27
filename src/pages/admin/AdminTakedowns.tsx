@@ -27,6 +27,19 @@ function parseCalendarDate(dateStr: string): Date {
   const y = Number(calendar.slice(0, 4))
   const m = Number(calendar.slice(5, 7))
   const d = Number(calendar.slice(8, 10))
+  // Round-trip validation: `new Date(2026, 1, 30)` silently becomes
+  // 2026-03-02 because JS rolls overflow into the next month. Probe the
+  // value via the UTC parser and reject anything that doesn't round-trip
+  // through the same calendar fields. Mirrors server/lib/iso-date.ts.
+  const probe = new Date(`${calendar}T00:00:00Z`)
+  if (
+    !Number.isFinite(probe.getTime()) ||
+    probe.getUTCFullYear() !== y ||
+    probe.getUTCMonth() + 1 !== m ||
+    probe.getUTCDate() !== d
+  ) {
+    return new Date(Number.NaN)
+  }
   return new Date(y, m - 1, d)
 }
 
@@ -63,30 +76,30 @@ function useTakedownsData(
   const [fetchError, setFetchError] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
-    // Reset error/loading inside a promise callback rather than synchronously in
-    // the effect body — both `react-hooks/set-state-in-effect` and the React
-    // docs forbid sync setState here, but we still want a stale error/data
-    // state cleared on refetch so a returning request paints fresh state.
-    Promise.resolve()
-      .then(() => {
-        if (cancelled) return
-        setLoading(true)
-        setFetchError(null)
-      })
-      .then(() => listTakedowns({ status: statusFilter !== '' ? statusFilter : undefined, page }))
-      .then((d) => {
+    // Async IIFE so `cancelled` returns actually exit the function: a chained
+    // .then() that only `return`s still falls through to the next .then(),
+    // so a chain-based version would dispatch listTakedowns even after the
+    // cleanup ran. We also defer past `await Promise.resolve()` once so the
+    // initial setLoading/setFetchError calls land in a microtask rather
+    // than synchronously in the effect body (lint: react-hooks/set-state-in-effect).
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setLoading(true)
+      setFetchError(null)
+      try {
+        const d = await listTakedowns({ status: statusFilter !== '' ? statusFilter : undefined, page })
         if (cancelled) return
         setData(d)
         setFetchError(null)
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return
         setFetchError('Failed to load takedowns.')
         setData(null)
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    })()
     return () => {
       cancelled = true
     }

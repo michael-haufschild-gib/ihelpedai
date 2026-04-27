@@ -16,8 +16,10 @@ describe('admin ID bounds', () => {
   let app: FastifyInstance
   let cookie: string
   let tmpRoot: string
+  let previousSqlitePath: string | undefined
 
   beforeAll(async () => {
+    previousSqlitePath = process.env.SQLITE_PATH
     tmpRoot = mkdtempSync(join(tmpdir(), 'ihelped-admin-id-bounds-'))
     process.env.SQLITE_PATH = join(tmpRoot, 'test.db')
     const { buildApp } = await import('../index.js')
@@ -39,6 +41,8 @@ describe('admin ID bounds', () => {
     try {
       await app.close()
     } finally {
+      if (previousSqlitePath === undefined) delete process.env.SQLITE_PATH
+      else process.env.SQLITE_PATH = previousSqlitePath
       rmSync(tmpRoot, { recursive: true, force: true })
     }
   })

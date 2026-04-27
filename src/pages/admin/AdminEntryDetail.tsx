@@ -51,8 +51,15 @@ function loadEntryDetail(
     .catch((err) => {
       if (cancelled) return
       setEntry(null)
-      if (err instanceof ApiError && err.kind === 'unauthorized') setFetchError('Session expired.')
-      else if (!(err instanceof ApiError)) setFetchError('Network error.')
+      if (!(err instanceof ApiError)) {
+        setFetchError('Network error.')
+        return
+      }
+      // 404 is the expected "no such entry" case — leave entry null and let
+      // the page render the not-found state without an error banner.
+      if (err.kind === 'not_found') return
+      if (err.kind === 'unauthorized') setFetchError('Session expired.')
+      else setFetchError('Failed to load entry.')
     })
     .finally(() => {
       if (!cancelled) setLoading(false)

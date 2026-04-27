@@ -10,6 +10,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege token scope. Only `contents: read` is required by every job
+# here (checkout); add finer-grained scopes per-job if a future workflow needs
+# to write checks, statuses, or comments.
+permissions:
+  contents: read
+
 jobs:
   lint-typecheck:
     name: Lint & Typecheck
@@ -41,6 +47,10 @@ jobs:
   e2e:
     name: Playwright E2E
     runs-on: ubuntu-latest
+    # Playwright's webServer command launches `vite --port` and `tsx watch`,
+    # which never naturally exit. Without an explicit timeout a hung browser
+    # keeps the runner pinned to the 6h job ceiling.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

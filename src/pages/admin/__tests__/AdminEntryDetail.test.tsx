@@ -90,10 +90,18 @@ describe('AdminEntryDetail — fetch + render branches', () => {
   })
 
   it('renders the not-found marker when getEntry returns 404', async () => {
-    mockedGet.mockRejectedValueOnce(new ApiError({ kind: 'invalid_input', status: 404, message: 'not_found' }))
+    mockedGet.mockRejectedValueOnce(new ApiError({ kind: 'not_found', status: 404, message: 'not_found' }))
     renderDetail()
     await waitFor(() => {
       expect(screen.getByTestId('admin-entry-not-found')).toBeInTheDocument()
+    })
+  })
+
+  it('renders a generic load-failure error on other API error kinds', async () => {
+    mockedGet.mockRejectedValueOnce(new ApiError({ kind: 'invalid_input', status: 400, message: 'invalid' }))
+    renderDetail()
+    await waitFor(() => {
+      expect(screen.getByTestId('admin-entry-error')).toHaveTextContent('Failed to load entry.')
     })
   })
 
