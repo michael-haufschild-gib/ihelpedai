@@ -49,13 +49,19 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  // Guard close so a setup failure (where `app` was never assigned)
-  // doesn't mask the real beforeAll error with a TypeError.
-  await app?.close()
-  rmSync(tmpDir, { recursive: true, force: true })
-  for (const [key, value] of Object.entries(previousEnv)) {
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
+  try {
+    // Guard close so a setup failure (where `app` was never assigned)
+    // doesn't mask the real beforeAll error with a TypeError.
+    await app?.close()
+    rmSync(tmpDir, { recursive: true, force: true })
+  } finally {
+    // Env restoration must run even if close()/rmSync threw — otherwise
+    // a teardown failure here leaks mutated SQLITE_PATH/IP_HASH_SALT/etc.
+    // into sibling specs in the same vitest worker.
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
   }
 })
 
