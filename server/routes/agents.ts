@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
+import { effectiveLimit } from '../lib/effective-limit.js'
 import { CITY_REGEX, COUNTRY_ALPHA2_OR_ALPHA3_REGEX, NAME_REGEX } from '../lib/identity-fields.js'
 import { isValidIsoDate } from '../lib/iso-date.js'
 import { hashWithSalt } from '../lib/salted-hash.js'
@@ -109,8 +110,8 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
     // Atomic across the hour + day buckets so a 60/h overage does not also
     // burn a slot of the daily 1000 cap.
     const decision = await app.limiter.checkAll([
-      { bucket: `agent_report:hour:${keyHash}`, limit: 60, windowSeconds: 3600 },
-      { bucket: `agent_report:day:${keyHash}`, limit: 1000, windowSeconds: 86400 },
+      { bucket: `agent_report:hour:${keyHash}`, limit: effectiveLimit(60), windowSeconds: 3600 },
+      { bucket: `agent_report:day:${keyHash}`, limit: effectiveLimit(1000), windowSeconds: 86400 },
     ])
     return decision.allowed ? null : decision.retryAfter
   }

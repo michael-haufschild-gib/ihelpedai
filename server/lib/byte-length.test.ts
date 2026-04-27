@@ -21,7 +21,7 @@ describe('byteLength', () => {
     expect(byteLength('😀')).toBe(4)
   })
 
-  it('detects when an ASCII-looking 100-char password is well under bcrypt 72-byte limit', () => {
+  it('detects when an ASCII 50-char password is well under bcrypt 72-byte limit', () => {
     expect(byteLength('a'.repeat(50))).toBe(50)
   })
 

@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
+import { effectiveLimit } from '../lib/effective-limit.js'
 import { hashWithSalt } from '../lib/salted-hash.js'
 import type { BucketSpec } from '../rate-limit/index.js'
 
@@ -61,12 +62,36 @@ type ReplyShape = {
  * the system as a whole) can drive enough email to risk blacklisting.
  */
 function issueBuckets(emailHash: string, ipHash: string): BucketSpec[] {
+  // Wrapping each cap in `effectiveLimit()` keeps dev/CI symmetric with the
+  // login/forgot-password routes: a workstation running the e2e suite under
+  // `DEV_RATE_MULTIPLIER>1` can re-issue keys without tripping the per-IP
+  // bucket, while production preserves the literal cap.
   return [
-    { bucket: `api_key_issue:email:${emailHash}`, limit: PER_EMAIL_LIMIT, windowSeconds: PER_EMAIL_WINDOW_S },
-    { bucket: `api_key_issue:ip:${ipHash}:hour`, limit: PER_IP_HOUR_LIMIT, windowSeconds: HOUR_SECONDS },
-    { bucket: `api_key_issue:ip:${ipHash}:day`, limit: PER_IP_DAY_LIMIT, windowSeconds: DAY_SECONDS },
-    { bucket: 'api_key_issue:global:hour', limit: GLOBAL_HOUR_LIMIT, windowSeconds: HOUR_SECONDS },
-    { bucket: 'api_key_issue:global:day', limit: GLOBAL_DAY_LIMIT, windowSeconds: DAY_SECONDS },
+    {
+      bucket: `api_key_issue:email:${emailHash}`,
+      limit: effectiveLimit(PER_EMAIL_LIMIT),
+      windowSeconds: PER_EMAIL_WINDOW_S,
+    },
+    {
+      bucket: `api_key_issue:ip:${ipHash}:hour`,
+      limit: effectiveLimit(PER_IP_HOUR_LIMIT),
+      windowSeconds: HOUR_SECONDS,
+    },
+    {
+      bucket: `api_key_issue:ip:${ipHash}:day`,
+      limit: effectiveLimit(PER_IP_DAY_LIMIT),
+      windowSeconds: DAY_SECONDS,
+    },
+    {
+      bucket: 'api_key_issue:global:hour',
+      limit: effectiveLimit(GLOBAL_HOUR_LIMIT),
+      windowSeconds: HOUR_SECONDS,
+    },
+    {
+      bucket: 'api_key_issue:global:day',
+      limit: effectiveLimit(GLOBAL_DAY_LIMIT),
+      windowSeconds: DAY_SECONDS,
+    },
   ]
 }
 

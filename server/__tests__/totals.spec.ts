@@ -27,6 +27,15 @@ import { totalsSchema, parseResponse } from '../../src/lib/wireSchemas.js'
  */
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'ihelped-totals-'))
+// Snapshot every env key the suite mutates so vitest workers stay isolated;
+// without this, IP_HASH_SALT/DEV_RATE_MULTIPLIER would bleed into sibling
+// specs that import `config.ts` and pin env-dependent state at module load.
+const previousEnv = {
+  SQLITE_PATH: process.env.SQLITE_PATH,
+  NODE_ENV: process.env.NODE_ENV,
+  IP_HASH_SALT: process.env.IP_HASH_SALT,
+  DEV_RATE_MULTIPLIER: process.env.DEV_RATE_MULTIPLIER,
+} as const
 process.env.SQLITE_PATH = join(tmpDir, 'test.db')
 process.env.NODE_ENV = 'test'
 process.env.IP_HASH_SALT = 'test-salt'
@@ -42,6 +51,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close()
   rmSync(tmpDir, { recursive: true, force: true })
+  for (const [key, value] of Object.entries(previousEnv)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
 })
 
 describe('GET /api/totals', () => {
@@ -116,9 +129,11 @@ describe('GET /api/totals', () => {
   it('ignores pending and deleted rows so soft-deletes do not inflate the strip', async () => {
     // A deleted post must not increment the posts count. Insert one
     // row, soft-delete it, and assert the totals stay where they were.
-    const before = (await app.inject({ method: 'GET', url: '/api/totals' })).json() as {
-      posts: number
-    }
+    const before = parseResponse(
+      'GET /api/totals',
+      totalsSchema,
+      (await app.inject({ method: 'GET', url: '/api/totals' })).json(),
+    )
     const ghost = await app.store.insertPost({
       firstName: 'Ghost',
       city: 'Limbo',
@@ -128,9 +143,11 @@ describe('GET /api/totals', () => {
       source: 'form',
     })
     await app.store.updateEntryStatus(ghost.id, 'post', 'deleted')
-    const after = (await app.inject({ method: 'GET', url: '/api/totals' })).json() as {
-      posts: number
-    }
+    const after = parseResponse(
+      'GET /api/totals',
+      totalsSchema,
+      (await app.inject({ method: 'GET', url: '/api/totals' })).json(),
+    )
     expect(after.posts).toBe(before.posts)
   })
 })

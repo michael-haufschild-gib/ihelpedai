@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 /**
@@ -26,13 +26,18 @@ interface DevCredentials {
  * Load the dev credentials file if present, otherwise generate a new
  * random admin password, persist it, and return the payload.
  *
- * The file is rewritten with mode 0600 on every call: a developer who
- * accidentally chmods it back to 0644 will have it tightened on the
- * next seed.
+ * Mode 0600 is re-applied via `chmodSync` on every call: a developer who
+ * accidentally chmods the existing file back to 0644 will have it
+ * tightened on the next seed. (`writeFileSync`'s `mode` option only
+ * applies when the file is newly created, so the explicit chmod is the
+ * only way to harden an existing file.)
  */
 export function readOrCreateDevCredentials(): DevCredentials {
   const existing = tryReadCredentialsFile()
-  if (existing !== null) return existing
+  if (existing !== null) {
+    enforceCredentialsFileMode()
+    return existing
+  }
   const fresh: DevCredentials = { adminPassword: generateDevPassword() }
   writeCredentialsFile(fresh)
   return fresh
@@ -73,7 +78,14 @@ function writeCredentialsFile(creds: DevCredentials): void {
     encoding: 'utf8',
     mode: FILE_MODE,
   })
+  enforceCredentialsFileMode()
 }
 
-/** Test hook so the dev-seed test can point at a temp directory. */
-export const _internal = { CREDENTIALS_FILE }
+function enforceCredentialsFileMode(): void {
+  try {
+    chmodSync(CREDENTIALS_FILE, FILE_MODE)
+  } catch {
+    // Best-effort: a missing file (race with manual deletion) or a
+    // platform without POSIX modes (Windows) should not break the seed.
+  }
+}

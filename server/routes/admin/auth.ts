@@ -155,6 +155,16 @@ const newPasswordSchema = z
   .refine((v) => byteLength(v) <= MAX_NEW_PASSWORD_BYTES, 'too_long')
   .refine((v) => isAcceptablePassword(v), 'weak_password')
 
+// `confirm_password` carries the same bcrypt 72-byte ceiling as
+// `password` (without the strength check, which is redundant once the
+// equality check passes). Capping it at the reset-token length would
+// false-reject a legitimate 65–72 byte new password whose `password`
+// field passed validation.
+const confirmPasswordSchema = z
+  .string()
+  .min(1)
+  .refine((v) => byteLength(v) <= MAX_NEW_PASSWORD_BYTES, 'too_long')
+
 const loginInput = z.object({
   email: z.string().email().max(MAX_EMAIL_LENGTH),
   // Loose 255 cap on login matches what bcrypt was already accepting.
@@ -173,7 +183,7 @@ const resetRequestInput = z.object({
 const resetPasswordInput = z.object({
   token: z.string().min(1).max(MAX_RESET_TOKEN_LENGTH),
   password: newPasswordSchema,
-  confirm_password: z.string().min(1).max(MAX_RESET_TOKEN_LENGTH),
+  confirm_password: confirmPasswordSchema,
 })
 
 const changePasswordInput = z.object({

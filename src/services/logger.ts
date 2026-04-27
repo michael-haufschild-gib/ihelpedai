@@ -9,16 +9,20 @@
  *    production. Browser errors that go nowhere when the page misbehaves
  *    are debugging dead ends; a user-visible console line is the cheapest
  *    "something went wrong here" signal we have without a real telemetry
- *    sink. The cost is small (no PII passes through these in current
- *    callers) and the benefit is being able to talk a user through a
- *    repro using their own devtools.
+ *    sink. Callers should not pass PII to these methods (the logger does
+ *    not enforce that — it's a convention every site needs to keep), so
+ *    we can talk a user through a repro using their own devtools.
  *
  * This module is the single allowed entry point for direct `console.*`
  * calls (see the per-file override in `eslint.config.js`). Any other file
  * touching `console.*` is a lint error.
  */
 
-const isDev = import.meta.env?.DEV === true
+// Direct property access (no optional chaining) so Vite's build-time
+// substitution of `import.meta.env.DEV` collapses to a literal boolean
+// in production bundles, letting esbuild dead-code-eliminate the
+// DEV-only branches below.
+const isDev = import.meta.env.DEV === true
 
 export const logger = {
   debug: (...args: unknown[]) => {

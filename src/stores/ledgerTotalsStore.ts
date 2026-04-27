@@ -11,9 +11,9 @@ import { getLedgerTotals, type LedgerTotalsResponse } from '@/lib/api'
  * to learn a new vocabulary.
  */
 export interface CachedLedgerTotals {
-  posts: number | null
-  reports: number | null
-  agents: number | null
+  readonly posts: number | null
+  readonly reports: number | null
+  readonly agents: number | null
 }
 
 /**
@@ -32,7 +32,11 @@ interface LedgerTotalsState {
   refreshIfStale: () => Promise<void>
 }
 
-const FAILED_TOTALS: CachedLedgerTotals = { posts: null, reports: null, agents: null }
+const FAILED_TOTALS: Readonly<CachedLedgerTotals> = Object.freeze({
+  posts: null,
+  reports: null,
+  agents: null,
+})
 
 function intoCached(payload: LedgerTotalsResponse): CachedLedgerTotals {
   return { posts: payload.posts, reports: payload.reports, agents: payload.agents }

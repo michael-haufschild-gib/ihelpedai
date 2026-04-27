@@ -25,9 +25,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * special-case; the test focuses on registration semantics.
  */
 
+// Snapshot every env key both tests mutate so vitest workers stay isolated;
+// IP_HASH_SALT/DEV_RATE_MULTIPLIER are read by the eager `config.ts` parse
+// at module import, so leaking them changes ordering-dependent behaviour
+// in sibling specs.
 const previousEnv = {
   SQLITE_PATH: process.env.SQLITE_PATH,
   NODE_ENV: process.env.NODE_ENV,
+  IP_HASH_SALT: process.env.IP_HASH_SALT,
+  DEV_RATE_MULTIPLIER: process.env.DEV_RATE_MULTIPLIER,
 } as const
 
 let app: FastifyInstance | undefined
