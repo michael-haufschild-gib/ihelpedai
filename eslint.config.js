@@ -1,6 +1,5 @@
 import js from '@eslint/js'
 import eslintReact from '@eslint-react/eslint-plugin'
-import eslintConfigPrettier from 'eslint-config-prettier'
 import jsdoc from 'eslint-plugin-jsdoc'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -25,6 +24,7 @@ export default defineConfig([
     'test-results',
     'playwright-report',
     'blob-report',
+    '.stryker-tmp',
     'node_modules',
     '.claude',
     'docs',
@@ -37,13 +37,19 @@ export default defineConfig([
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
       eslintReact.configs.recommended,
-      eslintConfigPrettier,
     ],
     languageOptions: {
       ecmaVersion: 2022,
       globals: globals.browser,
       parserOptions: {
-        project: ['./tsconfig.app.json', './tsconfig.node.json', './tsconfig.test.json', './tsconfig.e2e.json', './tsconfig.server.json', './tsconfig.server.test.json'],
+        project: [
+          './tsconfig.app.json',
+          './tsconfig.node.json',
+          './tsconfig.test.json',
+          './tsconfig.e2e.json',
+          './tsconfig.server.json',
+          './tsconfig.server.test.json',
+        ],
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -57,12 +63,7 @@ export default defineConfig([
         'error',
         {
           publicOnly: true,
-          contexts: [
-            'FunctionDeclaration',
-            'ClassDeclaration',
-            'TSInterfaceDeclaration',
-            'TSTypeAliasDeclaration',
-          ],
+          contexts: ['FunctionDeclaration', 'ClassDeclaration', 'TSInterfaceDeclaration', 'TSTypeAliasDeclaration'],
           require: {
             FunctionDeclaration: true,
             ClassDeclaration: true,
@@ -86,13 +87,11 @@ export default defineConfig([
         {
           types: {
             'NodeJS.Timeout': {
-              message:
-                'Use ReturnType<typeof setTimeout> instead — NodeJS namespace is unavailable in browser builds.',
+              message: 'Use ReturnType<typeof setTimeout> instead — NodeJS namespace is unavailable in browser builds.',
               suggest: ['ReturnType<typeof setTimeout>'],
             },
             'NodeJS.Timer': {
-              message:
-                'Use ReturnType<typeof setTimeout> instead — NodeJS namespace is unavailable in browser builds.',
+              message: 'Use ReturnType<typeof setTimeout> instead — NodeJS namespace is unavailable in browser builds.',
               suggest: ['ReturnType<typeof setTimeout>'],
             },
           },
@@ -138,10 +137,7 @@ export default defineConfig([
         },
       ],
       'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
-      'max-lines-per-function': [
-        'error',
-        { max: 85, skipBlankLines: true, skipComments: true, IIFEs: true },
-      ],
+      'max-lines-per-function': ['error', { max: 85, skipBlankLines: true, skipComments: true, IIFEs: true }],
     },
   },
   // Server integration specs (node env). Pick up the shallow-assertion custom
@@ -230,8 +226,7 @@ export default defineConfig([
       'no-restricted-syntax': [
         'error',
         {
-          selector:
-            'CallExpression[callee.property.name=/^getBy(Role|Label|Placeholder|AltText|Title|Text)$/]',
+          selector: 'CallExpression[callee.property.name=/^getBy(Role|Label|Placeholder|AltText|Title|Text)$/]',
           message:
             'Use page.getByTestId() with data-testid attributes. Role/label/text locators are brittle under copy and i18n changes.',
         },
