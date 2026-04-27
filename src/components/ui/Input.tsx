@@ -3,7 +3,7 @@ import { m, type HTMLMotionProps } from 'motion/react'
 import { LoadingSpinner } from './LoadingSpinner'
 
 /** Props for the Input component. */
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends Omit<HTMLMotionProps<'input'>, 'ref'> {
   leftIcon?: React.ReactNode
   rightIcon?: React.ReactNode
   error?: string | boolean
@@ -39,11 +39,7 @@ function buildInputClassName(args: {
 /** Animated error message below the input. */
 function InputError({ error }: { error: string }) {
   return (
-    <m.span
-      initial={{ opacity: 0, y: -5 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="text-xs text-danger ml-1"
-    >
+    <m.span initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-danger ml-1">
       {error}
     </m.span>
   )
@@ -77,9 +73,7 @@ function InputField({
       transition={{ duration: 0.4 }}
     >
       {Boolean(leftIcon) && (
-        <div
-          className={`absolute start-3 transition-colors ${isFocused ? 'text-accent' : 'text-text-tertiary'}`}
-        >
+        <div className={`absolute start-3 transition-colors ${isFocused ? 'text-accent' : 'text-text-tertiary'}`}>
           {leftIcon}
         </div>
       )}
@@ -89,13 +83,7 @@ function InputField({
 }
 
 /** Right-side adornments: loading spinner or static right icon. */
-function InputAdornments({
-  loading,
-  rightIcon,
-}: {
-  loading: boolean
-  rightIcon: React.ReactNode
-}) {
+function InputAdornments({ loading, rightIcon }: { loading: boolean; rightIcon: React.ReactNode }) {
   const hasIcon = Boolean(rightIcon)
   if (!loading && !hasIcon) return null
   return (
@@ -174,7 +162,7 @@ export const Input = ({
             props.onBlur?.(e)
           }}
           className={inputClassName}
-          {...(props as unknown as HTMLMotionProps<'input'>)}
+          {...props}
         />
         <InputAdornments loading={loading === true} rightIcon={rightIcon} />
       </InputField>

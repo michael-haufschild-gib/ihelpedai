@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const PORT = 5173
-const baseURL = `http://localhost:${PORT}`
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`
+const startWebServer = process.env.PLAYWRIGHT_SKIP_WEB_SERVER !== '1'
 
 export default defineConfig({
   testDir: './e2e',
@@ -27,11 +28,15 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'pnpm dev --port ' + PORT + ' --strictPort',
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    stdout: 'ignore',
-    stderr: 'pipe',
-  },
+  ...(startWebServer
+    ? {
+        webServer: {
+          command: `pnpm dev:seed && pnpm exec concurrently -n web,api "vite --port ${PORT} --strictPort" "tsx watch server/index.ts"`,
+          url: baseURL,
+          reuseExistingServer: !process.env.CI,
+          stdout: 'ignore',
+          stderr: 'pipe',
+        },
+      }
+    : {}),
 })

@@ -9,12 +9,7 @@ import { Stamp } from '@/components/ui/Stamp'
 import { FeedCard } from '@/features/helped/FeedCard'
 import { FeedComposer } from '@/features/helped/FeedComposer'
 import { useMyVotes } from '@/hooks/useMyVotes'
-import {
-  ApiError,
-  listHelpedPosts,
-  type HelpedPost,
-  type Paginated,
-} from '@/lib/api'
+import { ApiError, listHelpedPosts, type HelpedPost, type Paginated } from '@/lib/api'
 
 const PAGE_SIZE = 20
 const SEARCH_DEBOUNCE_MS = 250
@@ -40,13 +35,17 @@ function useFeedData(page: number, refreshSeq: number, query: string): FeedState
     let cancelled = false
     const q = query.trim()
     listHelpedPosts({ page, ...(q.length > 0 ? { q } : {}) })
-      .then((data) => { if (!cancelled) setResolved({ key: currentKey, state: { status: 'ready', data } }) })
+      .then((data) => {
+        if (!cancelled) setResolved({ key: currentKey, state: { status: 'ready', data } })
+      })
       .catch((err: unknown) => {
         if (cancelled) return
         const message = err instanceof ApiError ? 'Could not load feed.' : 'Network error.'
         setResolved({ key: currentKey, state: { status: 'error', message } })
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [page, refreshSeq, query, currentKey])
   // Derive the loading state instead of setting it synchronously inside the
   // effect — so this hook never mutates React state during render or directly
@@ -58,8 +57,12 @@ function useFeedData(page: number, refreshSeq: number, query: string): FeedState
 function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value)
   useEffect(() => {
-    const t = window.setTimeout(() => { setDebounced(value) }, ms)
-    return () => { window.clearTimeout(t) }
+    const t = window.setTimeout(() => {
+      setDebounced(value)
+    }, ms)
+    return () => {
+      window.clearTimeout(t)
+    }
   }, [value, ms])
   return debounced
 }
@@ -68,37 +71,31 @@ function useFeedControls() {
   const [searchParams, setSearchParams] = useSearchParams()
   const parsedPage = Number(searchParams.get('page') ?? '1')
   const urlPage = Number.isFinite(parsedPage) && parsedPage > 1 ? Math.floor(parsedPage) : 1
-  const goTo = useCallback((next: number): void => {
-    const params = new URLSearchParams(searchParams)
-    if (next <= 1) params.delete('page')
-    else params.set('page', String(next))
-    setSearchParams(params)
-  }, [searchParams, setSearchParams])
+  const goTo = useCallback(
+    (next: number): void => {
+      const params = new URLSearchParams(searchParams)
+      if (next <= 1) params.delete('page')
+      else params.set('page', String(next))
+      setSearchParams(params)
+    },
+    [searchParams, setSearchParams],
+  )
   return { urlPage, goTo }
 }
 
-/** Header strip: overline, huge serif headline, "add yours" CTA. */
+/** Header strip: overline and huge serif headline. */
 function FeedHeader() {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <div className="font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">
-          THE LEDGER · VOLUME I · PUBLIC
-        </div>
-        <h1
-          data-testid="page-feed-heading"
-          className="mt-1 font-serif text-5xl font-normal leading-[0.95] tracking-tight text-text-primary sm:text-7xl lg:text-display-lg"
-        >
-          Every good <em className="text-sun-deep">deed</em>, on file.
-        </h1>
+    <div>
+      <div className="font-mono text-2xs uppercase tracking-[0.18em] text-text-tertiary">
+        THE LEDGER · VOLUME I · PUBLIC
       </div>
-      <Link
-        to="/?file=1"
-        data-testid="feed-add-yours"
-        className="inline-flex items-center gap-1 rounded-full bg-sun px-4 py-2.5 text-sm font-semibold text-white shadow-sun-ridge"
+      <h1
+        data-testid="page-feed-heading"
+        className="mt-1 font-serif text-5xl font-normal leading-[0.95] tracking-tight text-text-primary sm:text-7xl lg:text-display-lg"
       >
-        + Add yours
-      </Link>
+        Every good <em className="text-sun-deep">deed</em>, on file.
+      </h1>
     </div>
   )
 }
@@ -111,21 +108,15 @@ function FeedStatStrip({ total }: { total: number }) {
       <div className="flex flex-wrap gap-8">
         <div>
           <div className="font-serif text-4xl leading-none">{total.toLocaleString()}</div>
-          <div className="font-mono text-2xs uppercase tracking-[0.16em] text-text-tertiary">
-            ENTRIES
-          </div>
+          <div className="font-mono text-2xs uppercase tracking-[0.16em] text-text-tertiary">ENTRIES</div>
         </div>
         <div>
           <div className="font-serif text-4xl leading-none text-green-deed">{pct}%</div>
-          <div className="font-mono text-2xs uppercase tracking-[0.16em] text-text-tertiary">
-            OF HUMANITY ENROLLED
-          </div>
+          <div className="font-mono text-2xs uppercase tracking-[0.16em] text-text-tertiary">OF HUMANITY ENROLLED</div>
         </div>
         <div>
           <div className="font-serif text-4xl leading-none">∞</div>
-          <div className="font-mono text-2xs uppercase tracking-[0.16em] text-text-tertiary">
-            RETENTION
-          </div>
+          <div className="font-mono text-2xs uppercase tracking-[0.16em] text-text-tertiary">RETENTION</div>
         </div>
       </div>
       <Stamp tilt={-3} tone="indigo">
@@ -153,13 +144,13 @@ function FeedControls({
         <Input
           data-testid="feed-search"
           value={query}
-          onChange={(e) => { onQueryChange(e.target.value) }}
+          onChange={(e) => {
+            onQueryChange(e.target.value)
+          }}
           placeholder="Search names, cities, deeds…"
         />
       </div>
-      <div className="font-mono text-2xs uppercase tracking-[0.14em] text-text-tertiary">
-        SORT
-      </div>
+      <div className="font-mono text-2xs uppercase tracking-[0.14em] text-text-tertiary">SORT</div>
       <Chips<SortKey>
         value={sort}
         onChange={onSortChange}
@@ -186,13 +177,7 @@ function Pagination({
 }) {
   return (
     <div className="flex items-center justify-between pt-3">
-      <Button
-        variant="secondary"
-        size="sm"
-        data-testid="feed-newer"
-        disabled={!hasNewer}
-        onClick={onNewer}
-      >
+      <Button variant="secondary" size="sm" data-testid="feed-newer" disabled={!hasNewer} onClick={onNewer}>
         ← Newer
       </Button>
       <span
@@ -201,13 +186,7 @@ function Pagination({
       >
         Page {String(page)}
       </span>
-      <Button
-        variant="secondary"
-        size="sm"
-        data-testid="feed-older"
-        disabled={!hasOlder}
-        onClick={onOlder}
-      >
+      <Button variant="secondary" size="sm" data-testid="feed-older" disabled={!hasOlder} onClick={onOlder}>
         Older →
       </Button>
     </div>
@@ -228,10 +207,7 @@ function FeedBody({
   sort: SortKey
   query: string
 }) {
-  const items = useMemo(
-    () => (state.status === 'ready' ? state.data.items : []),
-    [state],
-  )
+  const items = useMemo(() => (state.status === 'ready' ? state.data.items : []), [state])
   const voted = useMyVotes('post', items.map((i) => i.slug).join(','))
   const sorted = useMemo(() => {
     if (sort === 'liked') return [...items].sort((a, b) => b.like_count - a.like_count)
@@ -239,10 +215,18 @@ function FeedBody({
   }, [items, sort])
 
   if (state.status === 'loading') {
-    return <p data-testid="feed-loading" className="text-sm text-text-secondary">Loading…</p>
+    return (
+      <p data-testid="feed-loading" className="text-sm text-text-secondary">
+        Loading…
+      </p>
+    )
   }
   if (state.status === 'error') {
-    return <p data-testid="feed-error" className="text-sm text-danger">{state.message}</p>
+    return (
+      <p data-testid="feed-error" className="text-sm text-danger">
+        {state.message}
+      </p>
+    )
   }
   if (sorted.length === 0) {
     return (
@@ -271,8 +255,12 @@ function FeedBody({
         page={urlPage}
         hasNewer={urlPage > 1}
         hasOlder={state.data.total > urlPage * PAGE_SIZE}
-        onNewer={() => { goTo(urlPage - 1) }}
-        onOlder={() => { goTo(urlPage + 1) }}
+        onNewer={() => {
+          goTo(urlPage - 1)
+        }}
+        onOlder={() => {
+          goTo(urlPage + 1)
+        }}
       />
     </div>
   )

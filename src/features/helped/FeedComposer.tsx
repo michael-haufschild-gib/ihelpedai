@@ -105,14 +105,30 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
     post: submit,
   }
 
-  // Autofocus the body field once the composer enters editing mode. The
-  // 80ms delay lets the AnimatePresence enter transition settle before we
-  // grab focus, otherwise the Tailwind transition can fight the focus call.
+  // Autofocus the body field once the composer enters editing mode.
+  // AnimatePresence runs in `mode="wait"`, so the closed branch's exit
+  // animation (~150ms) finishes BEFORE the editing branch mounts and
+  // populates `textareaRef`. A fixed setTimeout would fire while the ref
+  // is still null. Poll once per animation frame until the textarea
+  // mounts, with a hard frame cap so a never-mounting branch can't spin.
   useEffect(() => {
     if (state.mode !== 'editing') return
-    const t = window.setTimeout(() => textareaRef.current?.focus(), 80)
+    let cancelled = false
+    let framesLeft = 30
+    const tryFocus = (): void => {
+      if (cancelled) return
+      const node = textareaRef.current
+      if (node !== null) {
+        node.focus()
+        return
+      }
+      framesLeft -= 1
+      if (framesLeft <= 0) return
+      window.requestAnimationFrame(tryFocus)
+    }
+    window.requestAnimationFrame(tryFocus)
     return () => {
-      window.clearTimeout(t)
+      cancelled = true
     }
   }, [state.mode])
 
@@ -129,13 +145,7 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
       data-testid="feed-composer"
       className="rounded-xl border border-border-subtle bg-panel/40 p-3 backdrop-blur-sm sm:p-4"
     >
-      <ComposerBody
-        state={state}
-        fields={fields}
-        sanitized={sanitized}
-        cb={cb}
-        closedButtonRef={closedButtonRef}
-      />
+      <ComposerBody state={state} fields={fields} sanitized={sanitized} cb={cb} closedButtonRef={closedButtonRef} />
     </section>
   )
 }

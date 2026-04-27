@@ -5,9 +5,12 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Textarea'
-import type { AdminEntryDetail as EntryDetail } from '@/lib/adminApi'
+import type { AdminEntryDetail as EntryDetail, AdminEntryStatusAction } from '@/lib/adminApi'
 import { ApiError } from '@/lib/api'
 import { entryAction, getEntry, purgeEntry } from '@/lib/adminApi'
+import { sanitize } from '@/lib/sanitizePreview'
+
+type EntryModalAction = AdminEntryStatusAction | 'purge'
 
 /** Format a date string for display. */
 function formatDate(iso: string): string {
@@ -32,6 +35,84 @@ function describeActionError(err: unknown): string {
   return 'Action failed. Try again.'
 }
 
+type EntryNavigate = (path: string, opts: { replace: boolean }) => void
+
+/** Fetch the entry detail and surface unauthorized/network errors distinctly. */
+function loadEntryDetail(
+  id: string,
+  setEntry: (e: EntryDetail | null) => void,
+  setFetchError: (m: string | null) => void,
+  setLoading: (v: boolean) => void,
+): () => void {
+  let cancelled = false
+  // Reset previous fetch state inside a microtask. The naive sync calls would
+  // trip the `react-hooks/set-state-in-effect` rule because this helper is
+  // invoked synchronously from the page's useEffect; without the reset, an
+  // earlier failed load would leave a stale error banner on screen across an
+  // `id` change.
+  void Promise.resolve().then(() => {
+    if (cancelled) return
+    setLoading(true)
+    setFetchError(null)
+  })
+  getEntry(id)
+    .then((e) => {
+      if (!cancelled) setEntry(e)
+    })
+    .catch((err) => {
+      if (cancelled) return
+      setEntry(null)
+      if (!(err instanceof ApiError)) {
+        setFetchError('Network error.')
+        return
+      }
+      // 404 is the expected "no such entry" case — leave entry null and let
+      // the page render the not-found state without an error banner.
+      if (err.kind === 'not_found') return
+      if (err.kind === 'unauthorized') setFetchError('Session expired.')
+      else setFetchError('Failed to load entry.')
+    })
+    .finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+  return () => {
+    cancelled = true
+  }
+}
+
+/** Run a status / purge action against the entry, redirecting to /admin on success. */
+async function runEntryAction(
+  entry: EntryDetail | null,
+  action: EntryModalAction,
+  confirmation: string,
+  reason: string,
+  setActionLoading: (v: boolean) => void,
+  setActionError: (m: string | null) => void,
+  navigate: EntryNavigate,
+): Promise<void> {
+  if (!entry) return
+  setActionLoading(true)
+  setActionError(null)
+  // Mirror the server sanitizer on the client so the value the admin types
+  // matches the value that lands in the audit log. Without this client-side
+  // mirror an admin can submit reason text whose final stored form differs
+  // from what they read on screen — same parity contract that public forms
+  // honor in HelpedForm/ReportForm.
+  const cleanedReason = sanitize(reason).clean
+  const reasonArg = cleanedReason !== '' ? cleanedReason : undefined
+  try {
+    if (action === 'purge') {
+      await purgeEntry(entry.id, confirmation, reasonArg)
+    } else {
+      await entryAction(entry.id, action, reasonArg)
+    }
+    navigate('/admin', { replace: true })
+  } catch (err) {
+    setActionError(describeActionError(err))
+    setActionLoading(false)
+  }
+}
+
 /** Admin entry detail page (Story 4). */
 export function AdminEntryDetail() {
   const { id } = useParams<{ id: string }>()
@@ -39,7 +120,7 @@ export function AdminEntryDetail() {
   const [entry, setEntry] = useState<EntryDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  const [modal, setModal] = useState<{ action: string; label: string } | null>(null)
+  const [modal, setModal] = useState<{ action: EntryModalAction; label: string } | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [reason, setReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
@@ -47,40 +128,25 @@ export function AdminEntryDetail() {
 
   useEffect(() => {
     if (!id) return undefined
-    let cancelled = false
-    getEntry(id)
-      .then((e) => { if (!cancelled) setEntry(e) })
-      .catch((err) => {
-        if (!cancelled) {
-          setEntry(null)
-          if (err instanceof ApiError && err.kind === 'unauthorized') setFetchError('Session expired.')
-          else if (!(err instanceof ApiError)) setFetchError('Network error.')
-        }
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+    return loadEntryDetail(id, setEntry, setFetchError, setLoading)
   }, [id])
 
-  const handleAction = async (action: string) => {
-    if (!entry) return
-    setActionLoading(true)
-    setActionError(null)
-    try {
-      if (action === 'purge') {
-        await purgeEntry(entry.id, confirmation, reason !== '' ? reason : undefined)
-      } else {
-        await entryAction(entry.id, action, reason !== '' ? reason : undefined)
-      }
-      navigate('/admin', { replace: true })
-    } catch (err) {
-      setActionError(describeActionError(err))
-      setActionLoading(false)
-    }
-  }
+  const handleAction = (action: EntryModalAction) =>
+    runEntryAction(entry, action, confirmation, reason, setActionLoading, setActionError, navigate)
 
   if (loading) return <p className="text-text-secondary">Loading...</p>
-  if (fetchError !== null) return <p data-testid="admin-entry-error" className="text-sm text-danger">{fetchError}</p>
-  if (!entry) return <p data-testid="admin-entry-not-found" className="text-text-secondary">Not found.</p>
+  if (fetchError !== null)
+    return (
+      <p data-testid="admin-entry-error" className="text-sm text-danger">
+        {fetchError}
+      </p>
+    )
+  if (!entry)
+    return (
+      <p data-testid="admin-entry-not-found" className="text-text-secondary">
+        Not found.
+      </p>
+    )
 
   return (
     <section data-testid="admin-entry-detail" className="flex flex-col gap-6">
@@ -96,7 +162,10 @@ export function AdminEntryDetail() {
           actionLoading={actionLoading}
           actionError={actionError}
           onConfirmationChange={setConfirmation}
-          onReasonChange={setReason}
+          // Mirror the server sanitizer as the admin types so the textarea
+          // always shows the exact text that will land in the audit log —
+          // same parity contract that public HelpedForm/ReportForm honor.
+          onReasonChange={(value) => setReason(sanitize(value).clean)}
           onConfirm={() => handleAction(modal.action)}
           onClose={() => {
             setModal(null)
@@ -132,7 +201,11 @@ function EntryFields({ entry }: { entry: EntryDetail }) {
         <dt className="text-text-secondary">Type</dt>
         <dd className="capitalize">{entry.entryType}</dd>
         <dt className="text-text-secondary">Source</dt>
-        <dd>{entry.source === 'api' ? `API${entry.selfReportedModel !== null ? ` — ${entry.selfReportedModel}` : ''}` : 'Form'}</dd>
+        <dd>
+          {entry.source === 'api'
+            ? `API${entry.selfReportedModel !== null ? ` — ${entry.selfReportedModel}` : ''}`
+            : 'Form'}
+        </dd>
         <dt className="text-text-secondary">Created</dt>
         <dd>{createdDisplay}</dd>
         {entry.clientIpHash !== null && (
@@ -153,7 +226,13 @@ function EntryFields({ entry }: { entry: EntryDetail }) {
 }
 
 /** Action buttons for entry (approve, reject, delete, restore, purge). */
-function EntryActions({ entry, onAction }: { entry: EntryDetail; onAction: (action: string, label: string) => void }) {
+function EntryActions({
+  entry,
+  onAction,
+}: {
+  entry: EntryDetail
+  onAction: (action: EntryModalAction, label: string) => void
+}) {
   const isPending = entry.status === 'pending'
   const isLive = entry.status === 'live'
   const isDeleted = entry.status === 'deleted'
@@ -162,17 +241,27 @@ function EntryActions({ entry, onAction }: { entry: EntryDetail; onAction: (acti
     <div className="flex flex-wrap gap-2">
       {isPending && (
         <>
-          <Button data-testid="admin-entry-approve" onClick={() => onAction('approve', 'APPROVE')}>Approve</Button>
-          <Button data-testid="admin-entry-reject" variant="danger" onClick={() => onAction('reject', 'REJECT')}>Reject</Button>
+          <Button data-testid="admin-entry-approve" onClick={() => onAction('approve', 'APPROVE')}>
+            Approve
+          </Button>
+          <Button data-testid="admin-entry-reject" variant="danger" onClick={() => onAction('reject', 'REJECT')}>
+            Reject
+          </Button>
         </>
       )}
-      {(isLive || isPending) && (
-        <Button data-testid="admin-entry-delete" variant="danger" onClick={() => onAction('delete', 'DELETE')}>Delete</Button>
+      {isLive && (
+        <Button data-testid="admin-entry-delete" variant="danger" onClick={() => onAction('delete', 'DELETE')}>
+          Delete
+        </Button>
       )}
       {isDeleted && (
-        <Button data-testid="admin-entry-restore" onClick={() => onAction('restore', 'RESTORE')}>Restore</Button>
+        <Button data-testid="admin-entry-restore" onClick={() => onAction('restore', 'RESTORE')}>
+          Restore
+        </Button>
       )}
-      <Button data-testid="admin-entry-purge" variant="danger" onClick={() => onAction('purge', `${entry.id} PURGE`)}>Purge</Button>
+      <Button data-testid="admin-entry-purge" variant="danger" onClick={() => onAction('purge', `${entry.id} PURGE`)}>
+        Purge
+      </Button>
     </div>
   )
 }
@@ -208,8 +297,18 @@ function EntryAuditLog({ auditLog }: { auditLog: EntryDetail['audit_log'] }) {
 }
 
 /** Confirmation modal for entry actions. */
-function ActionModal({ modal, confirmation, reason, actionLoading, actionError, onConfirmationChange, onReasonChange, onConfirm, onClose }: {
-  modal: { action: string; label: string }
+function ActionModal({
+  modal,
+  confirmation,
+  reason,
+  actionLoading,
+  actionError,
+  onConfirmationChange,
+  onReasonChange,
+  onConfirm,
+  onClose,
+}: {
+  modal: { action: EntryModalAction; label: string }
   confirmation: string
   reason: string
   actionLoading: boolean

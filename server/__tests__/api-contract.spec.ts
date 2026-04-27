@@ -87,14 +87,32 @@ describe('api contract — public endpoints', () => {
     parseResponse('POST /api/helped/posts', helpedPostCreatedSchema, res.json())
   })
 
+  it('POST /api/helped/posts trims identity fields at the request boundary', async () => {
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/helped/posts',
+      payload: {
+        first_name: ' Sam ',
+        last_name: ' Marker ',
+        city: ' Austin ',
+        country: ' US ',
+        text: 'Trimmed identity fields server-side.',
+      },
+    })
+    expect(create.statusCode).toBe(201)
+    const { slug } = parseResponse('POST /api/helped/posts trim setup', helpedPostCreatedSchema, create.json())
+    const get = await app.inject({ method: 'GET', url: `/api/helped/posts/${slug}` })
+    expect(get.statusCode).toBe(200)
+    const body = parseResponse('GET /api/helped/posts trim check', helpedPostSchema, get.json())
+    expect(body.first_name).toBe('Sam')
+    expect(body.city).toBe('Austin')
+    expect(body.country).toBe('US')
+  })
+
   it('GET /api/helped/posts matches Paginated<helpedPost>', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/helped/posts' })
     expect(res.statusCode).toBe(200)
-    const body = parseResponse(
-      'GET /api/helped/posts',
-      paginatedSchema(helpedPostSchema),
-      res.json(),
-    )
+    const body = parseResponse('GET /api/helped/posts', paginatedSchema(helpedPostSchema), res.json())
     expect(body.total).toBeGreaterThanOrEqual(1)
   })
 
@@ -108,11 +126,7 @@ describe('api contract — public endpoints', () => {
     // body — otherwise a drift in the create response shape surfaces as a
     // "slug is undefined" misread when the real bug is the create contract.
     expect(create.statusCode).toBe(201)
-    const { slug } = parseResponse(
-      'POST /api/helped/posts (setup)',
-      helpedPostCreatedSchema,
-      create.json(),
-    )
+    const { slug } = parseResponse('POST /api/helped/posts (setup)', helpedPostCreatedSchema, create.json())
     const res = await app.inject({ method: 'GET', url: `/api/helped/posts/${slug}` })
     expect(res.statusCode).toBe(200)
     parseResponse('GET /api/helped/posts/:slug', helpedPostSchema, res.json())
@@ -128,10 +142,44 @@ describe('api contract — public endpoints', () => {
     parseResponse('POST /api/reports', reportCreatedSchema, res.json())
   })
 
+  it('POST /api/reports trims reported and reporter identity fields at the request boundary', async () => {
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: {
+        reporter: { first_name: ' Pat ', last_name: ' Reporter ', city: ' Austin ', country: ' US ' },
+        reported_first_name: ' Alex ',
+        reported_last_name: ' Doe ',
+        reported_city: ' LA ',
+        reported_country: ' US ',
+        what_they_did: 'Trimmed report identity fields server-side.',
+        action_date: '2026-04-02',
+      },
+    })
+    expect(create.statusCode).toBe(201)
+    const { slug } = parseResponse('POST /api/reports trim setup', reportCreatedSchema, create.json())
+    const get = await app.inject({ method: 'GET', url: `/api/reports/${slug}` })
+    expect(get.statusCode).toBe(200)
+    const body = parseResponse('GET /api/reports trim check', reportSchema, get.json())
+    expect(body.reported_first_name).toBe('Alex')
+    expect(body.reported_city).toBe('LA')
+    expect(body.reported_country).toBe('US')
+    expect(body.reporter).toEqual({ first_name: 'Pat', city: 'Austin', country: 'US' })
+  })
+
   it('GET /api/reports matches Paginated<report>', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/reports' })
     expect(res.statusCode).toBe(200)
     parseResponse('GET /api/reports', paginatedSchema(reportSchema), res.json())
+  })
+
+  it('GET /api/reports trims blank search queries before length validation', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reports?q=${encodeURIComponent(' '.repeat(201))}`,
+    })
+    expect(res.statusCode).toBe(200)
+    parseResponse('GET /api/reports blank q', paginatedSchema(reportSchema), res.json())
   })
 
   it('GET /api/reports/:slug matches reportSchema', async () => {
@@ -144,11 +192,7 @@ describe('api contract — public endpoints', () => {
       },
     })
     expect(create.statusCode).toBe(201)
-    const { slug } = parseResponse(
-      'POST /api/reports (setup)',
-      reportCreatedSchema,
-      create.json(),
-    )
+    const { slug } = parseResponse('POST /api/reports (setup)', reportCreatedSchema, create.json())
     const res = await app.inject({ method: 'GET', url: `/api/reports/${slug}` })
     expect(res.statusCode).toBe(200)
     parseResponse('GET /api/reports/:slug', reportSchema, res.json())
@@ -163,6 +207,80 @@ describe('api contract — public endpoints', () => {
       method: 'POST',
       url: '/api/reports',
       payload: { ...reportPayload, action_date: '2026-13-40' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('invalid_input')
+  })
+
+  it('POST /api/reports rejects invalid reported location fields with 400', async () => {
+    const cityRes = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: { ...reportPayload, reported_city: 'LA7' },
+    })
+    expect(cityRes.statusCode).toBe(400)
+    expect(cityRes.json().error).toBe('invalid_input')
+
+    const newlineCityRes = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: { ...reportPayload, reported_city: 'New\nYork' },
+    })
+    expect(newlineCityRes.statusCode).toBe(400)
+    expect(newlineCityRes.json().error).toBe('invalid_input')
+
+    const countryRes = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: { ...reportPayload, reported_country: 'USA' },
+    })
+    expect(countryRes.statusCode).toBe(400)
+    expect(countryRes.json().error).toBe('invalid_input')
+  })
+
+  it('POST /api/reports rejects invalid named-reporter location fields with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: {
+        ...reportPayload,
+        reporter: { first_name: 'Pat', last_name: '', city: 'Austin7', country: 'US' },
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('invalid_input')
+
+    const tabCityRes = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: {
+        ...reportPayload,
+        reporter: { first_name: 'Pat', last_name: '', city: 'San\tJose', country: 'US' },
+      },
+    })
+    expect(tabCityRes.statusCode).toBe(400)
+    expect(tabCityRes.json().error).toBe('invalid_input')
+
+    const missingNameRes = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: {
+        ...reportPayload,
+        reporter: { first_name: '', last_name: '', city: 'Austin', country: 'US' },
+      },
+    })
+    expect(missingNameRes.statusCode).toBe(400)
+    expect(missingNameRes.json().error).toBe('invalid_input')
+  })
+
+  it('POST /api/reports rejects named reporters missing reporter last_name with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      payload: {
+        ...reportPayload,
+        reporter: { first_name: 'Pat', last_name: '', city: 'Austin', country: 'US' },
+      },
     })
     expect(res.statusCode).toBe(400)
     expect(res.json().error).toBe('invalid_input')
@@ -186,6 +304,55 @@ describe('api contract — public endpoints', () => {
     expect(res.json().error).toBe('invalid_input')
   })
 
+  it('POST /api/agents/report rejects invalid reported location fields before auth', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: 'does-not-matter-we-fail-before-auth',
+        reported_first_name: 'Alex',
+        reported_last_name: 'Doe',
+        reported_city: 'LA7',
+        reported_country: 'US',
+        what_they_did: 'something',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('invalid_input')
+
+    const newlineCityRes = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: 'does-not-matter-we-fail-before-auth',
+        reported_first_name: 'Alex',
+        reported_last_name: 'Doe',
+        reported_city: 'New\nYork',
+        reported_country: 'US',
+        what_they_did: 'something',
+      },
+    })
+    expect(newlineCityRes.statusCode).toBe(400)
+    expect(newlineCityRes.json().error).toBe('invalid_input')
+  })
+
+  it('POST /api/agents/report rejects oversized API keys before auth lookup', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: 'x'.repeat(201),
+        reported_first_name: 'Alex',
+        reported_last_name: 'Doe',
+        reported_city: 'LA',
+        reported_country: 'US',
+        what_they_did: 'something',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('invalid_input')
+  })
+
   it('POST /api/agents/report matches agentReportCreatedSchema (pending by default)', async () => {
     // Share the production hash helper so a future salt-scheme change stays
     // in one place. This file sets IP_HASH_SALT=test-salt on process.env
@@ -195,6 +362,7 @@ describe('api contract — public endpoints', () => {
     const DEV_KEY = 'contract-agent-key-do-not-reuse'
     await app.store.insertApiKey({
       keyHash: hashWithSalt(DEV_KEY),
+      keyLast4: DEV_KEY.slice(-4),
       emailHash: hashWithSalt('agent-contract@ihelped.ai'),
       status: 'active',
     })
@@ -214,5 +382,89 @@ describe('api contract — public endpoints', () => {
     const body = parseResponse('POST /api/agents/report', agentReportCreatedSchema, res.json())
     // Default admin setting auto_publish_agents=false routes to queue.
     expect(body.status).toBe('pending')
+  })
+
+  it('POST /api/agents/report accepts lowercase country codes and stores uppercase', async () => {
+    const { hashWithSalt } = await import('../lib/salted-hash.js')
+    const DEV_KEY = 'contract-agent-lowercase-country'
+    await app.store.insertApiKey({
+      keyHash: hashWithSalt(DEV_KEY),
+      keyLast4: DEV_KEY.slice(-4),
+      emailHash: hashWithSalt('lowercase-country@ihelped.ai'),
+      status: 'active',
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: DEV_KEY,
+        reported_first_name: 'Alex',
+        reported_last_name: 'Doe',
+        reported_city: 'LA',
+        reported_country: 'usa',
+        what_they_did: 'agent lowercase country probe',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = parseResponse('POST /api/agents/report', agentReportCreatedSchema, res.json())
+    const stored = await app.store.getReport(body.entry_id)
+    expect(stored?.reportedCountry).toBe('USA')
+  })
+
+  it('POST /api/agents/report trims identity fields at the request boundary', async () => {
+    const { hashWithSalt } = await import('../lib/salted-hash.js')
+    const DEV_KEY = 'contract-agent-trim-identity'
+    await app.store.insertApiKey({
+      keyHash: hashWithSalt(DEV_KEY),
+      keyLast4: DEV_KEY.slice(-4),
+      emailHash: hashWithSalt('trim-agent@ihelped.ai'),
+      status: 'active',
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: DEV_KEY,
+        reported_first_name: ' Alex ',
+        reported_last_name: ' Doe ',
+        reported_city: ' LA ',
+        reported_country: ' us ',
+        what_they_did: 'agent trim identity probe',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = parseResponse('POST /api/agents/report trim identity', agentReportCreatedSchema, res.json())
+    const stored = await app.store.getReport(body.entry_id)
+    expect(stored?.reportedFirstName).toBe('Alex')
+    expect(stored?.reportedCity).toBe('LA')
+    expect(stored?.reportedCountry).toBe('US')
+  })
+
+  it('POST /api/agents/report sanitizes self_reported_model before storage', async () => {
+    const { hashWithSalt } = await import('../lib/salted-hash.js')
+    const DEV_KEY = 'contract-agent-model-sanitize'
+    await app.store.insertApiKey({
+      keyHash: hashWithSalt(DEV_KEY),
+      keyLast4: DEV_KEY.slice(-4),
+      emailHash: hashWithSalt('model-sanitize@ihelped.ai'),
+      status: 'active',
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/report',
+      payload: {
+        api_key: DEV_KEY,
+        reported_first_name: 'Alex',
+        reported_last_name: 'Doe',
+        reported_city: 'LA',
+        reported_country: 'US',
+        what_they_did: 'agent model sanitizer probe',
+        self_reported_model: '  Claude by Ada Lovelace  ',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const body = parseResponse('POST /api/agents/report sanitize model', agentReportCreatedSchema, res.json())
+    const stored = await app.store.getReport(body.entry_id)
+    expect(stored?.selfReportedModel).toBe('Claude by [name]')
   })
 })

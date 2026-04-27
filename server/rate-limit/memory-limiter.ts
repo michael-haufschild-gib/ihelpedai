@@ -7,6 +7,19 @@ type Record = {
   expiresAt: number
 }
 
+/** Return true when a caller supplied a nonsensical bucket spec. */
+function hasInvalidBounds(spec: BucketSpec): boolean {
+  return (
+    !Number.isFinite(spec.limit) || spec.limit < 1 || !Number.isFinite(spec.windowSeconds) || spec.windowSeconds <= 0
+  )
+}
+
+/** Seconds until this bucket resets, or null when it is currently usable. */
+function retryAfterFor(existing: Record | undefined, limit: number, now: number): number | null {
+  if (existing === undefined || existing.expiresAt <= now || existing.count < limit) return null
+  return Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
+}
+
 /**
  * In-memory sliding-window-ish rate limiter (fixed window per bucket).
  * Each bucket expires after windowSeconds; the window resets on expiry.
@@ -42,25 +55,19 @@ export class MemoryRateLimiter implements RateLimiter {
     const now = Date.now()
     // First pass: peek at every bucket's current state and decide whether
     // this request would be allowed across all of them. No mutation happens
-    // until the second pass — that is what makes `checkAll` atomic.
+    // until the second pass — that is what makes `checkAll` atomic. When
+    // several buckets deny, return the longest remaining window to match the
+    // Redis script and keep clients from retrying into another denied bucket.
     const previews: { spec: BucketSpec; existing: Record | undefined }[] = []
+    let maxRetryAfter = 0
     for (const spec of specs) {
-      if (
-        !Number.isFinite(spec.limit) ||
-        spec.limit < 1 ||
-        !Number.isFinite(spec.windowSeconds) ||
-        spec.windowSeconds <= 0
-      ) {
-        return { allowed: false, retryAfter: 1 }
-      }
+      if (hasInvalidBounds(spec)) return { allowed: false, retryAfter: 1 }
       const existing = this.store.get(spec.bucket)
-      const expired = existing === undefined || existing.expiresAt <= now
-      if (!expired && existing.count >= spec.limit) {
-        const retryAfter = Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
-        return { allowed: false, retryAfter }
-      }
+      const retryAfter = retryAfterFor(existing, spec.limit, now)
+      if (retryAfter !== null && retryAfter > maxRetryAfter) maxRetryAfter = retryAfter
       previews.push({ spec, existing })
     }
+    if (maxRetryAfter > 0) return { allowed: false, retryAfter: maxRetryAfter }
     // Second pass: every bucket allows, so commit the increments together.
     for (const { spec, existing } of previews) {
       if (existing === undefined || existing.expiresAt <= now) {

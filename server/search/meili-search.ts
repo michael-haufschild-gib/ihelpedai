@@ -1,31 +1,17 @@
 import { MeiliSearch as MeiliClient } from 'meilisearch'
 import type { Index } from 'meilisearch'
 
-import type {
-  PostSearchDoc,
-  ReportSearchDoc,
-  SearchDoc,
-  SearchEntryType,
-  SearchHit,
-  SearchIndex,
-} from './index.js'
+import type { PostSearchDoc, ReportSearchDoc, SearchDoc, SearchEntryType, SearchHit, SearchIndex } from './index.js'
 
 const POSTS_INDEX = 'ihelpedai_posts'
 const REPORTS_INDEX = 'ihelpedai_reports'
 
 const POSTS_SEARCHABLE = ['first_name', 'city', 'country', 'text']
-const REPORTS_SEARCHABLE = [
-  'reported_first_name',
-  'reported_city',
-  'reported_country',
-  'reporter_first_name',
-  'text',
-]
+const REPORTS_SEARCHABLE = ['reported_first_name', 'reported_city', 'reported_country', 'reporter_first_name', 'text']
 
 type IndexUid = typeof POSTS_INDEX | typeof REPORTS_INDEX
 
-const uidFor = (type: SearchEntryType): IndexUid =>
-  type === 'posts' ? POSTS_INDEX : REPORTS_INDEX
+const uidFor = (type: SearchEntryType): IndexUid => (type === 'posts' ? POSTS_INDEX : REPORTS_INDEX)
 
 /** Narrow unknown errors to the shape Meilisearch throws. */
 function isAlreadyExistsError(err: unknown): boolean {
@@ -62,25 +48,22 @@ export class MeiliSearch implements SearchIndex {
       if (!isAlreadyExistsError(err)) throw err
     }
     const index = this.client.index(uid)
-    await index.updateSettings({
-      searchableAttributes: [...searchable],
-      filterableAttributes: ['status', 'source'],
-      sortableAttributes: ['created_at'],
-    }).waitTask()
+    await index
+      .updateSettings({
+        searchableAttributes: [...searchable],
+        filterableAttributes: ['status', 'source'],
+        sortableAttributes: ['created_at', 'id'],
+      })
+      .waitTask()
   }
 
-  async search(
-    type: SearchEntryType,
-    query: string,
-    hitsPerPage: number,
-    page: number,
-  ): Promise<SearchHit> {
+  async search(type: SearchEntryType, query: string, hitsPerPage: number, page: number): Promise<SearchHit> {
     const index: Index<PostSearchDoc | ReportSearchDoc> = this.client.index(uidFor(type))
     const response = await index.search(query, {
       page,
       hitsPerPage,
       filter: 'status = "live"',
-      sort: ['created_at:desc'],
+      sort: ['created_at:desc', 'id:desc'],
       attributesToRetrieve: ['id'],
     })
     const ids = response.hits
@@ -94,9 +77,7 @@ export class MeiliSearch implements SearchIndex {
     // method in its backfill loop — doesn't exit before Meili has actually
     // processed the document.
     const index = this.client.index(uidFor(entry.type))
-    await index
-      .addDocuments([entry.doc as PostSearchDoc | ReportSearchDoc], { primaryKey: 'id' })
-      .waitTask()
+    await index.addDocuments([entry.doc as PostSearchDoc | ReportSearchDoc], { primaryKey: 'id' }).waitTask()
   }
 
   async indexMany(entries: readonly SearchDoc[]): Promise<void> {
@@ -111,16 +92,10 @@ export class MeiliSearch implements SearchIndex {
       else reports.push(entry.doc)
     }
     if (posts.length > 0) {
-      await this.client
-        .index(POSTS_INDEX)
-        .addDocuments(posts, { primaryKey: 'id' })
-        .waitTask()
+      await this.client.index(POSTS_INDEX).addDocuments(posts, { primaryKey: 'id' }).waitTask()
     }
     if (reports.length > 0) {
-      await this.client
-        .index(REPORTS_INDEX)
-        .addDocuments(reports, { primaryKey: 'id' })
-        .waitTask()
+      await this.client.index(REPORTS_INDEX).addDocuments(reports, { primaryKey: 'id' }).waitTask()
     }
   }
 

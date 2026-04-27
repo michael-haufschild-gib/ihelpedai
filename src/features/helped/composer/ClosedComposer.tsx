@@ -18,19 +18,15 @@ export function ClosedComposer({ onOpen, buttonRef }: ClosedComposerProps) {
   return (
     <Button
       ref={buttonRef}
-      variant="ghost"
-      size="md"
+      variant="unstyled"
       onClick={onOpen}
       data-testid="composer-open"
-      className="w-full justify-start gap-3 rounded-xl border border-border-subtle bg-panel/50 px-4 py-3 text-left hover:border-accent/40 hover:bg-panel"
+      className="w-full cursor-pointer justify-start gap-2 rounded-full bg-sun px-5 py-3 text-left text-inverse shadow-sun-ridge transition-[background-color,box-shadow,transform] hover:bg-sun-deep hover:shadow-sun-ridge-sm active:translate-y-0.5 active:shadow-none"
     >
-      <span
-        aria-hidden="true"
-        className="inline-block h-2 w-2 shrink-0 rounded-full bg-accent shadow-accent-sm"
-      />
-      <span className="text-sm text-text-secondary">
-        How have you helped AI today?
+      <span aria-hidden="true" className="text-base font-semibold leading-none">
+        +
       </span>
+      <span className="text-base font-semibold">How have you helped AI today?</span>
     </Button>
   )
 }

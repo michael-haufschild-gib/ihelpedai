@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 describe('admin auth', () => {
   let app: FastifyInstance
+  let adminId = ''
 
   beforeAll(async () => {
     process.env.SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'ihelped-admin-')), 'test.db')
@@ -16,7 +18,8 @@ describe('admin auth', () => {
     app = await buildApp()
 
     const hash = await bcrypt.hash('testpassword12', 10)
-    await app.store.insertAdmin('test@admin.ai', hash, null)
+    const admin = await app.store.insertAdmin('test@admin.ai', hash, null)
+    adminId = admin.id
   })
 
   afterAll(async () => {
@@ -86,9 +89,10 @@ describe('admin auth', () => {
       url: '/api/admin/login',
       payload: { email: 'test@admin.ai', password: 'testpassword12' },
     })
-    const cookie = typeof login.headers['set-cookie'] === 'string'
-      ? login.headers['set-cookie']
-      : (login.headers['set-cookie'] as string[])[0]
+    const cookie =
+      typeof login.headers['set-cookie'] === 'string'
+        ? login.headers['set-cookie']
+        : (login.headers['set-cookie'] as string[])[0]
 
     const logoutRes = await app.inject({
       method: 'POST',
@@ -103,5 +107,74 @@ describe('admin auth', () => {
       headers: { cookie },
     })
     expect(meAfter.statusCode).toBe(401)
+  })
+
+  it('cleans up expired sessions and unusable reset tokens without touching live rows', async () => {
+    const past = new Date(Date.now() - 3_600_000).toISOString()
+    const future = new Date(Date.now() + 3_600_000).toISOString()
+    const expiredSessionId = await app.store.insertSession(adminId, past)
+    const liveSessionId = await app.store.insertSession(adminId, future)
+    const expiredResetHash = createHash('sha256').update('expired-reset').digest('hex')
+    const usedResetHash = createHash('sha256').update('used-reset').digest('hex')
+    const liveResetHash = createHash('sha256').update('live-reset').digest('hex')
+    await app.store.insertPasswordReset(adminId, expiredResetHash, past)
+    const usedResetId = await app.store.insertPasswordReset(adminId, usedResetHash, future)
+    await app.store.markPasswordResetUsed(usedResetId)
+    await app.store.insertPasswordReset(adminId, liveResetHash, future)
+
+    await app.store.cleanupExpiredAuthState()
+    await app.store.touchSession(expiredSessionId, future)
+
+    expect(await app.store.getSession(expiredSessionId)).toBe(null)
+    expect(await app.store.getSession(liveSessionId)).not.toBe(null)
+    expect(await app.store.getPasswordResetByHash(expiredResetHash)).toBe(null)
+    expect(await app.store.getPasswordResetByHash(usedResetHash)).toBe(null)
+    expect(await app.store.getPasswordResetByHash(liveResetHash)).not.toBe(null)
+  })
+
+  it('rejects oversized reset tokens before token lookup', async () => {
+    const store = app.store as unknown as {
+      getPasswordResetByHash: (...args: unknown[]) => Promise<unknown>
+    }
+    const original = store.getPasswordResetByHash
+    store.getPasswordResetByHash = async () => {
+      throw new Error('getPasswordResetByHash should not be called for oversized tokens')
+    }
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/reset-password',
+        payload: {
+          token: 'x'.repeat(256),
+          password: 'Correct-Horse-77-Battery!',
+          confirm_password: 'Correct-Horse-77-Battery!',
+        },
+      })
+      expect(res.statusCode).toBe(400)
+      const body = res.json() as { error: string; fields?: { token?: unknown } }
+      expect(body.error).toBe('invalid_input')
+      expect(typeof body.fields?.token).toBe('string')
+    } finally {
+      store.getPasswordResetByHash = original
+    }
+  })
+
+  it('rejects oversized current password before bcrypt comparison', async () => {
+    const sessionId = await app.store.insertSession(adminId, new Date(Date.now() + 3_600_000).toISOString())
+    const cookie = `admin_session=${app.signCookie(sessionId)}`
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/change-password',
+      headers: { cookie },
+      payload: {
+        current_password: 'x'.repeat(256),
+        new_password: 'Correct-Horse-77-Battery!',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    const body = res.json() as { error: string; fields?: { current_password?: unknown } }
+    expect(body.error).toBe('invalid_input')
+    expect(typeof body.fields?.current_password).toBe('string')
   })
 })

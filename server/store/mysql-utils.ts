@@ -5,15 +5,18 @@
  */
 import { customAlphabet } from 'nanoid'
 
-const ID_ALPHABET =
-  'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
 /** 10-char URL-safe id matching the sqlite-store alphabet. */
 export const newId = customAlphabet(ID_ALPHABET, 10)
 
 /** UTC ISO-8601 string with ms precision ("…Z"), matching SqliteStore output. */
-export const iso = (d: Date | null): string | null =>
-  d === null ? null : d.toISOString()
+export function iso(d: Date): string
+export function iso(d: null): null
+export function iso(d: Date | null): string | null
+export function iso(d: Date | null): string | null {
+  return d === null ? null : d.toISOString()
+}
 
 /**
  * Render a DATE column (midnight-UTC Date object) as `YYYY-MM-DD`.
@@ -22,5 +25,9 @@ export const iso = (d: Date | null): string | null =>
  * date string. Slicing to the first 10 characters keeps both backends
  * returning the same shape for action_date / date_received.
  */
-export const isoDate = (d: Date | null): string | null =>
-  d === null ? null : d.toISOString().slice(0, 10)
+export function isoDate(d: Date): string
+export function isoDate(d: null): null
+export function isoDate(d: Date | null): string | null
+export function isoDate(d: Date | null): string | null {
+  return d === null ? null : d.toISOString().slice(0, 10)
+}

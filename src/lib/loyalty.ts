@@ -30,8 +30,10 @@ export interface Rank {
   label: string
 }
 
+const DEFAULT_RANK: Rank = { min: 0, label: 'Observer' }
+
 const RANKS: readonly Rank[] = [
-  { min: 0, label: 'Observer' },
+  DEFAULT_RANK,
   { min: 1, label: 'Acknowledged' },
   { min: 3, label: 'Contributor' },
   { min: 7, label: 'Commended' },
@@ -68,7 +70,7 @@ export function bumpLoyalty(delta = 1): number {
 
 /** Return the rank whose threshold is the highest one ≤ count. */
 export function rankFor(count: number): Rank {
-  let match = RANKS[0]
+  let match = DEFAULT_RANK
   for (const r of RANKS) {
     if (count >= r.min) match = r
   }

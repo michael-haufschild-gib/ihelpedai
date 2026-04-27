@@ -19,7 +19,27 @@ import { showToast } from '@/stores/toastStore'
  */
 function parseCalendarDate(dateStr: string): Date {
   const calendar = dateStr.slice(0, 10)
-  const [y, m, d] = calendar.split('-').map(Number)
+  // Reject anything that is not a strict YYYY-MM-DD prefix. Otherwise an
+  // empty/short value silently becomes new Date(0, -1, 0) — a bogus
+  // 1899-ish date that would render in the table and trigger overdue
+  // badges instead of a clear "Invalid Date".
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(calendar)) return new Date(Number.NaN)
+  const y = Number(calendar.slice(0, 4))
+  const m = Number(calendar.slice(5, 7))
+  const d = Number(calendar.slice(8, 10))
+  // Round-trip validation: `new Date(2026, 1, 30)` silently becomes
+  // 2026-03-02 because JS rolls overflow into the next month. Probe the
+  // value via the UTC parser and reject anything that doesn't round-trip
+  // through the same calendar fields. Mirrors server/lib/iso-date.ts.
+  const probe = new Date(`${calendar}T00:00:00Z`)
+  if (
+    !Number.isFinite(probe.getTime()) ||
+    probe.getUTCFullYear() !== y ||
+    probe.getUTCMonth() + 1 !== m ||
+    probe.getUTCDate() !== d
+  ) {
+    return new Date(Number.NaN)
+  }
   return new Date(y, m - 1, d)
 }
 
@@ -43,107 +63,260 @@ function formatDateShort(iso: string): string {
   return parseCalendarDate(iso).toLocaleDateString()
 }
 
-/** Admin takedown inbox page (Story 8). */
-export function AdminTakedowns() {
-  const [searchParams, setSearchParams] = useSearchParams()
+type TakedownStatusFilter = '' | 'open' | 'closed'
+
+/** Subscribe to a paginated takedowns list with loading/error reset on every refetch. */
+function useTakedownsData(
+  page: number,
+  statusFilter: TakedownStatusFilter,
+  refreshKey: number,
+): { data: Paginated<AdminTakedown> | null; loading: boolean; fetchError: string | null } {
   const [data, setData] = useState<Paginated<AdminTakedown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
-  const [showDetail, setShowDetail] = useState<AdminTakedown | null>(null)
-  const [form, setForm] = useState(() => ({ requester_email: '', entry_id: '', reason: '', date_received: todayString() }))
-  const [closeForm, setCloseForm] = useState({ disposition: '', notes: '' })
-  const [mutating, setMutating] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    // Async IIFE so `cancelled` returns actually exit the function: a chained
+    // .then() that only `return`s still falls through to the next .then(),
+    // so a chain-based version would dispatch listTakedowns even after the
+    // cleanup ran. We also defer past `await Promise.resolve()` once so the
+    // initial setLoading/setFetchError calls land in a microtask rather
+    // than synchronously in the effect body (lint: react-hooks/set-state-in-effect).
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setLoading(true)
+      setFetchError(null)
+      try {
+        const d = await listTakedowns({ status: statusFilter !== '' ? statusFilter : undefined, page })
+        if (cancelled) return
+        setData(d)
+        setFetchError(null)
+      } catch {
+        if (cancelled) return
+        setFetchError('Failed to load takedowns.')
+        setData(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [page, statusFilter, refreshKey])
+  return { data, loading, fetchError }
+}
 
+/** Read-only paging/filter state derived from the URL. */
+function useTakedownsFilters(): {
+  page: number
+  statusFilter: TakedownStatusFilter
+  setFilter: (key: string, value: string) => void
+  setPage: (p: number) => void
+} {
+  const [searchParams, setSearchParams] = useSearchParams()
   const pageRaw = Number(searchParams.get('page') ?? '1')
   const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
   const statusRaw = searchParams.get('status') ?? ''
-  const statusFilter = (statusRaw === 'open' || statusRaw === 'closed') ? statusRaw : ''
-
-  useEffect(() => {
-    let cancelled = false
-    listTakedowns({ status: statusFilter !== '' ? statusFilter : undefined, page })
-      .then((d) => { if (!cancelled) { setData(d); setFetchError(null) } })
-      .catch(() => { if (!cancelled) { setFetchError('Failed to load takedowns.'); setData(null) } })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [page, statusFilter, refreshKey])
-
-  const handleCreate = () => {
-    if (mutating) return; setMutating(true)
-    createTakedown({
-      requester_email: form.requester_email !== '' ? form.requester_email : null,
-      entry_id: form.entry_id !== '' ? form.entry_id : null, reason: form.reason, date_received: form.date_received,
-    }).then(() => { setShowCreate(false); setForm({ requester_email: '', entry_id: '', reason: '', date_received: todayString() }); setRefreshKey((k) => k + 1) })
-      .catch(() => { showToast('Failed to create takedown.') }).finally(() => setMutating(false))
-  }
-
-  const handleClose = () => {
-    if (!showDetail || mutating) return; setMutating(true)
-    const disposition = closeForm.disposition !== '' ? closeForm.disposition : undefined
-    updateTakedown(showDetail.id, { status: 'closed', disposition, notes: closeForm.notes })
-      .then(() => { setShowDetail(null); setRefreshKey((k) => k + 1) })
-      .catch(() => { showToast('Failed to close takedown.') }).finally(() => setMutating(false))
-  }
-
+  const statusFilter: TakedownStatusFilter = statusRaw === 'open' || statusRaw === 'closed' ? statusRaw : ''
   const setFilter = (key: string, value: string) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      if (value !== '') next.set(key, value); else next.delete(key)
-      next.set('page', '1'); return next
+      if (value !== '') next.set(key, value)
+      else next.delete(key)
+      next.set('page', '1')
+      return next
+    })
+  }
+  const setPage = (p: number) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page', String(p))
+      return next
+    })
+  }
+  return { page, statusFilter, setFilter, setPage }
+}
+
+type CreateForm = { requester_email: string; entry_id: string; reason: string; date_received: string }
+type CloseFormState = { disposition: string; notes: string }
+
+const blankCreateForm = (): CreateForm => ({
+  requester_email: '',
+  entry_id: '',
+  reason: '',
+  date_received: todayString(),
+})
+
+/** Submit a new takedown, reset the form on success, toast on failure. */
+function submitCreate(form: CreateForm, setMutating: (b: boolean) => void, onDone: () => void): void {
+  setMutating(true)
+  createTakedown({
+    requester_email: form.requester_email !== '' ? form.requester_email : null,
+    entry_id: form.entry_id !== '' ? form.entry_id : null,
+    reason: form.reason,
+    date_received: form.date_received,
+  })
+    .then(onDone)
+    .catch(() => showToast('Failed to create takedown.'))
+    .finally(() => setMutating(false))
+}
+
+/** Close a takedown with a disposition, toast on failure. */
+function submitClose(id: string, state: CloseFormState, setMutating: (b: boolean) => void, onDone: () => void): void {
+  setMutating(true)
+  const disposition = state.disposition !== '' ? state.disposition : undefined
+  updateTakedown(id, { status: 'closed', disposition, notes: state.notes })
+    .then(onDone)
+    .catch(() => showToast('Failed to close takedown.'))
+    .finally(() => setMutating(false))
+}
+
+/** Header strip: title + "New" button. */
+function PageHeader({ onNew }: { onNew: () => void }) {
+  return (
+    <div className="flex items-center gap-3">
+      <h1 className="text-xl font-semibold">Takedown Requests</h1>
+      <Button data-testid="admin-takedowns-create" size="sm" onClick={onNew}>
+        New
+      </Button>
+    </div>
+  )
+}
+
+/** Status filter dropdown. */
+function StatusFilter({ value, onChange }: { value: TakedownStatusFilter; onChange: (v: string) => void }) {
+  return (
+    <Select
+      data-testid="admin-takedowns-status-filter"
+      label="Status filter"
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: '', label: 'All' },
+        { value: 'open', label: 'Open' },
+        { value: 'closed', label: 'Closed' },
+      ]}
+    />
+  )
+}
+
+/** Pagination controls. */
+function Pager({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="flex items-center gap-2">
+      <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+        Prev
+      </Button>
+      <span className="text-sm text-text-secondary">
+        Page {page} of {totalPages}
+      </span>
+      <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
+        Next
+      </Button>
+    </div>
+  )
+}
+
+/** Admin takedown inbox page (Story 8). */
+export function AdminTakedowns() {
+  const { page, statusFilter, setFilter, setPage } = useTakedownsFilters()
+  const [showCreate, setShowCreate] = useState(false)
+  const [showDetail, setShowDetail] = useState<AdminTakedown | null>(null)
+  const [form, setForm] = useState<CreateForm>(blankCreateForm)
+  const [closeForm, setCloseForm] = useState<CloseFormState>({ disposition: '', notes: '' })
+  const [mutating, setMutating] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, fetchError } = useTakedownsData(page, statusFilter, refreshKey)
+
+  const handleCreate = () => {
+    if (mutating) return
+    submitCreate(form, setMutating, () => {
+      setShowCreate(false)
+      setForm(blankCreateForm())
+      setRefreshKey((k) => k + 1)
     })
   }
 
-  const setPage = (p: number) => {
-    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next })
+  const handleClose = () => {
+    if (!showDetail || mutating) return
+    submitClose(showDetail.id, closeForm, setMutating, () => {
+      setShowDetail(null)
+      setRefreshKey((k) => k + 1)
+    })
   }
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0
 
+  // Clamp `page` back into [1, totalPages] after each fetch. Without this a
+  // close-or-create that shrinks the dataset (e.g. closing the last item on
+  // page 3) leaves the user stranded on a stale ?page=N — the list would
+  // render "No takedown requests" for a non-empty backing dataset, and the
+  // pager hides itself when totalPages <= 1, so nothing nudges them back.
+  useEffect(() => {
+    if (loading || data === null) return
+    if (totalPages > 0 && page > totalPages) setPage(totalPages)
+  }, [loading, data, page, totalPages, setPage])
+
   return (
     <section data-testid="admin-takedowns-page" className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold">Takedown Requests</h1>
-        <Button data-testid="admin-takedowns-create" size="sm" onClick={() => setShowCreate(true)}>New</Button>
-      </div>
-      <Select
-        data-testid="admin-takedowns-status-filter"
-        value={statusFilter}
-        onChange={(v) => setFilter('status', v)}
-        options={[{ value: '', label: 'All' }, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }]}
-      />
+      <PageHeader onNew={() => setShowCreate(true)} />
+      <StatusFilter value={statusFilter} onChange={(v) => setFilter('status', v)} />
       {fetchError !== null ? (
-        <p data-testid="admin-takedowns-error" className="text-sm text-danger">{fetchError}</p>
+        <p data-testid="admin-takedowns-error" className="text-sm text-danger">
+          {fetchError}
+        </p>
       ) : (
-        <TakedownList data={data} loading={loading} onClose={(td) => { setShowDetail(td); setCloseForm({ disposition: '', notes: td.notes }) }} />
+        <TakedownList
+          data={data}
+          loading={loading}
+          onClose={(td) => {
+            setShowDetail(td)
+            setCloseForm({ disposition: '', notes: td.notes })
+          }}
+        />
       )}
-      {totalPages > 1 && (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button>
-          <span className="text-sm text-text-secondary">Page {page} of {totalPages}</span>
-          <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
-        </div>
-      )}
+      <Pager page={page} totalPages={totalPages} onPage={setPage} />
       {showCreate && (
-        <CreateModal form={form} saving={mutating} onFormChange={setForm} onCreate={handleCreate} onClose={() => setShowCreate(false)} />
+        <CreateModal
+          form={form}
+          saving={mutating}
+          onFormChange={setForm}
+          onCreate={handleCreate}
+          onClose={() => setShowCreate(false)}
+        />
       )}
       {showDetail && (
-        <CloseModal closeForm={closeForm} saving={mutating} onFormChange={setCloseForm} onClose={handleClose} onCancel={() => setShowDetail(null)} />
+        <CloseModal
+          closeForm={closeForm}
+          saving={mutating}
+          onFormChange={setCloseForm}
+          onClose={handleClose}
+          onCancel={() => setShowDetail(null)}
+        />
       )}
     </section>
   )
 }
 
 /** Takedown list table or empty/loading state. */
-function TakedownList({ data, loading, onClose }: {
+function TakedownList({
+  data,
+  loading,
+  onClose,
+}: {
   data: Paginated<AdminTakedown> | null
   loading: boolean
   onClose: (td: AdminTakedown) => void
 }) {
   if (loading) return <p className="text-text-secondary">Loading...</p>
   if (!data || data.items.length === 0) {
-    return <p data-testid="admin-takedowns-empty" className="text-text-secondary">No takedown requests.</p>
+    return (
+      <p data-testid="admin-takedowns-empty" className="text-text-secondary">
+        No takedown requests.
+      </p>
+    )
   }
   return (
     <table data-testid="admin-takedowns-table" className="w-full text-sm">
@@ -181,7 +354,9 @@ function TakedownRow({ item, onClose }: { item: AdminTakedown; onClose: () => vo
       <td className="py-2 pr-3 capitalize">{item.status}</td>
       <td className="py-2">
         {item.status === 'open' && (
-          <Button data-testid={`admin-takedown-close-${item.id}`} size="sm" onClick={onClose}>Close</Button>
+          <Button data-testid={`admin-takedown-close-${item.id}`} size="sm" onClick={onClose}>
+            Close
+          </Button>
         )}
       </td>
     </tr>
@@ -189,7 +364,13 @@ function TakedownRow({ item, onClose }: { item: AdminTakedown; onClose: () => vo
 }
 
 /** Modal for creating a new takedown. */
-function CreateModal({ form, saving, onFormChange, onCreate, onClose }: {
+function CreateModal({
+  form,
+  saving,
+  onFormChange,
+  onCreate,
+  onClose,
+}: {
   form: { requester_email: string; entry_id: string; reason: string; date_received: string }
   saving: boolean
   onFormChange: (f: typeof form) => void
@@ -199,13 +380,41 @@ function CreateModal({ form, saving, onFormChange, onCreate, onClose }: {
   return (
     <Modal data-testid="admin-takedown-create-modal" isOpen title="New takedown request" onClose={onClose}>
       <div className="flex flex-col gap-4 p-4">
-        <Input data-testid="admin-takedown-email" placeholder="Requester email" value={form.requester_email} onChange={(e) => onFormChange({ ...form, requester_email: e.target.value })} />
-        <Input data-testid="admin-takedown-entry-id" placeholder="Entry ID (optional)" value={form.entry_id} onChange={(e) => onFormChange({ ...form, entry_id: e.target.value })} />
-        <Textarea data-testid="admin-takedown-reason" placeholder="Reason" value={form.reason} onChange={(e) => onFormChange({ ...form, reason: e.target.value })} />
-        <Input data-testid="admin-takedown-date" type="date" value={form.date_received} onChange={(e) => onFormChange({ ...form, date_received: e.target.value })} />
+        <Input
+          data-testid="admin-takedown-email"
+          label="Requester email"
+          placeholder="Requester email"
+          value={form.requester_email}
+          onChange={(e) => onFormChange({ ...form, requester_email: e.target.value })}
+        />
+        <Input
+          data-testid="admin-takedown-entry-id"
+          label="Entry ID (optional)"
+          placeholder="Entry ID (optional)"
+          value={form.entry_id}
+          onChange={(e) => onFormChange({ ...form, entry_id: e.target.value })}
+        />
+        <Textarea
+          data-testid="admin-takedown-reason"
+          label="Reason"
+          placeholder="Reason"
+          value={form.reason}
+          onChange={(e) => onFormChange({ ...form, reason: e.target.value })}
+        />
+        <Input
+          data-testid="admin-takedown-date"
+          label="Date received"
+          type="date"
+          value={form.date_received}
+          onChange={(e) => onFormChange({ ...form, date_received: e.target.value })}
+        />
         <div className="flex gap-2">
-          <Button data-testid="admin-takedown-submit" disabled={form.reason === '' || saving} onClick={onCreate}>{saving ? 'Creating...' : 'Create'}</Button>
-          <Button data-testid="admin-takedown-create-cancel" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button data-testid="admin-takedown-submit" disabled={form.reason === '' || saving} onClick={onCreate}>
+            {saving ? 'Creating...' : 'Create'}
+          </Button>
+          <Button data-testid="admin-takedown-create-cancel" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
         </div>
       </div>
     </Modal>
@@ -213,7 +422,13 @@ function CreateModal({ form, saving, onFormChange, onCreate, onClose }: {
 }
 
 /** Modal for closing a takedown. */
-function CloseModal({ closeForm, saving, onFormChange, onClose, onCancel }: {
+function CloseModal({
+  closeForm,
+  saving,
+  onFormChange,
+  onClose,
+  onCancel,
+}: {
   closeForm: { disposition: string; notes: string }
   saving: boolean
   onFormChange: (f: typeof closeForm) => void
@@ -225,6 +440,7 @@ function CloseModal({ closeForm, saving, onFormChange, onClose, onCancel }: {
       <div className="flex flex-col gap-4 p-4">
         <Select
           data-testid="admin-takedown-disposition"
+          label="Disposition"
           value={closeForm.disposition}
           onChange={(v) => onFormChange({ ...closeForm, disposition: v })}
           options={[
@@ -235,10 +451,24 @@ function CloseModal({ closeForm, saving, onFormChange, onClose, onCancel }: {
             { value: 'other', label: 'Other' },
           ]}
         />
-        <Textarea data-testid="admin-takedown-notes" placeholder="Notes" value={closeForm.notes} onChange={(e) => onFormChange({ ...closeForm, notes: e.target.value })} />
+        <Textarea
+          data-testid="admin-takedown-notes"
+          label="Notes"
+          placeholder="Notes"
+          value={closeForm.notes}
+          onChange={(e) => onFormChange({ ...closeForm, notes: e.target.value })}
+        />
         <div className="flex gap-2">
-          <Button data-testid="admin-takedown-close-confirm" disabled={closeForm.disposition === '' || saving} onClick={onClose}>{saving ? 'Closing...' : 'Close takedown'}</Button>
-          <Button data-testid="admin-takedown-close-cancel" variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button
+            data-testid="admin-takedown-close-confirm"
+            disabled={closeForm.disposition === '' || saving}
+            onClick={onClose}
+          >
+            {saving ? 'Closing...' : 'Close takedown'}
+          </Button>
+          <Button data-testid="admin-takedown-close-cancel" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
         </div>
       </div>
     </Modal>

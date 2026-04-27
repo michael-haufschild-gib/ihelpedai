@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS posts (
   city            TEXT NOT NULL,
   country         TEXT NOT NULL,
   text            TEXT NOT NULL,
-  status          TEXT NOT NULL DEFAULT 'live',
-  source          TEXT NOT NULL DEFAULT 'form',
+  status          TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'pending', 'deleted')),
+  source          TEXT NOT NULL DEFAULT 'form' CHECK (source IN ('form', 'api')),
   client_ip_hash  TEXT,
   like_count      INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -28,10 +28,10 @@ CREATE TABLE IF NOT EXISTS reports (
   reported_country      TEXT NOT NULL,
   text                  TEXT NOT NULL,
   action_date           TEXT,
-  severity              INTEGER,
+  severity              INTEGER CHECK (severity IS NULL OR (severity BETWEEN 1 AND 10)),
   self_reported_model   TEXT,
-  status                TEXT NOT NULL DEFAULT 'live',
-  source                TEXT NOT NULL DEFAULT 'form',
+  status                TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'pending', 'deleted')),
+  source                TEXT NOT NULL DEFAULT 'form' CHECK (source IN ('form', 'api')),
   client_ip_hash        TEXT,
   api_key_hash          TEXT,
   dislike_count         INTEGER NOT NULL DEFAULT 0,
@@ -46,8 +46,9 @@ CREATE INDEX IF NOT EXISTS idx_reports_status     ON reports (status);
 CREATE TABLE IF NOT EXISTS agent_keys (
   id            TEXT PRIMARY KEY,
   key_hash      TEXT NOT NULL UNIQUE,
+  key_last4     TEXT NOT NULL,
   email_hash    TEXT NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'active',
+  status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
   issued_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   last_used_at  TEXT,
   usage_count   INTEGER NOT NULL DEFAULT 0
@@ -73,7 +74,7 @@ CREATE TABLE IF NOT EXISTS admins (
   id             TEXT PRIMARY KEY,
   email          TEXT NOT NULL UNIQUE,
   password_hash  TEXT NOT NULL,
-  status         TEXT NOT NULL DEFAULT 'active',
+  status         TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'deactivated')),
   created_by     TEXT,
   last_login_at  TEXT,
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -99,6 +100,7 @@ CREATE TABLE IF NOT EXISTS password_resets (
 );
 
 CREATE INDEX IF NOT EXISTS idx_password_resets_token_hash ON password_resets (token_hash);
+CREATE INDEX IF NOT EXISTS idx_password_resets_expires_at ON password_resets (expires_at);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
@@ -112,16 +114,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_admin_id   ON audit_log (admin_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_target     ON audit_log (target_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS takedowns (
   id              TEXT PRIMARY KEY,
   requester_email TEXT,
   entry_id        TEXT,
-  entry_kind      TEXT,
+  entry_kind      TEXT CHECK (entry_kind IS NULL OR entry_kind IN ('post', 'report')),
   reason          TEXT NOT NULL,
   notes           TEXT NOT NULL DEFAULT '',
-  status          TEXT NOT NULL DEFAULT 'open',
-  disposition     TEXT,
+  status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  disposition     TEXT CHECK (disposition IS NULL OR disposition IN ('entry_deleted', 'entry_kept', 'entry_edited', 'other')),
   closed_by       TEXT REFERENCES admins(id),
   date_received   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),

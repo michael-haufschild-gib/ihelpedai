@@ -20,7 +20,10 @@ const apiModule = await import('@/lib/api')
 const mockedCreate = vi.mocked(apiModule.createHelpedPost)
 
 /** Wait for the 80ms autofocus timer in FeedComposer to complete. */
-const waitForAutoFocus = (): Promise<void> => new Promise((r) => { setTimeout(r, 100) })
+const waitForAutoFocus = (): Promise<void> =>
+  new Promise((r) => {
+    setTimeout(r, 100)
+  })
 
 async function openAndFill(
   user: ReturnType<typeof userEvent.setup>,
@@ -76,9 +79,7 @@ describe('FeedComposer', () => {
     await openAndFill(user)
     await user.click(screen.getByTestId('composer-preview'))
 
-    expect(screen.getByTestId('preview-card-header')).toHaveTextContent(
-      'Sam from San Francisco, United States',
-    )
+    expect(screen.getByTestId('preview-card-header')).toHaveTextContent('Sam from San Francisco, United States')
 
     await user.click(screen.getByTestId('composer-post'))
     expect(mockedCreate).toHaveBeenCalledWith({
@@ -106,6 +107,7 @@ describe('FeedComposer', () => {
       city: '  San Francisco  ',
     })
     await user.click(screen.getByTestId('composer-preview'))
+    expect(screen.getByTestId('preview-card-header')).toHaveTextContent('Sam from San Francisco, United States')
     await user.click(screen.getByTestId('composer-post'))
     expect(mockedCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -130,9 +132,7 @@ describe('FeedComposer', () => {
     render(<FeedComposer />)
     await openAndFill(user, { text: 'Sam Altman mentioned me in his keynote' })
     await user.click(screen.getByTestId('composer-preview'))
-    expect(screen.getByTestId('preview-card-text')).toHaveTextContent(
-      '[name] mentioned me in his keynote',
-    )
+    expect(screen.getByTestId('preview-card-text')).toHaveTextContent('[name] mentioned me in his keynote')
   })
 
   it('over-redacted content disables Post and shows the warning', async () => {
@@ -140,9 +140,7 @@ describe('FeedComposer', () => {
     render(<FeedComposer />)
     await openAndFill(user, { text: 'John Smith Mary Jones' })
     await user.click(screen.getByTestId('composer-preview'))
-    expect(screen.getByTestId('composer-over-redacted')).toHaveTextContent(
-      /Most of what you wrote was redacted/,
-    )
+    expect(screen.getByTestId('composer-over-redacted')).toHaveTextContent(/Most of what you wrote was redacted/)
     expect(screen.getByTestId('composer-post')).toBeDisabled()
   })
 
@@ -225,9 +223,7 @@ describe('FeedComposer', () => {
     await user.click(screen.getByTestId('composer-preview'))
     await user.click(screen.getByTestId('composer-post'))
     await waitFor(() => {
-      expect(screen.getByTestId('composer-submit-error')).toHaveTextContent(
-        /too fast/i,
-      )
+      expect(screen.getByTestId('composer-submit-error')).toHaveTextContent(/too fast/i)
     })
     expect(screen.getByTestId('composer-post')).toHaveTextContent('Retry')
   })

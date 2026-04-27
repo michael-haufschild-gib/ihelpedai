@@ -20,10 +20,7 @@ describe('admin takedowns routes', () => {
   let cookie: string
 
   beforeAll(async () => {
-    process.env.SQLITE_PATH = join(
-      mkdtempSync(join(tmpdir(), 'ihelped-admin-takedowns-')),
-      'test.db',
-    )
+    process.env.SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'ihelped-admin-takedowns-')), 'test.db')
     const { buildApp } = await import('../index.js')
     app = await buildApp()
     const hash = await bcrypt.hash('testpassword12', 10)
@@ -35,7 +32,8 @@ describe('admin takedowns routes', () => {
     })
     expect(login.statusCode).toBe(200)
     const raw = login.headers['set-cookie']
-    cookie = typeof raw === 'string' ? raw : (raw as string[])[0]
+    cookie = typeof raw === 'string' ? raw : ((raw as string[])[0] ?? '')
+    expect(cookie).not.toBe('')
   })
 
   afterAll(async () => {
@@ -77,6 +75,118 @@ describe('admin takedowns routes', () => {
     expect(audits.some((a) => a.action === 'create_takedown')).toBe(true)
   })
 
+  it('POST infers entry_kind from entry_id when the UI submits an entry reference', async () => {
+    const post = await app.store.insertPost({
+      firstName: 'Target',
+      city: 'Oslo',
+      country: 'NO',
+      text: 'referenced by takedown',
+      clientIpHash: null,
+      source: 'form',
+    })
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/admin/takedowns',
+      headers: { cookie },
+      payload: {
+        entry_id: post.id,
+        reason: 'Entry reference should be canonical.',
+        date_received: '2026-04-24',
+      },
+    })
+    expect(create.statusCode).toBe(201)
+    const body = create.json() as { entryId: string | null; entryKind: string | null }
+    expect(body.entryId).toBe(post.id)
+    expect(body.entryKind).toBe('post')
+  })
+
+  it('POST rejects partial, missing, and mismatched entry references', async () => {
+    const post = await app.store.insertPost({
+      firstName: 'Mismatch',
+      city: 'Paris',
+      country: 'FR',
+      text: 'kind mismatch target',
+      clientIpHash: null,
+      source: 'form',
+    })
+
+    const kindWithoutId = await app.inject({
+      method: 'POST',
+      url: '/api/admin/takedowns',
+      headers: { cookie },
+      payload: {
+        entry_kind: 'post',
+        reason: 'Missing id.',
+        date_received: '2026-04-25',
+      },
+    })
+    expect(kindWithoutId.statusCode).toBe(400)
+    expect(kindWithoutId.json()).toMatchObject({
+      error: 'invalid_input',
+      fields: { entry_id: 'entry_id_required' },
+    })
+
+    const unknownId = await app.inject({
+      method: 'POST',
+      url: '/api/admin/takedowns',
+      headers: { cookie },
+      payload: {
+        entry_id: 'missing-entry',
+        reason: 'Unknown id.',
+        date_received: '2026-04-25',
+      },
+    })
+    expect(unknownId.statusCode).toBe(400)
+    expect(unknownId.json()).toMatchObject({
+      error: 'invalid_input',
+      fields: { entry_id: 'entry_not_found' },
+    })
+
+    const mismatchedKind = await app.inject({
+      method: 'POST',
+      url: '/api/admin/takedowns',
+      headers: { cookie },
+      payload: {
+        entry_id: post.id,
+        entry_kind: 'report',
+        reason: 'Wrong kind.',
+        date_received: '2026-04-25',
+      },
+    })
+    expect(mismatchedKind.statusCode).toBe(400)
+    expect(mismatchedKind.json()).toMatchObject({
+      error: 'invalid_input',
+      fields: { entry_kind: 'entry_kind_mismatch' },
+    })
+  })
+
+  it('sanitizes takedown reason and notes before storage', async () => {
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/admin/takedowns',
+      headers: { cookie },
+      payload: {
+        reason: 'Ada Lovelace emailed victim@example.com',
+        date_received: '2026-04-23',
+      },
+    })
+    expect(create.statusCode).toBe(201)
+    const created = create.json() as { id: string; reason: string }
+    expect(created.reason).toBe('[name] emailed [email]')
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/takedowns/${created.id}`,
+      headers: { cookie },
+      payload: {
+        notes: 'Call +1 415-555-2671 about Ada Lovelace',
+      },
+    })
+    expect(patch.statusCode).toBe(200)
+    expect((patch.json() as { notes: string }).notes).toBe('Call [phone] about [name]')
+  })
+
   it('POST rejects Feb 30 as an invalid_date', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -92,11 +202,11 @@ describe('admin takedowns routes', () => {
     expect(res.statusCode).toBe(400)
     const body = res.json() as { error: string; fields?: { date_received?: unknown } }
     expect(body.error).toBe('invalid_input')
-    // date_received failure from Zod + refine arrives as a non-empty string
-    // array on the flattened fieldErrors envelope. Assert the specific shape
-    // so a regression (eg fields: {}) doesn't pass silently.
-    expect(Array.isArray(body.fields?.date_received)).toBe(true)
-    expect((body.fields?.date_received as string[]).length).toBeGreaterThan(0)
+    // Manual safeParse routes must match the public error envelope:
+    // `{ fields: { field: "message" } }`, not Zod's array-shaped
+    // `flatten().fieldErrors`.
+    expect(typeof body.fields?.date_received).toBe('string')
+    expect(body.fields?.date_received).not.toBe('')
   })
 
   it('PATCH with status=closed sets closedBy; re-open clears it', async () => {

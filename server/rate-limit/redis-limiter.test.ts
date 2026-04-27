@@ -15,8 +15,7 @@ interface FakeClient {
 
 vi.mock('ioredis', () => {
   class FakeRedis implements FakeClient {
-    public evalImpl: () => Promise<EvalReply> = () =>
-      Promise.resolve([1, 0] as EvalReply)
+    public evalImpl: () => Promise<EvalReply> = () => Promise.resolve([1, 0] as EvalReply)
 
     constructor(_url: string, _opts: unknown) {
       // No-op: tests own eval behaviour via evalImpl.
@@ -116,8 +115,21 @@ describe('RedisRateLimiter outage semantics', () => {
       called += 1
       return Promise.resolve([1, 0])
     }
+    const decision = await limiter.checkAll([{ bucket: 'x', limit: Number.NaN, windowSeconds: 60 }])
+    expect(decision).toEqual({ allowed: false, retryAfter: 1 })
+    expect(called).toBe(0)
+  })
+
+  it('rejects duplicate bucket specs before touching Redis', async () => {
+    const fake = (limiter as unknown as { client: FakeClient }).client
+    let called = 0
+    fake.evalImpl = () => {
+      called += 1
+      return Promise.resolve([1, 0])
+    }
     const decision = await limiter.checkAll([
-      { bucket: 'x', limit: Number.NaN, windowSeconds: 60 },
+      { bucket: 'same', limit: 2, windowSeconds: 60 },
+      { bucket: 'same', limit: 2, windowSeconds: 60 },
     ])
     expect(decision).toEqual({ allowed: false, retryAfter: 1 })
     expect(called).toBe(0)

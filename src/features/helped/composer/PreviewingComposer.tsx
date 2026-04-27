@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { PreviewCard } from '@/features/helped/PreviewCard'
-import type { HelpedFormValues } from '@/features/helped/form/validators'
+import { trimHelpedValues, type HelpedFormValues } from '@/features/helped/form/validators'
 
 /** Props for the previewing-mode composer body. */
 export interface PreviewingComposerProps {
@@ -24,19 +24,17 @@ export function PreviewingComposer({
   onPost,
 }: PreviewingComposerProps) {
   const disabled = submitting || overRedacted
+  const previewValues = trimHelpedValues(values)
   return (
     <div className="flex flex-col gap-3">
       <PreviewCard
-        firstName={values.first_name}
-        city={values.city}
-        country={values.country}
+        firstName={previewValues.first_name}
+        city={previewValues.city}
+        country={previewValues.country}
         text={sanitizedText}
       />
       {overRedacted && (
-        <p
-          data-testid="composer-over-redacted"
-          className="text-sm text-warning"
-        >
+        <p data-testid="composer-over-redacted" className="text-sm text-warning">
           Most of what you wrote was redacted. Edit and re-preview.
         </p>
       )}
@@ -46,13 +44,7 @@ export function PreviewingComposer({
         </p>
       )}
       <div className="flex justify-end gap-3">
-        <Button
-          variant="secondary"
-          size="md"
-          disabled={submitting}
-          onClick={onEdit}
-          data-testid="composer-edit"
-        >
+        <Button variant="secondary" size="md" disabled={submitting} onClick={onEdit} data-testid="composer-edit">
           Edit
         </Button>
         <Button

@@ -80,9 +80,10 @@ export type VoteToggleResult = {
   voted: boolean
 }
 
-/** New API key record. `keyHash` is sha256 of the plain key; plain key never stored. */
+/** New API key record. Plain key never stored; only its verifier hash and suffix. */
 export type NewApiKey = {
   keyHash: string
+  keyLast4: string
   emailHash: string
   status: 'active' | 'revoked'
 }
@@ -91,6 +92,7 @@ export type NewApiKey = {
 export type ApiKey = {
   id: string
   keyHash: string
+  keyLast4: string
   emailHash: string
   status: 'active' | 'revoked'
   issuedAt: string
@@ -151,18 +153,39 @@ export type AuditEntry = {
 /** Audit log entry with admin email for display. */
 export type AuditEntryWithEmail = AuditEntry & { adminEmail: string | null }
 
+/** Audit payload recorded with an admin state mutation. */
+export type AdminAuditInput = {
+  adminId: string | null
+  action: string
+  targetId: string | null
+  targetKind: string | null
+  details: string | null
+}
+
+/** Result of creating an invited admin and its reset token atomically. */
+export type AdminInviteResult = { admin: Admin; resetId: string }
+
+/** Optional side effects that belong to an audited password update. */
+export type AdminPasswordAuditOptions = {
+  resetId?: string
+  exceptSessionId?: string
+}
+
 /** Takedown request statuses. */
 export type TakedownStatus = 'open' | 'closed'
 
 /** Takedown disposition values. */
 export type TakedownDisposition = 'entry_deleted' | 'entry_kept' | 'entry_edited' | 'other'
 
+/** Entry kind a takedown may reference. */
+export type TakedownEntryKind = 'post' | 'report'
+
 /** Stored takedown request. */
 export type Takedown = {
   id: string
   requesterEmail: string | null
   entryId: string | null
-  entryKind: string | null
+  entryKind: TakedownEntryKind | null
   reason: string
   notes: string
   status: TakedownStatus
@@ -177,7 +200,7 @@ export type Takedown = {
 export type NewTakedown = {
   requesterEmail: string | null
   entryId: string | null
-  entryKind: string | null
+  entryKind: TakedownEntryKind | null
   reason: string
   dateReceived: string
 }
@@ -285,12 +308,7 @@ export interface Store {
    * List reports in reverse-chronological order, optionally filtered.
    * sourceFilter narrows to form-only or api-only submissions.
    */
-  listReports(
-    limit: number,
-    offset: number,
-    query?: string,
-    sourceFilter?: ReportSourceFilter,
-  ): Promise<Report[]>
+  listReports(limit: number, offset: number, query?: string, sourceFilter?: ReportSourceFilter): Promise<Report[]>
 
   /** List reports submitted via the agent API. */
   listAgentReports(limit: number, offset: number): Promise<Report[]>
@@ -316,7 +334,10 @@ export interface Store {
   countEntries(table: CountableTable, status?: EntryStatus): Promise<number>
 
   /** Count rows with the same filters as the list endpoints (query + source). */
-  countFilteredEntries(table: 'posts' | 'reports', opts?: { query?: string; source?: ReportSourceFilter; status?: EntryStatus }): Promise<number>
+  countFilteredEntries(
+    table: 'posts' | 'reports',
+    opts?: { query?: string; source?: ReportSourceFilter; status?: EntryStatus },
+  ): Promise<number>
 
   /**
    * Toggle an IP's vote on an entry. If the vote exists it is removed and
@@ -324,22 +345,14 @@ export interface Store {
    * counter increments. Transactional. Returns the final count and voted state.
    * Resolves to `null` when the target entry is missing or not `live`.
    */
-  toggleVote(
-    entryId: string,
-    entryKind: VoteKind,
-    ipHash: string,
-  ): Promise<VoteToggleResult | null>
+  toggleVote(entryId: string, entryKind: VoteKind, ipHash: string): Promise<VoteToggleResult | null>
 
   /**
    * Return the subset of `entryIds` that this ip_hash has already voted on
    * for the given entry_kind. Used by the client to hydrate vote state across
    * a feed page load without N+1 calls.
    */
-  getVotedEntryIds(
-    ipHash: string,
-    entryKind: VoteKind,
-    entryIds: readonly string[],
-  ): Promise<readonly string[]>
+  getVotedEntryIds(ipHash: string, entryKind: VoteKind, entryIds: readonly string[]): Promise<readonly string[]>
 
   /* ---------------------------------------------------------------- */
   /* Admin methods (PRD 02).                                          */
@@ -362,6 +375,13 @@ export interface Store {
 
   /** Update an admin's password hash. */
   updateAdminPassword(id: string, passwordHash: string): Promise<void>
+
+  updateAdminPasswordWithAudit(
+    id: string,
+    passwordHash: string,
+    audit: AdminAuditInput,
+    opts?: AdminPasswordAuditOptions,
+  ): Promise<void>
 
   /** Record a login timestamp. */
   updateAdminLastLogin(id: string): Promise<void>
@@ -390,6 +410,22 @@ export interface Store {
   /** Mark a password reset as used. */
   markPasswordResetUsed(id: string): Promise<void>
 
+  /** Delete expired sessions and unusable password reset tokens. */
+  cleanupExpiredAuthState(): Promise<void>
+
+  insertAdminInviteWithAudit(
+    email: string,
+    passwordHash: string,
+    createdBy: string | null,
+    tokenHash: string,
+    expiresAt: string,
+  ): Promise<AdminInviteResult>
+
+  /** Delete admin/reset/audit rows created for an invite whose email failed. */
+  deleteFailedAdminInvite(adminId: string, resetId: string): Promise<void>
+
+  deactivateAdminWithAudit(id: string, audit: AdminAuditInput): Promise<void>
+
   /** Insert an audit log entry. */
   insertAuditEntry(
     adminId: string | null,
@@ -400,11 +436,7 @@ export interface Store {
   ): Promise<void>
 
   /** List audit log entries, newest first. */
-  listAuditLog(
-    limit: number,
-    offset: number,
-    filters?: AuditLogFilter,
-  ): Promise<AuditEntryWithEmail[]>
+  listAuditLog(limit: number, offset: number, filters?: AuditLogFilter): Promise<AuditEntryWithEmail[]>
 
   /** Count total audit log entries matching filters. */
   countAuditLog(filters?: AuditLogFilter): Promise<number>
@@ -428,21 +460,28 @@ export interface Store {
   /** Update an entry's status (soft delete, restore, etc). */
   updateEntryStatus(id: string, entryType: 'post' | 'report', status: EntryStatus): Promise<void>
 
+  updateEntryStatusWithAudit(
+    id: string,
+    entryType: 'post' | 'report',
+    status: EntryStatus,
+    audit: AdminAuditInput,
+  ): Promise<void>
+
   /** Hard-delete an entry permanently. */
   purgeEntry(id: string, entryType: 'post' | 'report'): Promise<void>
 
+  purgeEntryWithAudit(id: string, entryType: 'post' | 'report', audit: AdminAuditInput): Promise<void>
+
   /** List API keys for admin view. */
-  listApiKeys(
-    limit: number,
-    offset: number,
-    statusFilter?: 'active' | 'revoked',
-  ): Promise<AdminApiKey[]>
+  listApiKeys(limit: number, offset: number, statusFilter?: 'active' | 'revoked'): Promise<AdminApiKey[]>
 
   /** Count API keys matching filter. */
   countApiKeys(statusFilter?: 'active' | 'revoked'): Promise<number>
 
   /** Revoke an API key by id. */
   revokeApiKey(id: string): Promise<void>
+
+  revokeApiKeyWithAudit(id: string, audit: AdminAuditInput): Promise<void>
 
   /** List recent reports submitted with a specific API key. */
   listReportsForApiKey(keyHash: string, limit: number): Promise<Report[]>
@@ -453,12 +492,10 @@ export interface Store {
   /** Insert a takedown request. */
   insertTakedown(input: NewTakedown): Promise<Takedown>
 
+  insertTakedownWithAudit(input: NewTakedown, audit: AdminAuditInput): Promise<Takedown>
+
   /** List takedowns with optional status filter. */
-  listTakedowns(
-    limit: number,
-    offset: number,
-    statusFilter?: TakedownStatus,
-  ): Promise<Takedown[]>
+  listTakedowns(limit: number, offset: number, statusFilter?: TakedownStatus): Promise<Takedown[]>
 
   /** Count takedowns matching filter. */
   countTakedowns(statusFilter?: TakedownStatus): Promise<number>
@@ -472,11 +509,19 @@ export interface Store {
     fields: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null },
   ): Promise<void>
 
+  updateTakedownWithAudit(
+    id: string,
+    fields: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null },
+    audit: AdminAuditInput,
+  ): Promise<void>
+
   /** Get an admin setting by key. */
   getSetting(key: string): Promise<string | null>
 
   /** Set an admin setting. */
   setSetting(key: string, value: string): Promise<void>
+
+  setSettingWithAudit(key: string, value: string, audit: AdminAuditInput): Promise<void>
 
   /** Get all admin settings. */
   listSettings(): Promise<AdminSetting[]>

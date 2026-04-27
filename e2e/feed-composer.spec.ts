@@ -14,6 +14,7 @@ test('feed composer: open, fill, preview, post, success', async ({ page }) => {
   await page.goto('/feed')
 
   await page.getByTestId('composer-open').click()
+  await expect(page.getByTestId('composer-text')).toBeFocused()
 
   await page.getByTestId('composer-first-name').fill('Sam')
   await page.getByTestId('composer-last-name').fill(LAST_NAME)

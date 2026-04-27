@@ -41,52 +41,53 @@ function buildSearch(store: Store): SearchIndex {
  */
 async function main(): Promise<void> {
   const store = buildStore()
-  const search = buildSearch(store)
+  try {
+    const search = buildSearch(store)
 
-  if (search instanceof SqlSearch) {
-    process.stderr.write('SEARCH is not meili; nothing to reindex.\n')
+    if (search instanceof SqlSearch) {
+      process.stderr.write('SEARCH is not meili; nothing to reindex.\n')
+      return
+    }
+
+    await search.ensureSetup()
+
+    // Clear each index before backfilling. Without this, any previously-indexed
+    // doc whose remove hook was dropped survives the rebuild and keeps drifting
+    // totalHits / pagination, defeating the point of a reindex. Run in parallel
+    // since the two indexes are independent tasks inside Meili.
+    await Promise.all([search.resetIndex('posts'), search.resetIndex('reports')])
+
+    let posted = 0
+    let offset = 0
+    while (true) {
+      const batch = await store.listPosts(BATCH, offset, undefined)
+      if (batch.length === 0) break
+      // One bulk index call per batch instead of one per row. 500 docs x 2
+      // Meili round-trips each -> 2 round-trips total; wall-clock drops by
+      // roughly the factor of BATCH on network-bound reindexes.
+      await search.indexMany(batch.map((post) => ({ type: 'posts', doc: postToDoc(post) })))
+      posted += batch.length
+      process.stdout.write(`posts: ${String(posted)}\n`)
+      offset += BATCH
+      if (batch.length < BATCH) break
+    }
+    process.stdout.write(`indexed ${String(posted)} posts\n`)
+
+    let reported = 0
+    offset = 0
+    while (true) {
+      const batch = await store.listReports(BATCH, offset, undefined, 'all')
+      if (batch.length === 0) break
+      await search.indexMany(batch.map((report) => ({ type: 'reports', doc: reportToDoc(report) })))
+      reported += batch.length
+      process.stdout.write(`reports: ${String(reported)}\n`)
+      offset += BATCH
+      if (batch.length < BATCH) break
+    }
+    process.stdout.write(`indexed ${String(reported)} reports\n`)
+  } finally {
     await store.close()
-    return
   }
-
-  await search.ensureSetup()
-
-  // Clear each index before backfilling. Without this, any previously-indexed
-  // doc whose remove hook was dropped survives the rebuild and keeps drifting
-  // totalHits / pagination, defeating the point of a reindex. Run in parallel
-  // since the two indexes are independent tasks inside Meili.
-  await Promise.all([search.resetIndex('posts'), search.resetIndex('reports')])
-
-  let posted = 0
-  let offset = 0
-  while (true) {
-    const batch = await store.listPosts(BATCH, offset, undefined)
-    if (batch.length === 0) break
-    // One bulk index call per batch instead of one per row. 500 docs × 2
-    // Meili round-trips each → 2 round-trips total; wall-clock drops by
-    // roughly the factor of BATCH on network-bound reindexes.
-    await search.indexMany(batch.map((post) => ({ type: 'posts', doc: postToDoc(post) })))
-    posted += batch.length
-    process.stdout.write(`posts: ${String(posted)}\n`)
-    offset += BATCH
-    if (batch.length < BATCH) break
-  }
-  process.stdout.write(`indexed ${String(posted)} posts\n`)
-
-  let reported = 0
-  offset = 0
-  while (true) {
-    const batch = await store.listReports(BATCH, offset, undefined, 'all')
-    if (batch.length === 0) break
-    await search.indexMany(batch.map((report) => ({ type: 'reports', doc: reportToDoc(report) })))
-    reported += batch.length
-    process.stdout.write(`reports: ${String(reported)}\n`)
-    offset += BATCH
-    if (batch.length < BATCH) break
-  }
-  process.stdout.write(`indexed ${String(reported)} reports\n`)
-
-  await store.close()
 }
 
 main().catch((err: unknown) => {

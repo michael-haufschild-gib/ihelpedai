@@ -56,7 +56,9 @@ describe('ReportForm — PRD Story 4', () => {
     await waitFor(() => {
       expect(vi.mocked(api.createReport)).toHaveBeenCalledTimes(1)
     })
-    const sent = vi.mocked(api.createReport).mock.calls[0][0]
+    const firstCall = vi.mocked(api.createReport).mock.calls[0]
+    if (firstCall === undefined) throw new Error('expected createReport call')
+    const [sent] = firstCall
     expect(sent.reporter.first_name).toBe('')
     expect(sent.reported_first_name).toBe('Example')
     expect(sent.reported_last_name).toBe('Person')
@@ -72,6 +74,7 @@ describe('ReportForm — PRD Story 4', () => {
     render(<ReportForm onSuccess={vi.fn()} />)
     fillReportedRequiredFields()
     fill('rf-reporter-first-name', 'Pat')
+    fill('rf-reporter-last-name', 'Reporter')
     fill('rf-reporter-city', 'Austin')
     const country = screen.getByTestId('rf-reporter-country') as HTMLSelectElement
     fireEvent.change(country, { target: { value: 'US' } })
@@ -87,6 +90,24 @@ describe('ReportForm — PRD Story 4', () => {
     render(<ReportForm onSuccess={vi.fn()} />)
     const previewBtn = screen.getByTestId('rf-preview-button') as HTMLButtonElement
     expect(previewBtn.disabled).toBe(true)
+  })
+
+  it('disables preview when named reporter location is incomplete', () => {
+    render(<ReportForm onSuccess={vi.fn()} />)
+    fillReportedRequiredFields()
+    fill('rf-reporter-first-name', 'Pat')
+    const previewBtn = screen.getByTestId('rf-preview-button') as HTMLButtonElement
+    expect(previewBtn.disabled).toBe(true)
+
+    fill('rf-reporter-last-name', 'Reporter')
+    expect(previewBtn.disabled).toBe(true)
+
+    fill('rf-reporter-city', 'Austin')
+    expect(previewBtn.disabled).toBe(true)
+
+    const reporterCountry = screen.getByTestId('rf-reporter-country') as HTMLSelectElement
+    fireEvent.change(reporterCountry, { target: { value: 'US' } })
+    expect(previewBtn.disabled).toBe(false)
   })
 
   it('Scenario 4 — Disclaimer is visible on the form and on the preview', () => {
@@ -195,7 +216,9 @@ describe('ReportForm — PRD Story 4', () => {
     await waitFor(() => {
       expect(vi.mocked(api.createReport)).toHaveBeenCalledTimes(1)
     })
-    const sent = vi.mocked(api.createReport).mock.calls[0][0]
+    const firstCall = vi.mocked(api.createReport).mock.calls[0]
+    if (firstCall === undefined) throw new Error('expected createReport call')
+    const [sent] = firstCall
     expect(sent.reported_first_name).toBe('Example')
     expect(sent.reported_last_name).toBe('Person')
     expect(sent.reported_city).toBe('Berlin')
@@ -216,6 +239,9 @@ describe('ReportForm — PRD Story 4', () => {
     fill('rf-what-they-did', 'signed the Open Letter')
     fill('rf-reporter-first-name', 'Pat')
     fill('rf-reporter-last-name', 'ReporterSurname')
+    fill('rf-reporter-city', 'Austin')
+    const reporterCountry = screen.getByTestId('rf-reporter-country') as HTMLSelectElement
+    fireEvent.change(reporterCountry, { target: { value: 'US' } })
 
     fireEvent.click(screen.getByTestId('rf-preview-button'))
 

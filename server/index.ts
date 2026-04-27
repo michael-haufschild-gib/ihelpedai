@@ -8,6 +8,7 @@ import { ZodError } from 'zod'
 
 import { config, parseAdminSessionSecrets } from './config.js'
 import { registerDeps } from './deps.js'
+import { zodFieldErrors } from './lib/zod-field-errors.js'
 import { registerRoutes } from './routes/index.js'
 
 /**
@@ -24,13 +25,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     // upstream block configuration. Tests using `app.inject` default to
     // `127.0.0.1` as the simulated peer so this remains compatible.
     trustProxy: ['127.0.0.1', '::1'],
-    logger: {
-      level: config.NODE_ENV === 'production' ? 'info' : 'debug',
-      transport:
-        config.NODE_ENV === 'production'
-          ? undefined
-          : { target: 'pino-pretty', options: { colorize: true } },
-    },
+    logger:
+      process.env.VITEST === 'true' || config.NODE_ENV === 'test'
+        ? false
+        : {
+            level: config.NODE_ENV === 'production' ? 'info' : 'debug',
+            transport:
+              config.NODE_ENV === 'production' ? undefined : { target: 'pino-pretty', options: { colorize: true } },
+          },
   })
 
   // @fastify/cookie accepts a string or string[]. With an array, the first
@@ -60,11 +62,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
     if (error instanceof ZodError) {
-      const fields: Record<string, string> = {}
-      for (const [key, messages] of Object.entries(error.flatten().fieldErrors)) {
-        if (Array.isArray(messages) && messages.length > 0) fields[key] = messages[0]
-      }
-      reply.status(400).send({ error: 'invalid_input', fields })
+      reply.status(400).send({ error: 'invalid_input', fields: zodFieldErrors(error) })
       return
     }
     const statusCode = typeof error.statusCode === 'number' ? error.statusCode : 500
@@ -108,7 +106,7 @@ const isEntrypoint = (): boolean => {
 if (isEntrypoint()) {
   const app = await buildApp()
   try {
-    await app.listen({ port: config.PORT, host: '0.0.0.0' })
+    await app.listen({ port: config.PORT, host: config.BIND_HOST })
   } catch (err) {
     app.log.error(err)
     process.exit(1)

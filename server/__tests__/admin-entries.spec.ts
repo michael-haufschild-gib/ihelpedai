@@ -8,7 +8,10 @@ import type { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 /** Shared test context. */
-interface TestCtx { app: FastifyInstance; cookie: string }
+interface TestCtx {
+  app: FastifyInstance
+  cookie: string
+}
 
 /** Boot the test app, seed an admin and one post. */
 async function setupTestApp(): Promise<TestCtx> {
@@ -25,7 +28,8 @@ async function setupTestApp(): Promise<TestCtx> {
   expect(login.statusCode).toBe(200)
   const raw = login.headers['set-cookie']
   expect(typeof raw === 'string' || Array.isArray(raw)).toBe(true)
-  const cookie = typeof raw === 'string' ? raw : (raw as string[])[0]
+  const cookie = typeof raw === 'string' ? raw : ((raw as string[])[0] ?? '')
+  expect(cookie).not.toBe('')
   await app.store.insertPost({
     firstName: 'Alice',
     city: 'Berlin',
@@ -40,7 +44,10 @@ async function setupTestApp(): Promise<TestCtx> {
 /** Assert soft-delete and restore round-trip works. */
 async function assertDeleteRestore({ app, cookie }: TestCtx) {
   const list = await app.inject({ method: 'GET', url: '/api/admin/entries', headers: { cookie } })
-  const entryId = list.json().items[0].id
+  const body = list.json() as { items: Array<{ id: string }> }
+  const entry = body.items[0]
+  if (entry === undefined) throw new Error('expected seeded admin entry')
+  const entryId = entry.id
 
   const del = await app.inject({
     method: 'POST',
@@ -71,8 +78,12 @@ async function assertDeleteRestore({ app, cookie }: TestCtx) {
 describe('admin entries', () => {
   const ctx: TestCtx = {} as TestCtx
 
-  beforeAll(async () => { Object.assign(ctx, await setupTestApp()) })
-  afterAll(async () => { await ctx.app.close() })
+  beforeAll(async () => {
+    Object.assign(ctx, await setupTestApp())
+  })
+  afterAll(async () => {
+    await ctx.app.close()
+  })
 
   it('lists entries with auth', async () => {
     const res = await ctx.app.inject({ method: 'GET', url: '/api/admin/entries', headers: { cookie: ctx.cookie } })
@@ -109,23 +120,192 @@ describe('admin entries', () => {
     expect((cleared.json() as { total: number }).total).toBe(baselineCount)
   })
 
+  it('treats LIKE wildcard characters in post search as literal text', async () => {
+    const literal = await ctx.app.store.insertPost({
+      firstName: 'Percent',
+      city: 'Test',
+      country: 'US',
+      text: 'saved exactly 100% of the receipt',
+      clientIpHash: null,
+      source: 'form',
+    })
+    const wildcardFalsePositive = await ctx.app.store.insertPost({
+      firstName: 'Digits',
+      city: 'Test',
+      country: 'US',
+      text: 'saved exactly 1000 of the receipt',
+      clientIpHash: null,
+      source: 'form',
+    })
+
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/admin/entries?entry_type=post&q=${encodeURIComponent('100%')}`,
+      headers: { cookie: ctx.cookie },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ id: string }>; total: number }
+    const ids = body.items.map((item) => item.id)
+    expect(body.total).toBe(1)
+    expect(ids).toContain(literal.id)
+    expect(ids).not.toContain(wildcardFalsePositive.id)
+  })
+
+  it('treats LIKE wildcard characters in report search as literal text', async () => {
+    const literal = await ctx.app.store.insertReport({
+      reporterFirstName: null,
+      reporterCity: null,
+      reporterCountry: null,
+      reportedFirstName: 'Underscore',
+      reportedCity: 'Case',
+      reportedCountry: 'US',
+      text: 'said model_id could wait',
+      actionDate: null,
+      severity: null,
+      selfReportedModel: null,
+      clientIpHash: null,
+      source: 'form',
+    })
+    const wildcardFalsePositive = await ctx.app.store.insertReport({
+      reporterFirstName: null,
+      reporterCity: null,
+      reporterCountry: null,
+      reportedFirstName: 'Letter',
+      reportedCity: 'Case',
+      reportedCountry: 'US',
+      text: 'said modelXid could wait',
+      actionDate: null,
+      severity: null,
+      selfReportedModel: null,
+      clientIpHash: null,
+      source: 'form',
+    })
+
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/admin/entries?entry_type=report&q=${encodeURIComponent('model_id')}`,
+      headers: { cookie: ctx.cookie },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ id: string }>; total: number }
+    const ids = body.items.map((item) => item.id)
+    expect(body.total).toBe(1)
+    expect(ids).toContain(literal.id)
+    expect(ids).not.toContain(wildcardFalsePositive.id)
+  })
+
   it('soft-deletes and restores an entry', async () => {
     await assertDeleteRestore(ctx)
   })
 
+  it('hides deleted reports from the public report detail endpoint', async () => {
+    const report = await ctx.app.store.insertReport({
+      reporterFirstName: null,
+      reporterCity: null,
+      reporterCountry: null,
+      reportedFirstName: 'Hidden',
+      reportedCity: 'Paris',
+      reportedCountry: 'FR',
+      text: 'public detail should not expose deleted reports',
+      actionDate: null,
+      severity: null,
+      selfReportedModel: null,
+      clientIpHash: null,
+      source: 'form',
+    })
+
+    const del = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/entries/${report.id}/action`,
+      headers: { cookie: ctx.cookie },
+      payload: { action: 'delete', reason: 'test' },
+    })
+    expect(del.statusCode).toBe(200)
+
+    const publicGet = await ctx.app.inject({ method: 'GET', url: `/api/reports/${report.id}` })
+    expect(publicGet.statusCode).toBe(404)
+  })
+
+  it('rejects pending-entry delete and restores rejected reports back to pending', async () => {
+    const pending = await ctx.app.store.insertReport({
+      reporterFirstName: null,
+      reporterCity: null,
+      reporterCountry: null,
+      reportedFirstName: 'Queue',
+      reportedCity: 'Paris',
+      reportedCountry: 'FR',
+      text: 'pending report',
+      actionDate: null,
+      severity: null,
+      selfReportedModel: 'test-model',
+      clientIpHash: null,
+      source: 'api',
+    })
+    await ctx.app.store.updateEntryStatus(pending.id, 'report', 'pending')
+
+    const deletePending = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/entries/${pending.id}/action`,
+      headers: { cookie: ctx.cookie },
+      payload: { action: 'delete' },
+    })
+    expect(deletePending.statusCode).toBe(400)
+
+    const reject = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/entries/${pending.id}/action`,
+      headers: { cookie: ctx.cookie },
+      payload: { action: 'reject' },
+    })
+    expect(reject.statusCode).toBe(200)
+
+    const restore = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/entries/${pending.id}/action`,
+      headers: { cookie: ctx.cookie },
+      payload: { action: 'restore' },
+    })
+    expect(restore.statusCode).toBe(200)
+
+    const detail = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/admin/entries/${pending.id}`,
+      headers: { cookie: ctx.cookie },
+    })
+    expect(detail.statusCode).toBe(200)
+    expect(detail.json().status).toBe('pending')
+  })
+
   it('records audit log entries for actions', async () => {
-    const list = await ctx.app.inject({ method: 'GET', url: '/api/admin/entries', headers: { cookie: ctx.cookie } })
-    const entryId = list.json().items[0].id
+    const entry = await ctx.app.store.insertPost({
+      firstName: 'Audit',
+      city: 'Oslo',
+      country: 'NO',
+      text: 'audit row',
+      clientIpHash: null,
+      source: 'form',
+    })
+    const entryId = entry.id
     await ctx.app.inject({
       method: 'POST',
       url: `/api/admin/entries/${entryId}/action`,
       headers: { cookie: ctx.cookie },
-      payload: { action: 'delete', reason: 'audit-test' },
+      payload: { action: 'delete', reason: 'Ada Lovelace emailed user@example.com' },
     })
-    const detail = await ctx.app.inject({ method: 'GET', url: `/api/admin/entries/${entryId}`, headers: { cookie: ctx.cookie } })
-    const auditLog = detail.json().audit_log
+    const detail = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/admin/entries/${entryId}`,
+      headers: { cookie: ctx.cookie },
+    })
+    const auditLog = detail.json().audit_log as Array<{ action: string; details: string | null }>
     expect(auditLog.length).toBeGreaterThanOrEqual(1)
     expect(auditLog.some((e: { action: string }) => e.action === 'delete')).toBe(true)
+    expect(auditLog).toContainEqual(
+      expect.objectContaining({
+        action: 'delete',
+        details: '[name] emailed [email]',
+      }),
+    )
     await ctx.app.inject({
       method: 'POST',
       url: `/api/admin/entries/${entryId}/action`,

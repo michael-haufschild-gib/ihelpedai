@@ -9,6 +9,8 @@ import { getSettings, updateSetting } from '@/lib/adminApi'
 import { logger } from '@/services/logger'
 import { showToast } from '@/stores/toastStore'
 
+type BooleanSettingKey = 'auto_publish_agents' | 'submission_freeze'
+
 /** One-line, audience-appropriate failure message for an admin save. */
 function describeSettingsSaveError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -25,10 +27,7 @@ function describeSettingsSaveError(err: unknown): string {
  * function-line cap. Surfaces a toast on load failure; the page still
  * renders a null-fallback message when `settings` stays null.
  */
-function useAdminSettingsLoader(
-  setSettings: (s: Settings) => void,
-  setExceptions: (s: string) => void,
-): boolean {
+function useAdminSettingsLoader(setSettings: (s: Settings) => void, setExceptions: (s: string) => void): boolean {
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     let cancelled = false
@@ -42,8 +41,12 @@ function useAdminSettingsLoader(
         logger.error('admin settings load failed', err)
         if (!cancelled) showToast('Failed to load settings.')
       })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [setSettings, setExceptions])
   return loading
 }
@@ -54,14 +57,15 @@ export function AdminSettings() {
   const [exceptions, setExceptions] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
   const loading = useAdminSettingsLoader(setSettings, setExceptions)
+  const isSaving = saving !== null
 
-  const toggle = async (key: keyof Settings) => {
+  const toggle = async (key: BooleanSettingKey) => {
     if (!settings) return
     const newVal = settings[key] === 'true' ? 'false' : 'true'
     setSaving(key)
     try {
       await updateSetting(key, newVal)
-      setSettings({ ...settings, [key]: newVal })
+      setSettings((current) => (current === null ? current : { ...current, [key]: newVal }))
     } catch (err: unknown) {
       // Keep the old value visible on failure; surface a toast so the admin
       // knows the toggle did not actually take effect.
@@ -75,7 +79,7 @@ export function AdminSettings() {
     setSaving('sanitizer_exceptions')
     try {
       await updateSetting('sanitizer_exceptions', exceptions)
-      if (settings) setSettings({ ...settings, sanitizer_exceptions: exceptions })
+      setSettings((current) => (current === null ? current : { ...current, sanitizer_exceptions: exceptions }))
     } catch (err: unknown) {
       // Leave the unsaved draft in the textarea so the admin can retry.
       showToast(describeSettingsSaveError(err))
@@ -96,7 +100,7 @@ export function AdminSettings() {
         description="When off, agent submissions go to the moderation queue."
         checked={settings.auto_publish_agents === 'true'}
         onChange={() => toggle('auto_publish_agents')}
-        disabled={saving === 'auto_publish_agents'}
+        disabled={isSaving}
       />
       <SettingsToggle
         testId="admin-settings-submission-freeze"
@@ -104,14 +108,14 @@ export function AdminSettings() {
         description="When on, all public submissions are temporarily disabled."
         checked={settings.submission_freeze === 'true'}
         onChange={() => toggle('submission_freeze')}
-        disabled={saving === 'submission_freeze'}
+        disabled={isSaving}
       />
       <div className="rounded border border-border-default bg-surface p-4">
         <p className="mb-2 font-medium">Sanitizer exception list</p>
         <p className="mb-3 text-sm text-text-secondary">
-          One entry per line. Preserved by the server sanitizer when a post is stored. Live form
-          previews use the client's static list, so admin-added terms may still appear as
-          [name] during preview but will survive in the final post.
+          One entry per line. Preserved by the server sanitizer when a post is stored. Live form previews use the
+          client's static list, so admin-added terms may still appear as [name] during preview but will survive in the
+          final post.
         </p>
         <Textarea
           data-testid="admin-settings-exceptions"
@@ -124,7 +128,7 @@ export function AdminSettings() {
           size="sm"
           className="mt-3"
           onClick={saveExceptions}
-          disabled={saving === 'sanitizer_exceptions' || exceptions === settings.sanitizer_exceptions}
+          disabled={isSaving || exceptions === settings.sanitizer_exceptions}
         >
           {saving === 'sanitizer_exceptions' ? 'Saving...' : 'Save'}
         </Button>
@@ -134,7 +138,14 @@ export function AdminSettings() {
 }
 
 /** Individual toggle row for a boolean setting. */
-function SettingsToggle({ testId, label, description, checked, onChange, disabled }: {
+function SettingsToggle({
+  testId,
+  label,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
   testId: string
   label: string
   description: string
@@ -148,12 +159,7 @@ function SettingsToggle({ testId, label, description, checked, onChange, disable
         <p className="font-medium">{label}</p>
         <p className="text-sm text-text-secondary">{description}</p>
       </div>
-      <Switch
-        data-testid={testId}
-        checked={checked}
-        onCheckedChange={onChange}
-        disabled={disabled}
-      />
+      <Switch data-testid={testId} checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </div>
   )
 }

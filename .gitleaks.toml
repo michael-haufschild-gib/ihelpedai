@@ -1,0 +1,27 @@
+# Gitleaks configuration for ihelped.ai.
+#
+# We inherit the upstream default ruleset and add a project-scoped allowlist
+# for paths that intentionally contain dummy/fixture credentials:
+#   - server/__tests__/**: integration specs build admins, sessions, and api
+#     keys with stable test passwords/hashes; the static `generic-api-key`
+#     entropy heuristic flags strings like "anything12345" as secrets.
+#   - **/*.test.{ts,tsx}, **/*.spec.ts: same story for unit / property tests.
+#   - server/seed/**: dev seed inserts a deterministic API key so
+#     `pnpm dev:seed` produces a reproducible local DB.
+#   - docs/**: PRDs and example payloads include illustrative tokens.
+#
+# Anything outside these paths is still scanned with full default rules so a
+# real secret committed elsewhere fails CI.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures, dev seeds, and docs intentionally embed dummy secrets"
+paths = [
+  '''server/__tests__/.*''',
+  '''.*\.test\.tsx?$''',
+  '''.*\.spec\.ts$''',
+  '''server/seed/.*''',
+  '''docs/.*''',
+]

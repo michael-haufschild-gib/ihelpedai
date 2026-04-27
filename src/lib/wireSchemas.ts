@@ -11,10 +11,9 @@
  *   2. Add an integration case to api-contract.spec.ts.
  *   3. Mirror the response shape in api.ts / adminApi.ts as a `type`.
  *
- * The schemas intentionally use `.passthrough()` everywhere so accidental
- * server-side additions don't immediately fail the contract — additions are
- * non-breaking. *Removals* and *renames* of declared fields are the breaking
- * changes the spec catches.
+ * Public schemas use `.passthrough()` so harmless additive public fields do
+ * not fail the contract. Admin DTO schemas are strict: additions there often
+ * mean operational or verifier material leaked across the boundary.
  */
 
 import { z } from 'zod'
@@ -104,19 +103,216 @@ export const healthSchema = z
 
 export const apiErrorEnvelopeSchema = z
   .object({
-    error: z.union([
-      z.literal('invalid_input'),
-      z.literal('rate_limited'),
-      z.literal('unauthorized'),
-      z.literal('internal_error'),
-      z.literal('not_found'),
-      z.string(),
+    error: z.enum([
+      'invalid_input',
+      'rate_limited',
+      'unauthorized',
+      'not_found',
+      'mail_delivery_failed',
+      'internal_error',
     ]),
     fields: z.record(z.string(), z.string()).optional(),
     retry_after_seconds: z.number().optional(),
     message: z.string().optional(),
   })
   .passthrough()
+
+/* ------------------------------------------------------------------ */
+/* Admin response schemas                                              */
+/* ------------------------------------------------------------------ */
+
+export const adminStatusResponseSchema = z
+  .object({
+    status: z.literal('ok'),
+  })
+  .strict()
+
+export const adminMessageResponseSchema = z
+  .object({
+    message: z.string(),
+  })
+  .strict()
+
+export const adminUserSchema = z
+  .object({
+    id: z.string().min(1),
+    email: z.string().email(),
+  })
+  .strict()
+
+export const adminUserSessionSchema = adminUserSchema
+  .extend({
+    status: z.enum(['active', 'deactivated']),
+  })
+  .strict()
+
+export const adminLoginResponseSchema = z
+  .object({
+    status: z.literal('ok'),
+    admin: adminUserSchema,
+  })
+  .strict()
+
+export const adminAuditEntrySchema = z
+  .object({
+    id: z.string().min(1),
+    adminId: z.string().nullable(),
+    action: z.string().min(1),
+    targetId: z.string().nullable(),
+    targetKind: z.string().nullable(),
+    details: z.string().nullable(),
+    createdAt: z.string(),
+    adminEmail: z.string().email().nullable(),
+  })
+  .strict()
+
+export const adminEntrySchema = z
+  .object({
+    id: z.string().min(1),
+    entryType: z.enum(['post', 'report']),
+    status: z.enum(['live', 'pending', 'deleted']),
+    source: z.enum(['form', 'api']),
+    header: z.string(),
+    bodyPreview: z.string(),
+    selfReportedModel: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .strict()
+
+export const adminEntryDetailSchema = z
+  .object({
+    id: z.string().min(1),
+    entryType: z.enum(['post', 'report']),
+    status: z.enum(['live', 'pending', 'deleted']),
+    source: z.enum(['form', 'api']),
+    fields: z.record(z.string(), z.unknown()),
+    clientIpHash: z.string().nullable(),
+    selfReportedModel: z.string().nullable(),
+    createdAt: z.string(),
+    audit_log: z.array(adminAuditEntrySchema),
+  })
+  .strict()
+
+export const adminEntryActionResponseSchema = z
+  .object({
+    status: z.literal('ok'),
+    entry_id: z.string().min(1),
+    action: z.enum(['approve', 'reject', 'delete', 'restore', 'purge']),
+  })
+  .strict()
+
+export const adminQueueCountSchema = z
+  .object({
+    count: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export const adminQueueBulkActionResponseSchema = z
+  .object({
+    status: z.literal('ok'),
+    results: z.array(
+      z
+        .object({
+          id: z.string().min(1),
+          ok: z.boolean(),
+        })
+        .strict(),
+    ),
+  })
+  .strict()
+
+export const adminApiKeySchema = z
+  .object({
+    id: z.string().min(1),
+    keyLast4: z.string().min(1).max(8),
+    emailHash: z.string().min(1),
+    status: z.enum(['active', 'revoked']),
+    issuedAt: z.string(),
+    lastUsedAt: z.string().nullable(),
+    usageCount: z.number().int().nonnegative(),
+  })
+  .strict()
+
+/**
+ * Concrete schema for the admin "recent reports for API key" payload. Mirrors
+ * the server-side `Report` DTO (camelCase, untransformed) so any drift between
+ * store and admin route surfaces here at parse time instead of leaking unknown
+ * fields into the admin UI.
+ */
+export const adminApiKeyReportSchema = z
+  .object({
+    id: z.string().min(1),
+    reporterFirstName: z.string().nullable(),
+    reporterCity: z.string().nullable(),
+    reporterCountry: z.string().nullable(),
+    reportedFirstName: z.string(),
+    reportedCity: z.string(),
+    reportedCountry: z.string(),
+    text: z.string(),
+    actionDate: z.string().nullable(),
+    severity: z.number().int().min(0).max(10).nullable(),
+    selfReportedModel: z.string().nullable(),
+    status: z.enum(['live', 'pending', 'deleted']),
+    source: z.enum(['form', 'api']),
+    dislikeCount: z.number().int().nonnegative(),
+    createdAt: z.string(),
+  })
+  .strict()
+
+export const adminApiKeyDetailSchema = adminApiKeySchema
+  .extend({
+    recent_reports: z.array(adminApiKeyReportSchema),
+  })
+  .strict()
+
+export const adminTakedownSchema = z
+  .object({
+    id: z.string().min(1),
+    requesterEmail: z.string().email().nullable(),
+    entryId: z.string().nullable(),
+    entryKind: z.enum(['post', 'report']).nullable(),
+    reason: z.string(),
+    notes: z.string(),
+    status: z.enum(['open', 'closed']),
+    disposition: z.enum(['entry_deleted', 'entry_kept', 'entry_edited', 'other']).nullable(),
+    closedBy: z.string().nullable(),
+    dateReceived: z.string(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict()
+
+export const adminAccountSchema = z
+  .object({
+    id: z.string().min(1),
+    email: z.string().email(),
+    status: z.enum(['active', 'deactivated']),
+    createdBy: z.string().nullable(),
+    lastLoginAt: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .strict()
+
+export const adminAccountListSchema = z
+  .object({
+    items: z.array(adminAccountSchema),
+  })
+  .strict()
+
+export const adminInviteResponseSchema = z
+  .object({
+    status: z.literal('ok'),
+    id: z.string().min(1),
+  })
+  .strict()
+
+export const adminSettingsSchema = z
+  .object({
+    auto_publish_agents: z.string(),
+    submission_freeze: z.string(),
+    sanitizer_exceptions: z.string(),
+  })
+  .strict()
 
 /**
  * Convenience for tests: parse a server response body against a schema and

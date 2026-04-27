@@ -26,6 +26,14 @@ export function sessionExpiry(): string {
 /** Cookie name for admin sessions. */
 export { SESSION_COOKIE }
 
+/** Return the authenticated admin after requireAdmin has populated request.admin. */
+export function getRequestAdmin(request: FastifyRequest): Admin {
+  if (request.admin === undefined) {
+    throw new Error('getRequestAdmin: requireAdmin did not attach admin')
+  }
+  return request.admin
+}
+
 /**
  * Fastify preHandler that validates the admin session cookie.
  * Sets `request.admin` on success; replies 401 on failure.
@@ -58,8 +66,7 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
   // the offending row is purged on its way out.
   const createdAtMs = new Date(session.createdAt).getTime()
   const sessionAgeMs = Date.now() - createdAtMs
-  const staleOrCorrupt =
-    !Number.isFinite(createdAtMs) || sessionAgeMs < 0 || sessionAgeMs > SESSION_ABSOLUTE_MAX_MS
+  const staleOrCorrupt = !Number.isFinite(createdAtMs) || sessionAgeMs < 0 || sessionAgeMs > SESSION_ABSOLUTE_MAX_MS
   if (staleOrCorrupt) {
     await request.server.store.deleteSession(session.id)
     reply.status(401).send({ error: 'unauthorized' })

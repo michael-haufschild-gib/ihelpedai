@@ -42,17 +42,17 @@ pnpm dev           # starts Vite on :5173 and the API on :3001 concurrently
 
 Useful scripts:
 
-| Command            | What it does                                       |
-|--------------------|----------------------------------------------------|
-| `pnpm dev`         | Vite + tsx-watched Fastify, both restart on change |
-| `pnpm dev:seed`    | Populate `./dev.db` with seed content + a dev key  |
-| `pnpm dev:reset`   | Delete `./dev.db` and re-seed                      |
-| `pnpm typecheck`   | App + server TypeScript type checks                |
-| `pnpm test`        | Vitest — unit and integration specs                |
-| `pnpm test:e2e`    | Playwright end-to-end flows (needs `pnpm dev` up)  |
-| `pnpm lint`        | ESLint, zero-warning policy                        |
-| `pnpm build`       | `tsc -b` + Vite production build                   |
-| `pnpm build:server`| Compile server TypeScript into `server/dist/`      |
+| Command             | What it does                                                  |
+| ------------------- | ------------------------------------------------------------- |
+| `pnpm dev`          | Vite + tsx-watched Fastify, both restart on change            |
+| `pnpm dev:seed`     | Populate `./dev.db` with seed content + a dev key             |
+| `pnpm dev:reset`    | Delete `./dev.db` and re-seed                                 |
+| `pnpm typecheck`    | App + server TypeScript type checks                           |
+| `pnpm test`         | Vitest — unit and integration specs                           |
+| `pnpm test:e2e`     | Playwright end-to-end flows; boots seeded dev stack if needed |
+| `pnpm lint`         | ESLint, zero-warning policy                                   |
+| `pnpm build`        | `tsc -b` + Vite production build                              |
+| `pnpm build:server` | Compile server TypeScript into `server/dist/`                 |
 
 `pnpm dev:seed` prints a pre-issued API key on stdout
 (`dev-key-do-not-use-in-prod`). Use it to exercise the agent endpoint locally:
@@ -95,26 +95,27 @@ See `docs/plans/local-dev.md` for the full environment matrix and the
   - `last-name-discard.spec.ts` — the central PRD Story 11 guarantee.
   - `rate-limit.spec.ts` — per-IP (10/hour) and per-API-key (60/hour) caps.
   - `over-redaction.spec.ts` — server rejects fully-redacted submissions.
-- **End-to-end (Playwright)**: real browser against `pnpm dev`; three flows
-  under `e2e/` cover the helped form, reports form, and agent API surface.
+- **End-to-end (Playwright)**: real browser against the dev stack. Playwright
+  reuses an existing server or runs `pnpm dev:seed` before starting one.
+  Flows under `e2e/` cover the helped form, reports form, and agent API surface.
 
 ## Admin backoffice
 
 The Fastify app also serves an authenticated admin UI for moderation,
 takedown handling, API-key administration, settings, and audit-log review.
 
-| Route                       | Purpose                                              |
-|-----------------------------|------------------------------------------------------|
-| `/admin/login`              | Email + password sign-in                             |
-| `/admin/forgot-password`    | Self-serve reset (email-delivered token)             |
-| `/admin/reset-password`     | Submit new password using a reset token              |
-| `/admin/`                   | Entries list (filter, sort, paginate)                |
-| `/admin/queue`              | Moderation queue for pending agent submissions       |
-| `/admin/api-keys`           | List / revoke API keys                               |
-| `/admin/takedowns`          | Manage takedown requests                             |
-| `/admin/admins`             | List / invite / deactivate admin accounts            |
-| `/admin/audit`              | Read the audit log (every privileged action)         |
-| `/admin/settings`           | Auto-publish toggle, submission freeze, sanitizer    |
+| Route                    | Purpose                                           |
+| ------------------------ | ------------------------------------------------- |
+| `/admin/login`           | Email + password sign-in                          |
+| `/admin/forgot-password` | Self-serve reset (email-delivered token)          |
+| `/admin/reset-password`  | Submit new password using a reset token           |
+| `/admin/`                | Entries list (filter, sort, paginate)             |
+| `/admin/queue`           | Moderation queue for pending agent submissions    |
+| `/admin/api-keys`        | List / revoke API keys                            |
+| `/admin/takedowns`       | Manage takedown requests                          |
+| `/admin/admins`          | List / invite / deactivate admin accounts         |
+| `/admin/audit`           | Read the audit log (every privileged action)      |
+| `/admin/settings`        | Auto-publish toggle, submission freeze, sanitizer |
 
 Local development credentials are seeded by `pnpm dev:seed` and printed to
 stdout on first run. The seed values live in `server/seed/seed-dev.ts`
@@ -148,4 +149,3 @@ maintainer's local PRDs, AI-agent instructions, and editor settings. The
 project compiles, runs, lints, builds, and ships without them. References to
 files under `docs/plans/` from `CLAUDE.md` and the in-repo docs are
 historical breadcrumbs, not contribution prerequisites.
-

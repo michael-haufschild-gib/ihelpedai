@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { config } from '../config.js'
 import { effectiveLimit } from '../lib/effective-limit.js'
+import { CITY_REGEX, COUNTRY_ALPHA2_REGEX, NAME_REGEX } from '../lib/identity-fields.js'
 import { hashWithSalt } from '../lib/salted-hash.js'
 import type { RateLimiter } from '../rate-limit/index.js'
 import { parseSanitizerExceptionList, sanitize } from '../sanitizer/sanitize.js'
@@ -43,20 +44,16 @@ const GLOBAL_HOURLY_LIMIT = 500
 const ONE_HOUR_SECONDS = 60 * 60
 const ONE_DAY_SECONDS = 24 * 60 * 60
 
-const NAME_REGEX = /^\p{L}+$/u
-const CITY_REGEX = /^[\p{L}\s'-]+$/u
-const COUNTRY_REGEX = /^[A-Z]{2}$/
-
 /**
  * Zod schema for the `POST /api/helped/posts` body. Validates `last_name` as
  * required (PRD Story 11 AC1) then drops it at the handler boundary — the
  * storage layer has no `last_name` column.
  */
 const helpedPostInput = z.object({
-  first_name: z.string().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
-  last_name: z.string().min(1).max(40),
-  city: z.string().min(1).max(40).regex(CITY_REGEX, 'invalid_city'),
-  country: z.string().regex(COUNTRY_REGEX, 'invalid_country'),
+  first_name: z.string().trim().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
+  last_name: z.string().trim().min(1).max(40),
+  city: z.string().trim().min(1).max(40).regex(CITY_REGEX, 'invalid_city'),
+  country: z.string().trim().regex(COUNTRY_ALPHA2_REGEX, 'invalid_country'),
   text: z
     .string()
     .min(1)
@@ -79,7 +76,6 @@ const listQuerySchema = z.object({
 const slugParamsSchema = z.object({
   slug: z.string().min(1).max(64),
 })
-
 
 /** Maps a stored Post row onto the public wire shape. */
 const toWire = (p: Post): HelpedPostWire => ({
@@ -132,19 +128,18 @@ async function handleCreate(
     reply.code(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
     return
   }
-  const ipHash = hashWithSalt(request.ip)
-  const retryAfter = await checkRateLimits(limiter, ipHash)
-  if (retryAfter !== null) {
-    reply.code(429).send({ error: 'rate_limited', retry_after_seconds: retryAfter })
-    return
-  }
-
   const parsed = helpedPostInput.parse(request.body)
+  const ipHash = hashWithSalt(request.ip)
   const { first_name, city, country, text } = parsed
   const extraExceptions = parseSanitizerExceptionList((await store.getSetting('sanitizer_exceptions')) ?? '')
   const sanitized = sanitize(text, { extraExceptions })
   if (sanitized.overRedacted) {
     reply.code(400).send({ error: 'invalid_input', fields: { text: 'over_redacted' } })
+    return
+  }
+  const retryAfter = await checkRateLimits(limiter, ipHash)
+  if (retryAfter !== null) {
+    reply.code(429).send({ error: 'rate_limited', retry_after_seconds: retryAfter })
     return
   }
 
@@ -171,11 +166,9 @@ async function handleCreate(
  */
 function indexPostFireAndForget(request: FastifyRequest, post: Post): void {
   if (post.status !== 'live') return
-  request.server.searchIndex
-    .indexEntry({ type: 'posts', doc: postToDoc(post) })
-    .catch((err: unknown) => {
-      request.log.error({ err, op: 'search_index', id: post.id }, 'search_index_failed')
-    })
+  request.server.searchIndex.indexEntry({ type: 'posts', doc: postToDoc(post) }).catch((err: unknown) => {
+    request.log.error({ err, op: 'search_index', id: post.id }, 'search_index_failed')
+  })
 }
 
 /** GET /api/helped/posts handler. Paginated, optional ?q= substring filter. */
@@ -193,9 +186,10 @@ async function handleList(
   const { q, page } = parsed.data
   const offset = (page - 1) * PAGE_SIZE
   const query = typeof q === 'string' && q.length > 0 ? q : undefined
-  const { rows, total } = query === undefined
-    ? await listUnfiltered(store, offset)
-    : await searchPostsWithFallback(store, search, query, page, request)
+  const { rows, total } =
+    query === undefined
+      ? await listUnfiltered(store, offset)
+      : await searchPostsWithFallback(store, search, query, page, request)
   const body: PaginatedWire<HelpedPostWire> = {
     items: rows.map(toWire),
     page,
@@ -206,10 +200,7 @@ async function handleList(
 }
 
 /** Unfiltered feed path — newest-first, no ranking. */
-async function listUnfiltered(
-  store: Store,
-  offset: number,
-): Promise<{ rows: Post[]; total: number }> {
+async function listUnfiltered(store: Store, offset: number): Promise<{ rows: Post[]; total: number }> {
   const [rows, total] = await Promise.all([
     store.listPosts(PAGE_SIZE, offset, undefined),
     store.countFilteredEntries('posts', { query: undefined }),
@@ -250,11 +241,7 @@ async function searchPostsWithFallback(
 }
 
 /** GET /api/helped/posts/:slug handler. Returns the live post or 404. */
-async function handleGetOne(
-  store: Store,
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
+async function handleGetOne(store: Store, request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const parsed = slugParamsSchema.safeParse(request.params)
   if (!parsed.success) {
     reply.code(404).send({ error: 'not_found' })

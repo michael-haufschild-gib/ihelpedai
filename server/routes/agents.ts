@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../config.js'
+import { CITY_REGEX, COUNTRY_ALPHA2_OR_ALPHA3_REGEX, NAME_REGEX } from '../lib/identity-fields.js'
 import { isValidIsoDate } from '../lib/iso-date.js'
 import { hashWithSalt } from '../lib/salted-hash.js'
 import { parseSanitizerExceptionList, sanitize } from '../sanitizer/sanitize.js'
@@ -24,22 +25,22 @@ type PublicReport = {
   submitted_via_api: boolean
 }
 
-const NAME_REGEX = /^\p{L}+$/u
-const COUNTRY_REGEX = /^[A-Za-z]{2,3}$/
+const MAX_API_KEY_LENGTH = 200
 
 const agentReportSchema = z.object({
-  api_key: z.string().min(1),
-  reported_first_name: z.string().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
-  reported_last_name: z.string().min(1).max(40),
-  reported_city: z.string().min(1).max(40),
-  reported_country: z.string().regex(COUNTRY_REGEX, 'invalid_country'),
-  what_they_did: z.string().min(1).max(500),
-  action_date: z
+  api_key: z.string().min(1).max(MAX_API_KEY_LENGTH),
+  reported_first_name: z.string().trim().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
+  reported_last_name: z.string().trim().min(1).max(40),
+  reported_city: z.string().trim().min(1).max(40).regex(CITY_REGEX, 'invalid_city'),
+  reported_country: z
     .string()
-    .refine(isValidIsoDate, { message: 'invalid_date' })
-    .optional(),
+    .trim()
+    .regex(COUNTRY_ALPHA2_OR_ALPHA3_REGEX, 'invalid_country')
+    .transform((value) => value.toUpperCase()),
+  what_they_did: z.string().min(1).max(500),
+  action_date: z.string().refine(isValidIsoDate, { message: 'invalid_date' }).optional(),
   severity: z.number().int().min(1).max(10).optional(),
-  self_reported_model: z.string().max(60).optional(),
+  self_reported_model: z.string().trim().max(60).optional(),
 })
 
 type AgentReportBody = z.infer<typeof agentReportSchema>
@@ -74,7 +75,7 @@ type ReplyShape = {
 }
 
 /** Build the NewReport DTO from a validated body, dropping reported_last_name. */
-function buildNewReport(body: AgentReportBody, sanitizedText: string): NewReport {
+function buildNewReport(body: AgentReportBody, sanitizedText: string, sanitizedModel: string | null): NewReport {
   return {
     reporterFirstName: null,
     reporterCity: null,
@@ -85,10 +86,16 @@ function buildNewReport(body: AgentReportBody, sanitizedText: string): NewReport
     text: sanitizedText,
     actionDate: body.action_date ?? null,
     severity: body.severity ?? null,
-    selfReportedModel: body.self_reported_model ?? null,
+    selfReportedModel: sanitizedModel,
     clientIpHash: null,
     source: 'api',
   }
+}
+
+/** Sanitize optional agent-supplied model metadata before storage/display. */
+function sanitizeOptionalModel(model: string | undefined, extraExceptions: readonly string[]): string | null {
+  if (model === undefined || model === '') return null
+  return sanitize(model, { extraExceptions }).clean
 }
 
 /**
@@ -116,11 +123,6 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
       reply.status(401).send({ error: 'unauthorized' })
       return
     }
-    const retry = await checkAgentRateLimit(keyHash)
-    if (retry !== null) {
-      reply.status(429).send({ error: 'rate_limited', retry_after_seconds: retry })
-      return
-    }
     const freeze = await app.store.getSetting('submission_freeze')
     if (freeze === 'true') {
       reply.status(503).send({ error: 'internal_error', message: 'Submissions are temporarily disabled.' })
@@ -129,20 +131,26 @@ export async function agentsRoutes(app: FastifyInstance): Promise<void> {
     const extraExceptions = parseSanitizerExceptionList((await app.store.getSetting('sanitizer_exceptions')) ?? '')
     const sanitized = sanitize(parsed.what_they_did, { extraExceptions })
     if (sanitized.overRedacted) {
-      reply
-        .status(400)
-        .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
+      reply.status(400).send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
+      return
+    }
+    const retry = await checkAgentRateLimit(keyHash)
+    if (retry !== null) {
+      reply.status(429).send({ error: 'rate_limited', retry_after_seconds: retry })
       return
     }
     const autoPublish = await app.store.getSetting('auto_publish_agents')
     const initialStatus = autoPublish === 'true' ? 'live' : 'pending'
-    const stored = await app.store.insertAgentReport(buildNewReport(parsed, sanitized.clean), keyHash, initialStatus)
+    const sanitizedModel = sanitizeOptionalModel(parsed.self_reported_model, extraExceptions)
+    const stored = await app.store.insertAgentReport(
+      buildNewReport(parsed, sanitized.clean, sanitizedModel),
+      keyHash,
+      initialStatus,
+    )
     if (stored.status === 'live') {
-      app.searchIndex
-        .indexEntry({ type: 'reports', doc: reportToDoc(stored) })
-        .catch((err: unknown) => {
-          logger.error({ err, op: 'search_index', id: stored.id }, 'search_index_failed')
-        })
+      app.searchIndex.indexEntry({ type: 'reports', doc: reportToDoc(stored) }).catch((err: unknown) => {
+        logger.error({ err, op: 'search_index', id: stored.id }, 'search_index_failed')
+      })
     }
     reply.status(201).send({
       entry_id: stored.id,

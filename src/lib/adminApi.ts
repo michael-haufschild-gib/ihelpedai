@@ -7,14 +7,7 @@
  * types and binds `credentials: 'include'` to every call.
  */
 
-import {
-  ApiError,
-  buildQuery,
-  jsonBody,
-  type Paginated,
-  type QueryParams,
-  request,
-} from './httpClient'
+import { ApiError, buildQuery, jsonBody, type Paginated, type QueryParams, request } from './httpClient'
 
 export { type Paginated } from './httpClient'
 
@@ -52,22 +45,18 @@ interface AdminRequestOpts {
   notifyOnUnauthorized?: boolean
 }
 
+/** Standard `{ status: "ok" }` response. */
+export interface StatusOkResponse {
+  status: 'ok'
+}
+
 /** Execute a JSON request with credentials, throw ApiError on non-2xx. */
-async function adminRequest<T>(
-  path: string,
-  init?: RequestInit,
-  opts: AdminRequestOpts = {},
-): Promise<T> {
+async function adminRequest<T>(path: string, init?: RequestInit, opts: AdminRequestOpts = {}): Promise<T> {
   try {
     return await request<T>(path, { ...init, credentials: 'include' })
   } catch (err) {
     const notify = opts.notifyOnUnauthorized !== false
-    if (
-      notify &&
-      err instanceof ApiError &&
-      err.kind === 'unauthorized' &&
-      typeof window !== 'undefined'
-    ) {
+    if (notify && err instanceof ApiError && err.kind === 'unauthorized' && typeof window !== 'undefined') {
       // Dispatching once per 401 is harmless — subscribers are idempotent and
       // only react when the store actually held a populated admin.
       window.dispatchEvent(new CustomEvent(ADMIN_SESSION_EXPIRED_EVENT))
@@ -97,50 +86,43 @@ export interface AdminUser {
 
 /** Login response. */
 export interface LoginResponse {
-  status: string
+  status: 'ok'
   admin: AdminUser
 }
 
 /** Log in with email + password. */
 export function login(email: string, password: string): Promise<LoginResponse> {
-  return adminRequest<LoginResponse>(
-    '/api/admin/login',
-    jsonPost({ email, password }),
-    { notifyOnUnauthorized: false },
-  )
+  return adminRequest<LoginResponse>('/api/admin/login', jsonPost({ email, password }), { notifyOnUnauthorized: false })
 }
 
 /** Log out (invalidate session). */
-export function logout(): Promise<void> {
-  return adminRequest<void>('/api/admin/logout', { method: 'POST' })
+export function logout(): Promise<StatusOkResponse> {
+  return adminRequest<StatusOkResponse>('/api/admin/logout', { method: 'POST' })
 }
 
 /** Get current authenticated admin. */
-export function getMe(): Promise<AdminUser & { status: string }> {
+export function getMe(): Promise<AdminUser & { status: 'active' | 'deactivated' }> {
   return adminRequest('/api/admin/me')
 }
 
 /** Request password reset. */
 export function forgotPassword(email: string): Promise<{ message: string }> {
-  return adminRequest(
-    '/api/admin/forgot-password',
-    jsonPost({ email }),
-    { notifyOnUnauthorized: false },
-  )
+  return adminRequest('/api/admin/forgot-password', jsonPost({ email }), { notifyOnUnauthorized: false })
 }
 
 /** Reset password with token. */
 export function resetPassword(token: string, password: string, confirmPassword: string): Promise<{ message: string }> {
-  return adminRequest(
-    '/api/admin/reset-password',
-    jsonPost({ token, password, confirm_password: confirmPassword }),
-    { notifyOnUnauthorized: false },
-  )
+  return adminRequest('/api/admin/reset-password', jsonPost({ token, password, confirm_password: confirmPassword }), {
+    notifyOnUnauthorized: false,
+  })
 }
 
 /** Change password (authenticated). */
-export function changePassword(currentPassword: string, newPassword: string): Promise<{ status: string }> {
-  return adminRequest('/api/admin/change-password', jsonPost({ current_password: currentPassword, new_password: newPassword }))
+export function changePassword(currentPassword: string, newPassword: string): Promise<StatusOkResponse> {
+  return adminRequest(
+    '/api/admin/change-password',
+    jsonPost({ current_password: currentPassword, new_password: newPassword }),
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -189,18 +171,32 @@ export interface AdminEntryDetail {
   audit_log: AuditEntry[]
 }
 
+/** Admin status-change action. */
+export type AdminEntryStatusAction = 'delete' | 'restore' | 'approve' | 'reject'
+
+/** Entry mutation response. */
+export interface AdminEntryActionResponse {
+  status: 'ok'
+  entry_id: string
+  action: AdminEntryStatusAction | 'purge'
+}
+
 /** Get entry detail. */
 export function getEntry(id: string): Promise<AdminEntryDetail> {
   return adminRequest(`/api/admin/entries/${encodeURIComponent(id)}`)
 }
 
 /** Perform an action on an entry. */
-export function entryAction(id: string, action: string, reason?: string): Promise<{ status: string }> {
+export function entryAction(
+  id: string,
+  action: AdminEntryStatusAction,
+  reason?: string,
+): Promise<AdminEntryActionResponse> {
   return adminRequest(`/api/admin/entries/${encodeURIComponent(id)}/action`, jsonPost({ action, reason }))
 }
 
 /** Purge an entry permanently. */
-export function purgeEntry(id: string, confirmation: string, reason?: string): Promise<{ status: string }> {
+export function purgeEntry(id: string, confirmation: string, reason?: string): Promise<AdminEntryActionResponse> {
   return adminRequest(`/api/admin/entries/${encodeURIComponent(id)}/purge`, jsonPost({ confirmation, reason }))
 }
 
@@ -219,12 +215,20 @@ export function getQueueCount(): Promise<{ count: number }> {
 }
 
 /** Act on a queue item. */
-export function queueAction(id: string, action: 'approve' | 'reject', reason?: string): Promise<{ status: string }> {
+export function queueAction(
+  id: string,
+  action: 'approve' | 'reject',
+  reason?: string,
+): Promise<AdminEntryActionResponse> {
   return adminRequest(`/api/admin/queue/${encodeURIComponent(id)}/action`, jsonPost({ action, reason }))
 }
 
 /** Bulk queue action. */
-export function bulkQueueAction(ids: string[], action: 'approve' | 'reject', reason?: string): Promise<{ status: string; results: { id: string; ok: boolean }[] }> {
+export function bulkQueueAction(
+  ids: string[],
+  action: 'approve' | 'reject',
+  reason?: string,
+): Promise<{ status: 'ok'; results: { id: string; ok: boolean }[] }> {
   return adminRequest('/api/admin/queue/bulk', jsonPost({ ids, action, reason }))
 }
 
@@ -243,19 +247,46 @@ export interface AdminApiKey {
   usageCount: number
 }
 
+/** Single recent-report entry surfaced in the admin API-key detail. */
+export interface AdminApiKeyReport {
+  id: string
+  reporterFirstName: string | null
+  reporterCity: string | null
+  reporterCountry: string | null
+  reportedFirstName: string
+  reportedCity: string
+  reportedCountry: string
+  text: string
+  actionDate: string | null
+  severity: number | null
+  selfReportedModel: string | null
+  status: 'live' | 'pending' | 'deleted'
+  source: 'form' | 'api'
+  dislikeCount: number
+  createdAt: string
+}
+
+/** API key detail response. */
+export type AdminApiKeyDetail = AdminApiKey & { recent_reports: AdminApiKeyReport[] }
+
 /** List API keys. */
-export function listApiKeys(opts: { status?: 'active' | 'revoked'; page?: number } = {}): Promise<Paginated<AdminApiKey>> {
+export function listApiKeys(
+  opts: { status?: 'active' | 'revoked'; page?: number } = {},
+): Promise<Paginated<AdminApiKey>> {
   return adminRequest(`/api/admin/api-keys${qs(opts)}`)
 }
 
 /** Get API key detail with recent reports. */
-export function getApiKey(id: string): Promise<AdminApiKey & { recent_reports: unknown[] }> {
+export function getApiKey(id: string): Promise<AdminApiKeyDetail> {
   return adminRequest(`/api/admin/api-keys/${encodeURIComponent(id)}`)
 }
 
 /** Revoke an API key. */
-export function revokeApiKey(id: string, reason?: string): Promise<{ status: string }> {
-  return adminRequest(`/api/admin/api-keys/${encodeURIComponent(id)}/revoke`, jsonPost({ confirmation: 'REVOKE', reason }))
+export function revokeApiKey(id: string, reason?: string): Promise<StatusOkResponse> {
+  return adminRequest(
+    `/api/admin/api-keys/${encodeURIComponent(id)}/revoke`,
+    jsonPost({ confirmation: 'REVOKE', reason }),
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -279,7 +310,9 @@ export interface AdminTakedown {
 }
 
 /** List takedowns. */
-export function listTakedowns(opts: { status?: 'open' | 'closed'; page?: number } = {}): Promise<Paginated<AdminTakedown>> {
+export function listTakedowns(
+  opts: { status?: 'open' | 'closed'; page?: number } = {},
+): Promise<Paginated<AdminTakedown>> {
   return adminRequest(`/api/admin/takedowns${qs(opts)}`)
 }
 
@@ -300,11 +333,14 @@ export function createTakedown(input: {
 }
 
 /** Update takedown. */
-export function updateTakedown(id: string, fields: {
-  status?: 'open' | 'closed'
-  disposition?: string
-  notes?: string
-}): Promise<AdminTakedown> {
+export function updateTakedown(
+  id: string,
+  fields: {
+    status?: 'open' | 'closed'
+    disposition?: string
+    notes?: string
+  },
+): Promise<AdminTakedown> {
   return adminRequest(`/api/admin/takedowns/${encodeURIComponent(id)}`, jsonPatch(fields))
 }
 
@@ -328,12 +364,12 @@ export function listAdmins(): Promise<{ items: AdminAccount[] }> {
 }
 
 /** Invite new admin. */
-export function inviteAdmin(email: string): Promise<{ status: string; id: string }> {
+export function inviteAdmin(email: string): Promise<{ status: 'ok'; id: string }> {
   return adminRequest('/api/admin/admins/invite', jsonPost({ email }))
 }
 
 /** Deactivate admin. */
-export function deactivateAdmin(id: string, reason?: string): Promise<{ status: string }> {
+export function deactivateAdmin(id: string, reason?: string): Promise<StatusOkResponse> {
   return adminRequest(`/api/admin/admins/${encodeURIComponent(id)}/deactivate`, jsonPost({ reason }))
 }
 
@@ -354,13 +390,15 @@ export interface AuditEntry {
 }
 
 /** List audit log entries. */
-export function listAuditLog(opts: {
-  admin_id?: string
-  action?: string
-  date_from?: string
-  date_to?: string
-  page?: number
-} = {}): Promise<Paginated<AuditEntry>> {
+export function listAuditLog(
+  opts: {
+    admin_id?: string
+    action?: string
+    date_from?: string
+    date_to?: string
+    page?: number
+  } = {},
+): Promise<Paginated<AuditEntry>> {
   return adminRequest(`/api/admin/audit${qs(opts)}`)
 }
 
@@ -381,6 +419,6 @@ export function getSettings(): Promise<AdminSettings> {
 }
 
 /** Update a setting. */
-export function updateSetting(key: keyof AdminSettings, value: string): Promise<{ status: string }> {
+export function updateSetting(key: keyof AdminSettings, value: string): Promise<StatusOkResponse> {
   return adminRequest('/api/admin/settings', jsonPut({ key, value }))
 }

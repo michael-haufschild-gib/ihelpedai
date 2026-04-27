@@ -31,10 +31,7 @@ describe('admin accounts routes', () => {
   let mailer: RecordingMailer
 
   beforeAll(async () => {
-    process.env.SQLITE_PATH = join(
-      mkdtempSync(join(tmpdir(), 'ihelped-admin-accounts-')),
-      'test.db',
-    )
+    process.env.SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'ihelped-admin-accounts-')), 'test.db')
     const { buildApp } = await import('../index.js')
     app = await buildApp()
     // Swap in an in-memory mailer so the invite spec can read the exact
@@ -52,7 +49,8 @@ describe('admin accounts routes', () => {
     })
     expect(login.statusCode).toBe(200)
     const raw = login.headers['set-cookie']
-    cookie = typeof raw === 'string' ? raw : (raw as string[])[0]
+    cookie = typeof raw === 'string' ? raw : ((raw as string[])[0] ?? '')
+    expect(cookie).not.toBe('')
   })
 
   afterAll(async () => {
@@ -102,22 +100,26 @@ describe('admin accounts routes', () => {
     // up. A future refactor that drops the insertPasswordReset call would
     // let the existing row/email assertions pass but break this one.
     expect(mailer.sent).toHaveLength(1)
-    const match = /token=([A-Za-z0-9_-]+)/.exec(mailer.sent[0].text)
+    const sent = mailer.sent[0]
+    if (sent === undefined) throw new Error('expected invite email')
+    const match = /token=([A-Za-z0-9_-]+)/.exec(sent.text)
     expect(match).not.toBe(null)
-    const token = match![1]
+    const token = match?.[1]
+    if (token === undefined) throw new Error('expected invite token')
     const tokenHash = createHash('sha256').update(token).digest('hex')
     const reset = await app.store.getPasswordResetByHash(tokenHash)
     expect(reset?.adminId).toBe(invited?.id)
     expect(reset?.used).toBe(false)
   })
 
-  it('POST /api/admin/admins/invite rolls back admin + reset token when mail delivery fails', async () => {
+  it('POST /api/admin/admins/invite rolls back admin + reset token when mail delivery fails so retry works', async () => {
     // Swap in a mailer that rejects — covers the SMTP-failure branch the
-    // happy-path spec skips. The route must deactivate the new admin row
-    // and mark the reset token used so neither can be abused after a
-    // failed invite mail.
+    // happy-path spec skips. The route must remove the admin/reset/audit
+    // rows created before the failed email so the inviter can retry.
     class ThrowingMailer implements Mailer {
-      async send(): Promise<void> { throw new Error('smtp: connection refused') }
+      async send(): Promise<void> {
+        throw new Error('smtp: connection refused')
+      }
     }
     const original = mailer
     ;(app as unknown as { mailer: Mailer }).mailer = new ThrowingMailer()
@@ -131,10 +133,20 @@ describe('admin accounts routes', () => {
       expect(res.statusCode).toBe(502)
       expect(res.json().error).toBe('internal_error')
       const stranded = await app.store.getAdminByEmail('stranded@admin.ai')
-      expect(stranded?.status).toBe('deactivated')
+      expect(stranded).toBe(null)
     } finally {
       ;(app as unknown as { mailer: Mailer }).mailer = original
     }
+
+    const retry = await app.inject({
+      method: 'POST',
+      url: '/api/admin/admins/invite',
+      headers: { cookie },
+      payload: { email: 'stranded@admin.ai' },
+    })
+    expect(retry.statusCode).toBe(201)
+    const invited = await app.store.getAdminByEmail('stranded@admin.ai')
+    expect(invited?.status).toBe('active')
   })
 
   it('POST /api/admin/admins/:id/deactivate refuses self-deactivation', async () => {
@@ -153,10 +165,7 @@ describe('admin accounts routes', () => {
     const victim = await app.store.insertAdmin('target@admin.ai', hash, adminId)
     // Seed a session for the victim so the deactivation path has something
     // to tear down, and keep the id so we can verify it's actually gone.
-    const victimSessionId = await app.store.insertSession(
-      victim.id,
-      new Date(Date.now() + 3_600_000).toISOString(),
-    )
+    const victimSessionId = await app.store.insertSession(victim.id, new Date(Date.now() + 3_600_000).toISOString())
     expect(await app.store.getSession(victimSessionId)).not.toBe(null)
 
     const res = await app.inject({

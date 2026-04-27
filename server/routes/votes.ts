@@ -34,15 +34,9 @@ const mineBodySchema = z.object({
 /** Register vote endpoints on the Fastify instance. */
 export async function votesRoutes(app: FastifyInstance): Promise<void> {
   async function enforceVoteLimit(reply: FastifyReply, ipHash: string): Promise<boolean> {
-    const decision = await app.limiter.check(
-      `vote:hour:${ipHash}`,
-      effectiveLimit(VOTE_LIMIT_PER_HOUR),
-      HOUR_SECONDS,
-    )
+    const decision = await app.limiter.check(`vote:hour:${ipHash}`, effectiveLimit(VOTE_LIMIT_PER_HOUR), HOUR_SECONDS)
     if (!decision.allowed) {
-      await reply
-        .code(429)
-        .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
+      await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
       return false
     }
     return true
@@ -55,6 +49,11 @@ export async function votesRoutes(app: FastifyInstance): Promise<void> {
   ): Promise<{ count: number; voted: boolean } | undefined> {
     const { slug } = request.params
     if (!SLUG_RE.test(slug)) {
+      await reply.code(404).send({ error: 'not_found' })
+      return undefined
+    }
+    const entry = kind === 'post' ? await app.store.getPost(slug) : await app.store.getReport(slug)
+    if (entry === null || entry.status !== 'live') {
       await reply.code(404).send({ error: 'not_found' })
       return undefined
     }
@@ -83,22 +82,18 @@ export async function votesRoutes(app: FastifyInstance): Promise<void> {
       HOUR_SECONDS,
     )
     if (!decision.allowed) {
-      await reply
-        .code(429)
-        .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
+      await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
       return undefined
     }
     const voted = await app.store.getVotedEntryIds(ipHash, body.kind, body.slugs)
     return { voted }
   }
 
-  app.post<{ Params: { slug: string } }>(
-    '/api/helped/posts/:slug/like',
-    (req, reply) => handleToggle(req, reply, 'post'),
+  app.post<{ Params: { slug: string } }>('/api/helped/posts/:slug/like', (req, reply) =>
+    handleToggle(req, reply, 'post'),
   )
-  app.post<{ Params: { slug: string } }>(
-    '/api/reports/:slug/dislike',
-    (req, reply) => handleToggle(req, reply, 'report'),
+  app.post<{ Params: { slug: string } }>('/api/reports/:slug/dislike', (req, reply) =>
+    handleToggle(req, reply, 'report'),
   )
   app.post('/api/votes/mine', handleMine)
 }
