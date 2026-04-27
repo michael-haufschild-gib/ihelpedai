@@ -26,6 +26,22 @@ if [[ -z "${REMOTE_ROOT}" || "${REMOTE_ROOT}" == "/" || "${REMOTE_ROOT}" == "." 
   exit 1
 fi
 
+resolve_app_version() {
+  if [[ -n "${IHELPED_APP_VERSION:-}" ]]; then
+    printf '%s\n' "${IHELPED_APP_VERSION}"
+    return
+  fi
+
+  local version
+  version="$(git rev-parse --short HEAD)"
+  if ! git diff --quiet ||
+    ! git diff --cached --quiet ||
+    [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    version="${version}-dirty"
+  fi
+  printf '%s\n' "${version}"
+}
+
 echo "[deploy] building frontend + server"
 pnpm build
 pnpm build:server
@@ -50,7 +66,7 @@ ssh "${HOST}" "cd ${REMOTE_ROOT} && pnpm install --prod --frozen-lockfile --conf
 echo "[deploy] chown ${REMOTE_ROOT} to www-data"
 ssh "${HOST}" "chown -R www-data:www-data ${REMOTE_ROOT}"
 
-APP_VERSION="${IHELPED_APP_VERSION:-$(git rev-parse --short HEAD)}"
+APP_VERSION="$(resolve_app_version)"
 ENV_FILE="${IHELPED_REMOTE_ENV_FILE:-/etc/ihelped.env}"
 
 echo "[deploy] publishing APP_VERSION=${APP_VERSION} to ${ENV_FILE}"
@@ -65,6 +81,53 @@ if [ -f "$env_file" ]; then
   sed -i '/^APP_VERSION=/d' "$env_file"
 fi
 printf 'APP_VERSION=%s\n' "$app_version" >> "$env_file"
+REMOTE_SCRIPT
+
+echo "[deploy] applying MySQL schema upgrades when configured"
+ssh "${HOST}" sh -s -- "${REMOTE_ROOT}" "${ENV_FILE}" <<'REMOTE_SCRIPT'
+set -eu
+
+remote_root="$1"
+env_file="$2"
+schema_path="${remote_root}/server/deploy/schema/001-init.mysql.sql"
+
+if [ ! -f "$env_file" ]; then
+  echo "[deploy] ${env_file} not present; skipping schema upgrade"
+  exit 0
+fi
+
+set -a
+# shellcheck disable=SC1090
+. "$env_file"
+set +a
+
+if [ "${STORE:-}" != "mysql" ]; then
+  echo "[deploy] STORE is not mysql; skipping schema upgrade"
+  exit 0
+fi
+if [ -z "${MYSQL_URL:-}" ]; then
+  echo "[deploy] STORE=mysql but MYSQL_URL is empty" >&2
+  exit 1
+fi
+if [ ! -f "$schema_path" ]; then
+  echo "[deploy] schema file missing at ${schema_path}" >&2
+  exit 1
+fi
+
+db_user="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(decodeURIComponent(u.username));')"
+db_pass="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(decodeURIComponent(u.password));')"
+db_host="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(u.hostname || "localhost");')"
+db_port="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(u.port || "3306");')"
+db_name="$(node -e 'const u = new URL(process.env.MYSQL_URL); process.stdout.write(u.pathname.replace(/^\//, ""));')"
+
+if [ -z "$db_user" ] || [ -z "$db_name" ]; then
+  echo "[deploy] MYSQL_URL must include user and database name" >&2
+  exit 1
+fi
+
+MYSQL_PWD="$db_pass"
+export MYSQL_PWD
+mysql -h "$db_host" -P "$db_port" -u "$db_user" "$db_name" < "$schema_path"
 REMOTE_SCRIPT
 
 echo "[deploy] restarting systemd unit and reloading nginx"

@@ -24,18 +24,18 @@ A feature must NOT import from another feature's directory.
 
 ## State
 
-| State kind | Use | Example |
-|---|---|---|
-| Per-component | `useState` | form field values |
-| Cross-route / cross-feature | Zustand store in `src/stores/` | toast queue (`toastStore`), layout prefs (`layoutStore`) |
-| Server data | Fetch in effects, store in `useState` | feed list, entry detail |
-| URL state | `useSearchParams` | pagination page, search query |
+| State kind                  | Use                                   | Example                                                  |
+| --------------------------- | ------------------------------------- | -------------------------------------------------------- |
+| Per-component               | `useState`                            | form field values                                        |
+| Cross-route / cross-feature | Zustand store in `src/stores/`        | toast queue (`toastStore`), layout prefs (`layoutStore`) |
+| Server data                 | Fetch in effects, store in `useState` | feed list, entry detail                                  |
+| URL state                   | `useSearchParams`                     | pagination page, search query                            |
 
 No data-fetching library (SWR/React-Query) is installed. Fetch directly via `src/lib/api.ts` wrappers.
 
 ## API client contract
 
-All network calls go through `src/lib/api.ts`. Do not call `fetch()` directly from components. Each wrapper returns a typed result or throws `ApiError` with a typed `.kind` (`'invalid_input' | 'rate_limited' | 'unauthorized' | 'internal_error'`).
+All network calls go through `src/lib/api.ts`. Do not call `fetch()` directly from components. Each wrapper returns a typed result or throws `ApiError` with a typed `.kind` (`'invalid_input' | 'rate_limited' | 'unauthorized' | 'not_found' | 'mail_delivery_failed' | 'internal_error'`).
 
 Error mapping in forms:
 
@@ -47,7 +47,6 @@ function formatApiError(err: ApiError): string {
   return 'Something went wrong. Try again.'
 }
 ```
-
 
 ## Forms with preview + submit
 
@@ -66,17 +65,17 @@ See `src/features/helped/HelpedForm.tsx` (standalone) and `src/features/helped/F
 
 ## UI primitives (reuse, don't re-roll)
 
-| Primitive | When |
-|---|---|
-| `Button` (primary/secondary/ghost/danger × sm/md/lg) | any clickable action |
-| `Input` | single-line text |
-| `Textarea` | multi-line text |
-| `Select` | `<SelectOption[]>`-driven dropdown |
-| `Switch`, `Toggle`, `ToggleGroup`, `MultiToggleGroup` | boolean toggles |
-| `Modal` | blocking dialogs |
-| `Tooltip`, `Popover`, `DropdownMenu` | overlays |
-| `Tabs`, `TabButton` | tabbed navigation |
-| `Toast` (+ `GlobalToast` + `toastStore`) | transient feedback |
+| Primitive                                             | When                               |
+| ----------------------------------------------------- | ---------------------------------- |
+| `Button` (primary/secondary/ghost/danger × sm/md/lg)  | any clickable action               |
+| `Input`                                               | single-line text                   |
+| `Textarea`                                            | multi-line text                    |
+| `Select`                                              | `<SelectOption[]>`-driven dropdown |
+| `Switch`, `Toggle`, `ToggleGroup`, `MultiToggleGroup` | boolean toggles                    |
+| `Modal`                                               | blocking dialogs                   |
+| `Tooltip`, `Popover`, `DropdownMenu`                  | overlays                           |
+| `Tabs`, `TabButton`                                   | tabbed navigation                  |
+| `Toast` (+ `GlobalToast` + `toastStore`)              | transient feedback                 |
 
 ## Tone anchors (copy)
 
@@ -97,8 +96,8 @@ See `src/features/helped/HelpedForm.tsx` (standalone) and `src/features/helped/F
 
 ## On-Demand References
 
-| Topic | Source |
-|---|---|
-| API endpoint contract (types + paths) | `src/lib/api.ts` |
-| Full PRD with 13 user stories | `docs/plans/prd-01-public-site.md` |
+| Topic                                    | Source                                                                    |
+| ---------------------------------------- | ------------------------------------------------------------------------- |
+| API endpoint contract (types + paths)    | `src/lib/api.ts`                                                          |
+| Full PRD with 13 user stories            | `docs/plans/prd-01-public-site.md`                                        |
 | Design tokens + semantic class inventory | `docs/meta/styleguide.md` (CSS/Tailwind section) + `src/styles/theme.css` |

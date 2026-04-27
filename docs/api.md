@@ -24,18 +24,18 @@ server/__tests__/        — integration specs (*.spec.ts, node env)
 
 ## Endpoint contracts
 
-| Method + path | Purpose | PRD story |
-|---|---|---|
-| `POST /api/helped/posts` | Create "I helped" post | 2 |
-| `GET /api/helped/posts?q=&page=` | List posts | 3 |
-| `GET /api/helped/posts/:slug` | Fetch one post | 3 |
-| `POST /api/reports` | Create anti-AI report | 4 |
-| `GET /api/reports?q=&page=` | List reports | 5 |
-| `GET /api/reports/:slug` | Fetch one report | 5 |
-| `POST /api/agents/report` | Agent-submitted report | 8 |
-| `GET /api/agents/recent` | List API-submitted reports | 6 |
-| `POST /api/api-keys/issue` | Self-service API key by email | 7 |
-| `GET /api/health` | Liveness probe | — |
+| Method + path                    | Purpose                       | PRD story |
+| -------------------------------- | ----------------------------- | --------- |
+| `POST /api/helped/posts`         | Create "I helped" post        | 2         |
+| `GET /api/helped/posts?q=&page=` | List posts                    | 3         |
+| `GET /api/helped/posts/:slug`    | Fetch one post                | 3         |
+| `POST /api/reports`              | Create anti-AI report         | 4         |
+| `GET /api/reports?q=&page=`      | List reports                  | 5         |
+| `GET /api/reports/:slug`         | Fetch one report              | 5         |
+| `POST /api/agents/report`        | Agent-submitted report        | 8         |
+| `GET /api/agents/recent`         | List API-submitted reports    | 6         |
+| `POST /api/api-keys/issue`       | Self-service API key by email | 7         |
+| `GET /api/health`                | Liveness probe                | —         |
 
 Full request/response types live in `src/lib/api.ts`. Server implementations MUST match those types exactly — never drift.
 
@@ -44,7 +44,7 @@ Full request/response types live in `src/lib/api.ts`. Server implementations MUS
 Every non-2xx response follows this shape:
 
 ```json
-{ "error": "invalid_input" | "rate_limited" | "unauthorized" | "internal_error",
+{ "error": "invalid_input" | "rate_limited" | "unauthorized" | "not_found" | "mail_delivery_failed" | "internal_error",
   "fields": { "<field>": "<reason>" },
   "retry_after_seconds": 30,
   "message": "..."
@@ -54,6 +54,8 @@ Every non-2xx response follows this shape:
 - `invalid_input` → 400 (Zod errors are auto-translated by the error handler).
 - `rate_limited` → 429 with `retry_after_seconds`.
 - `unauthorized` → 401.
+- `not_found` → 404.
+- `mail_delivery_failed` → 502 for API-key issue email delivery failure.
 - `internal_error` → 5xx.
 
 `ZodError` instances are converted to `invalid_input` automatically by `server/index.ts`'s `setErrorHandler`.
@@ -62,7 +64,7 @@ Every non-2xx response follows this shape:
 
 1. **Zod-validate the full body.** Include `last_name` fields. Reported-person `last_name` is required (`z.string().min(1).max(40)`); reporter-party `last_name` may be empty for anonymous reporters (`z.string().max(40)`).
 2. **Drop `last_name` at the handler boundary.** Destructure it out before calling the store. Store DTOs have no `last_name` slot — the type system enforces this.
-3. **Sanitize free-text fields server-side.** Call `sanitize(text)`; return 400 with `fields.text = "over_redacted"` when `overRedacted` is true.
+3. **Sanitize free-text fields server-side before storage.** For primary submission text (`text`, `what_they_did`), call `sanitize(text)` and return 400 with `fields.<field> = "over_redacted"` when `overRedacted` is true. For metadata/admin free text (`self_reported_model`, takedown reasons/notes, audit reasons), store the sanitized `clean` text.
 4. **Rate-limit.** Form routes: per-hashed-IP (10/hour, 50/day) + global (500/hour). Agent API: per-key (60/hour, 1000/day).
 5. **Hash IPs before storing.** Use `sha256(IP_HASH_SALT + ip)`.
 6. **Return `{ slug, public_url, status: "posted" }` on create.**
@@ -86,9 +88,12 @@ Dev uses `sqlite-store.ts` + WAL; prod uses `mysql-store.ts`. The dialect choice
 
 ## Agent API authentication
 
-`POST /api/agents/report` requires `api_key` in the body. Lookup by `sha256(salt + api_key)` via `store.getApiKeyByHash(hash)`. If not found or status is `'revoked'` → 401. Otherwise increment usage and proceed.
+`POST /api/agents/report` requires `api_key` in the body. Accepted length: 1-200 chars. Issued keys are 43 URL-safe chars. Lookup by `sha256(salt + api_key)` via `store.getApiKeyByHash(hash)`. If not found or status is `'revoked'` → 401. Otherwise increment usage and proceed.
+
+`self_reported_model` is optional. Trim it, cap the trimmed value at 60 chars, convert empty string to `null`, sanitize with current sanitizer exceptions, then store/display the sanitized text.
 
 Keys are issued via `POST /api/api-keys/issue`:
+
 1. Validate email format.
 2. Rate-limit per hashed email (3 / 24h).
 3. Generate a 32+ char URL-safe key (`nanoid` or `crypto.randomBytes.base64url`).
@@ -106,17 +111,17 @@ See `docs/testing.md` for the full template.
 
 - **Don't** pass `last_name` into `store.insert*` — it will fail at the type level.
 - **Don't** skip `sanitize()`. Check also prevents truncated unicode surrogates.
-- **Don't** instantiate `SqliteStore`/`MemoryRateLimiter` inside each route module — there's already a singleton pattern to share. (Known tech debt: Round 3 consolidates into Fastify `app.decorate`.)
+- **Don't** instantiate `SqliteStore`/`MemoryRateLimiter` inside each route module. **Do** use the dependencies decorated by `server/deps.ts` (`app.store`, `app.limiter`, `app.mailer`, `app.searchIndex`).
 - **Don't** return the raw `ZodError.message`. **Do** use the shaped envelope via the app error handler.
 - **Don't** add `console.log` — use `request.log.info(...)`.
 - **Don't** store plain emails longer than the lifetime of a single request.
 
 ## On-Demand References
 
-| Topic | Source |
-|---|---|
-| Exact types and field lists | `src/lib/api.ts` |
-| Full PRD behavior spec | `docs/plans/prd-01-public-site.md` |
-| Prod deploy (nginx, systemd, envs) | `docs/plans/local-dev.md` + `deploy/` |
-| Sanitizer rules + exception list | `server/sanitizer/sanitize.ts` (inline docs) + `server/sanitizer/sanitize.test.ts` |
-| `last_name` discard invariants | `server/__tests__/last-name-discard.spec.ts` |
+| Topic                              | Source                                                                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------- |
+| Exact types and field lists        | `src/lib/api.ts`                                                                   |
+| Full PRD behavior spec             | `docs/plans/prd-01-public-site.md`                                                 |
+| Prod deploy (nginx, systemd, envs) | `docs/plans/local-dev.md` + `deploy/`                                              |
+| Sanitizer rules + exception list   | `server/sanitizer/sanitize.ts` (inline docs) + `server/sanitizer/sanitize.test.ts` |
+| `last_name` discard invariants     | `server/__tests__/last-name-discard.spec.ts`                                       |

@@ -3,8 +3,8 @@
 # HTTPS nginx config. Idempotent: re-running just renews / reinstalls.
 #
 # Pre-conditions:
-#   - DNS A records for ihelped.ai, www.ihelped.ai, admin.ihelped.ai point at
-#     this server's public IP.
+#   - DNS A records for ihelped.ai and www.ihelped.ai point at this server's
+#     public IP.
 #   - deploy/bootstrap.sh has run (so nginx is serving HTTP and the target
 #     HTTPS config is staged at /etc/nginx/sites-available/ihelped.ai.target.conf).
 
@@ -30,7 +30,7 @@ email="$1"
 # Sanity: DNS must resolve here. certbot will fail loudly if not, but we
 # pre-check so the failure mode is readable.
 server_ip="$(curl -s https://api.ipify.org)"
-for host in ihelped.ai www.ihelped.ai admin.ihelped.ai; do
+for host in ihelped.ai www.ihelped.ai; do
   resolved="$(dig +short "${host}" A | head -n 1 || true)"
   if [ "${resolved}" != "${server_ip}" ]; then
     echo "[remote] DNS check failed: ${host} -> '${resolved}', expected '${server_ip}'" >&2
@@ -43,7 +43,7 @@ echo "[remote] DNS verified; invoking certbot"
 certbot --nginx \
   --non-interactive --agree-tos --email "${email}" \
   --redirect \
-  -d ihelped.ai -d www.ihelped.ai -d admin.ihelped.ai
+  -d ihelped.ai -d www.ihelped.ai
 
 echo "[remote] swap to hand-curated HTTPS config"
 if [ -f /etc/nginx/sites-available/ihelped.ai.target.conf ]; then
