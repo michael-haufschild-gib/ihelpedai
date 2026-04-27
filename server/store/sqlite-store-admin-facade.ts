@@ -187,8 +187,11 @@ export class SqliteStoreAdminFacade {
   async revokeApiKeyWithAudit(id: string, a: AdminAuditInput): Promise<void> {
     admx.revokeApiKeyWithAudit(this.db, id, a)
   }
-  async listReportsForApiKey(k: string, l: number): Promise<Report[]> {
-    return adm.listReportsForApiKey(this.db, k, l)
+  async listReportsForApiKey(k: string, l: number, o?: number): Promise<Report[]> {
+    return adm.listReportsForApiKey(this.db, k, l, o)
+  }
+  async countReportsForApiKey(k: string): Promise<number> {
+    return adm.countReportsForApiKey(this.db, k)
   }
   async getApiKey(id: string): Promise<AdminApiKey | null> {
     return adm.getApiKeyAdmin(this.db, id)

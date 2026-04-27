@@ -58,7 +58,7 @@ describe('AdminLogin', () => {
   it('happy path: submit calls login(), populates the store, and navigates to /admin', async () => {
     mockedLogin.mockResolvedValueOnce({
       status: 'ok',
-      admin: { id: 'aaaaaaaaaa', email: 'ops@admin.ai' },
+      admin: { id: 'aaaaaaaaaa', email: 'ops@admin.ai', status: 'active' },
     })
     renderLogin()
     const user = userEvent.setup()
@@ -79,6 +79,10 @@ describe('AdminLogin', () => {
     expect(useAdminStore.getState().admin).toEqual({
       id: 'aaaaaaaaaa',
       email: 'ops@admin.ai',
+      // The login response now includes `status` so the AdminUser
+      // shape is identical to what /me returns; the store carries it
+      // through unchanged.
+      status: 'active',
     })
   })
 
@@ -140,7 +144,8 @@ describe('AdminLogin', () => {
     mockedLogin.mockImplementationOnce(
       () =>
         new Promise<adminApi.LoginResponse>((res) => {
-          resolveLogin = () => res({ status: 'ok', admin: { id: 'aaaaaaaaaa', email: 'ops@admin.ai' } })
+          resolveLogin = () =>
+            res({ status: 'ok', admin: { id: 'aaaaaaaaaa', email: 'ops@admin.ai', status: 'active' } })
         }),
     )
     renderLogin()

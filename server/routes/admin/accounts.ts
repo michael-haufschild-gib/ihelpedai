@@ -11,8 +11,15 @@ import { sanitizeOptionalAdminFreeText } from './sanitize-admin-text.js'
 
 const BCRYPT_ROUNDS = 12
 
+/**
+ * RFC 5321 caps the forward-path at 254 octets. Aligned with auth.ts
+ * and api-keys.ts so the email-length contract is uniform across every
+ * surface that accepts an address.
+ */
+const MAX_EMAIL_LENGTH = 254
+
 const inviteSchema = z.object({
-  email: z.string().email().max(255),
+  email: z.string().email().max(MAX_EMAIL_LENGTH),
 })
 
 const deactivateSchema = z.object({

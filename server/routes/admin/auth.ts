@@ -5,6 +5,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../../config.js'
+import { byteLength } from '../../lib/byte-length.js'
+import { effectiveLimit } from '../../lib/effective-limit.js'
 import { hashWithSalt } from '../../lib/salted-hash.js'
 import { zodFieldErrors } from '../../lib/zod-field-errors.js'
 import type { BucketSpec } from '../../rate-limit/index.js'
@@ -13,7 +15,28 @@ import { getRequestAdmin, requireAdmin, SESSION_COOKIE, sessionExpiry } from './
 
 const BCRYPT_ROUNDS = 12
 const RESET_TOKEN_EXPIRY_MS = 60 * 60 * 1000
-const MAX_AUTH_SECRET_LENGTH = 255
+/**
+ * Bounds on auth-related secrets, applied at the schema layer so the
+ * server can reject pathological inputs before any cryptographic work
+ * (bcrypt hashing, sha256 token lookup) happens.
+ *
+ *  - `MAX_LOGIN_PASSWORD_LENGTH` stays loose at 255 chars because bcrypt
+ *    silently truncates input to 72 BYTES; an existing admin whose
+ *    password happens to span more than 72 bytes still authenticates
+ *    today, and tightening login-side would lock them out without a
+ *    migration path. Validation of the truncation contract happens on
+ *    the new-password side instead.
+ *  - `MAX_NEW_PASSWORD_BYTES` mirrors bcrypt's actual input window so a
+ *    user setting a fresh password gets the entropy they paid for.
+ *  - `MAX_RESET_TOKEN_LENGTH` is 64 chars: tokens are server-generated
+ *    as 32-byte base64url (43 chars), so 64 is comfortable headroom
+ *    while still rejecting absurd inputs before the sha256 lookup.
+ *  - `MAX_EMAIL_LENGTH` is 254, the RFC 5321 ceiling for a forward path.
+ */
+const MAX_LOGIN_PASSWORD_LENGTH = 255
+const MAX_NEW_PASSWORD_BYTES = 72
+const MAX_RESET_TOKEN_LENGTH = 64
+const MAX_EMAIL_LENGTH = 254
 
 // Stable placeholder hash for failed logins. Running bcrypt.compare against
 // this when no admin row exists (or the row is deactivated) keeps the
@@ -50,56 +73,114 @@ const FORGOT_GLOBAL_DAY_LIMIT = 50
  * global caps a full-on credential-stuffing wave.
  */
 function loginThrottleBuckets(ipHash: string, emailHash: string): BucketSpec[] {
+  // Each cap is wrapped in `effectiveLimit()` so dev/CI can run the e2e
+  // suite repeatedly without locking themselves out of the admin login
+  // path while production keeps the raw values. The dev multiplier is
+  // capped at 1 by the test specs, so existing behavioural locks (e.g.
+  // 5 attempts succeed; 6th 429s) hold under tests.
   return [
-    { bucket: `admin:login:ip:${ipHash}:window`, limit: LOGIN_IP_WINDOW_LIMIT, windowSeconds: LOGIN_IP_WINDOW_S },
-    { bucket: `admin:login:email:${emailHash}:hour`, limit: LOGIN_EMAIL_HOUR_LIMIT, windowSeconds: HOUR_S },
-    { bucket: `admin:login:email:${emailHash}:day`, limit: LOGIN_EMAIL_DAY_LIMIT, windowSeconds: DAY_S },
-    { bucket: 'admin:login:global:hour', limit: LOGIN_GLOBAL_HOUR_LIMIT, windowSeconds: HOUR_S },
+    {
+      bucket: `admin:login:ip:${ipHash}:window`,
+      limit: effectiveLimit(LOGIN_IP_WINDOW_LIMIT),
+      windowSeconds: LOGIN_IP_WINDOW_S,
+    },
+    {
+      bucket: `admin:login:email:${emailHash}:hour`,
+      limit: effectiveLimit(LOGIN_EMAIL_HOUR_LIMIT),
+      windowSeconds: HOUR_S,
+    },
+    {
+      bucket: `admin:login:email:${emailHash}:day`,
+      limit: effectiveLimit(LOGIN_EMAIL_DAY_LIMIT),
+      windowSeconds: DAY_S,
+    },
+    {
+      bucket: 'admin:login:global:hour',
+      limit: effectiveLimit(LOGIN_GLOBAL_HOUR_LIMIT),
+      windowSeconds: HOUR_S,
+    },
   ]
 }
 
-/** Multi-bucket rate-limit specs for a single forgot-password request. */
+/**
+ * Multi-bucket rate-limit specs for a single forgot-password request.
+ * Caps scale via `effectiveLimit()`: see the rationale on
+ * `loginThrottleBuckets`.
+ */
 function forgotPasswordBuckets(ipHash: string, emailHash: string): BucketSpec[] {
   return [
     {
       bucket: `admin:forgot-password:ip:${ipHash}:window`,
-      limit: FORGOT_IP_WINDOW_LIMIT,
+      limit: effectiveLimit(FORGOT_IP_WINDOW_LIMIT),
       windowSeconds: FORGOT_IP_WINDOW_S,
     },
-    { bucket: `admin:forgot-password:ip:${ipHash}:day`, limit: FORGOT_IP_DAY_LIMIT, windowSeconds: DAY_S },
-    { bucket: `admin:forgot-password:email:${emailHash}:hour`, limit: FORGOT_EMAIL_HOUR_LIMIT, windowSeconds: HOUR_S },
-    { bucket: `admin:forgot-password:email:${emailHash}:day`, limit: FORGOT_EMAIL_DAY_LIMIT, windowSeconds: DAY_S },
-    { bucket: 'admin:forgot-password:global:hour', limit: FORGOT_GLOBAL_HOUR_LIMIT, windowSeconds: HOUR_S },
-    { bucket: 'admin:forgot-password:global:day', limit: FORGOT_GLOBAL_DAY_LIMIT, windowSeconds: DAY_S },
+    {
+      bucket: `admin:forgot-password:ip:${ipHash}:day`,
+      limit: effectiveLimit(FORGOT_IP_DAY_LIMIT),
+      windowSeconds: DAY_S,
+    },
+    {
+      bucket: `admin:forgot-password:email:${emailHash}:hour`,
+      limit: effectiveLimit(FORGOT_EMAIL_HOUR_LIMIT),
+      windowSeconds: HOUR_S,
+    },
+    {
+      bucket: `admin:forgot-password:email:${emailHash}:day`,
+      limit: effectiveLimit(FORGOT_EMAIL_DAY_LIMIT),
+      windowSeconds: DAY_S,
+    },
+    {
+      bucket: 'admin:forgot-password:global:hour',
+      limit: effectiveLimit(FORGOT_GLOBAL_HOUR_LIMIT),
+      windowSeconds: HOUR_S,
+    },
+    {
+      bucket: 'admin:forgot-password:global:day',
+      limit: effectiveLimit(FORGOT_GLOBAL_DAY_LIMIT),
+      windowSeconds: DAY_S,
+    },
   ]
 }
 
+/**
+ * Reject a fresh password that exceeds bcrypt's effective input window.
+ * bcrypt silently truncates input beyond 72 BYTES, so anything submitted
+ * past that point contributes no entropy — the user thinks they have a
+ * stronger password than they do. Surface this as `too_long` at the
+ * schema layer instead.
+ */
+const newPasswordSchema = z
+  .string()
+  .min(12)
+  .refine((v) => byteLength(v) <= MAX_NEW_PASSWORD_BYTES, 'too_long')
+  .refine((v) => isAcceptablePassword(v), 'weak_password')
+
 const loginInput = z.object({
-  email: z.string().email().max(255),
-  password: z.string().min(1).max(255),
+  email: z.string().email().max(MAX_EMAIL_LENGTH),
+  // Loose 255 cap on login matches what bcrypt was already accepting.
+  // Tightening to 72 BYTES would lock out any existing admin whose
+  // password happens to span more — bcrypt was always truncating their
+  // input to 72 silently and they were authenticating fine. The
+  // entropy-window enforcement happens on the new-password side, where
+  // it does no harm.
+  password: z.string().min(1).max(MAX_LOGIN_PASSWORD_LENGTH),
 })
 
 const resetRequestInput = z.object({
-  email: z.string().email().max(255),
+  email: z.string().email().max(MAX_EMAIL_LENGTH),
 })
 
 const resetPasswordInput = z.object({
-  token: z.string().min(1).max(MAX_AUTH_SECRET_LENGTH),
-  password: z
-    .string()
-    .min(12)
-    .max(255)
-    .refine((v) => isAcceptablePassword(v), 'weak_password'),
-  confirm_password: z.string().min(1).max(MAX_AUTH_SECRET_LENGTH),
+  token: z.string().min(1).max(MAX_RESET_TOKEN_LENGTH),
+  password: newPasswordSchema,
+  confirm_password: z.string().min(1).max(MAX_RESET_TOKEN_LENGTH),
 })
 
 const changePasswordInput = z.object({
-  current_password: z.string().min(1).max(MAX_AUTH_SECRET_LENGTH),
-  new_password: z
-    .string()
-    .min(12)
-    .max(255)
-    .refine((v) => isAcceptablePassword(v), 'weak_password'),
+  // Existing-password check runs against the stored bcrypt hash, so the
+  // 255 cap matches `loginInput.password` for the same reason.
+  current_password: z.string().min(1).max(MAX_LOGIN_PASSWORD_LENGTH),
+  new_password: newPasswordSchema,
 })
 
 /** Register login, logout, and session check routes. */
@@ -147,7 +228,7 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
         maxAge: 14 * 24 * 60 * 60,
       })
       .status(200)
-      .send({ status: 'ok', admin: { id: admin.id, email: admin.email } })
+      .send({ status: 'ok', admin: { id: admin.id, email: admin.email, status: admin.status } })
   })
 
   app.post(

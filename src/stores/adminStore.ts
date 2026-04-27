@@ -27,7 +27,9 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     set({ loading: true })
     try {
       const me = await getMe()
-      set({ admin: { id: me.id, email: me.email }, loading: false, checked: true })
+      // `me` is already the canonical AdminUser shape (id+email+status);
+      // there is no longer a "lite vs full" distinction to reconcile.
+      set({ admin: me, loading: false, checked: true })
     } catch {
       set({ admin: null, loading: false, checked: true })
     }

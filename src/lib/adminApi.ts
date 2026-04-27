@@ -78,10 +78,17 @@ function qs<T extends QueryParams<T>>(params: T): string {
 /* Auth                                                                */
 /* ------------------------------------------------------------------ */
 
-/** Admin user info. */
+/**
+ * Admin user info as returned by `/api/admin/login` and `/api/admin/me`.
+ * Both endpoints emit the identical shape so the adminStore never has to
+ * reconcile a "lite admin" from login with a "full admin" from /me.
+ * `status` is part of the contract because a deactivated-mid-session
+ * admin must be redirected before the UI renders behind the gate.
+ */
 export interface AdminUser {
   id: string
   email: string
+  status: 'active' | 'deactivated'
 }
 
 /** Login response. */
@@ -100,8 +107,8 @@ export function logout(): Promise<StatusOkResponse> {
   return adminRequest<StatusOkResponse>('/api/admin/logout', { method: 'POST' })
 }
 
-/** Get current authenticated admin. */
-export function getMe(): Promise<AdminUser & { status: 'active' | 'deactivated' }> {
+/** Get current authenticated admin. Returns the same shape as login. */
+export function getMe(): Promise<AdminUser> {
   return adminRequest('/api/admin/me')
 }
 
@@ -266,8 +273,15 @@ export interface AdminApiKeyReport {
   createdAt: string
 }
 
-/** API key detail response. */
-export type AdminApiKeyDetail = AdminApiKey & { recent_reports: AdminApiKeyReport[] }
+/**
+ * API key detail response. `recent_reports` is now a paginated envelope
+ * rather than a bare array, so admins investigating a high-volume key
+ * can navigate past the first page of submissions instead of looking at
+ * a silently-truncated history.
+ */
+export type AdminApiKeyDetail = AdminApiKey & {
+  recent_reports: Paginated<AdminApiKeyReport>
+}
 
 /** List API keys. */
 export function listApiKeys(

@@ -19,8 +19,15 @@ const PER_IP_DAY_LIMIT = 10
 const GLOBAL_HOUR_LIMIT = 30
 const GLOBAL_DAY_LIMIT = 100
 
+/**
+ * RFC 5321 caps the forward-path local-part+domain at 254 octets. Aligning
+ * with the admin auth schemas keeps the email-length contract uniform
+ * across every public surface that accepts an address.
+ */
+const MAX_EMAIL_LENGTH = 254
+
 const issueSchema = z.object({
-  email: z.string().email().max(200),
+  email: z.string().email().max(MAX_EMAIL_LENGTH),
 })
 
 /** Generate a 32-byte URL-safe API key (~43 chars of base64url). */

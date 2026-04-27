@@ -211,8 +211,11 @@ export class MysqlStoreAdminFacade {
   async revokeApiKeyWithAudit(id: string, a: AdminAuditInput): Promise<void> {
     return admx.revokeApiKeyWithAudit(this, id, a)
   }
-  async listReportsForApiKey(k: string, l: number): Promise<Report[]> {
-    return adm.listReportsForApiKey(this.pool, k, l)
+  async listReportsForApiKey(k: string, l: number, o?: number): Promise<Report[]> {
+    return adm.listReportsForApiKey(this.pool, k, l, o)
+  }
+  async countReportsForApiKey(k: string): Promise<number> {
+    return adm.countReportsForApiKey(this.pool, k)
   }
   async getApiKey(id: string): Promise<AdminApiKey | null> {
     return adm.getApiKeyAdmin(this.pool, id)

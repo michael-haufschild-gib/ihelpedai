@@ -9,9 +9,21 @@ import { sanitizeOptionalAdminFreeText } from './sanitize-admin-text.js'
 
 const PAGE_SIZE = 50
 
+/**
+ * Per-key submission history page size for the detail view. 20 rows
+ * historically — kept the same to avoid a wire-format breakage on the
+ * row count, but now wrapped in a paginated envelope so admins can
+ * navigate past the first page.
+ */
+const REPORTS_PAGE_SIZE = 20
+
 const listQuerySchema = z.object({
   status: z.enum(['active', 'revoked']).optional(),
   page: adminPageQueryField,
+})
+
+const detailQuerySchema = z.object({
+  reports_page: adminPageQueryField,
 })
 
 const revokeSchema = z.object({
@@ -58,13 +70,31 @@ export async function adminApiKeyRoutes(app: FastifyInstance): Promise<void> {
         reply.status(404).send({ error: 'not_found' })
         return
       }
+      const queryParse = detailQuerySchema.safeParse(request.query)
+      if (!queryParse.success) {
+        reply.status(400).send({ error: 'invalid_input' })
+        return
+      }
       const key = await store.getApiKey(params.data.id)
       if (!key) {
         reply.status(404).send({ error: 'not_found' })
         return
       }
-      const recentReports = await store.listReportsForApiKey(key.keyHash, 20)
-      reply.status(200).send({ ...publicAdminApiKey(key), recent_reports: recentReports })
+      // Page through the key's submission history. The previous endpoint
+      // hard-coded a 20-row truncation with no UI affordance to see
+      // older rows; admins investigating a high-volume key would lose
+      // the long tail of the audit trail. Pagination preserves the
+      // newest-first contract while exposing the full history.
+      const reportsPage = queryParse.data.reports_page
+      const offset = (reportsPage - 1) * REPORTS_PAGE_SIZE
+      const [items, total] = await Promise.all([
+        store.listReportsForApiKey(key.keyHash, REPORTS_PAGE_SIZE, offset),
+        store.countReportsForApiKey(key.keyHash),
+      ])
+      reply.status(200).send({
+        ...publicAdminApiKey(key),
+        recent_reports: { items, page: reportsPage, page_size: REPORTS_PAGE_SIZE, total },
+      })
     },
   )
 

@@ -483,8 +483,18 @@ export interface Store {
 
   revokeApiKeyWithAudit(id: string, audit: AdminAuditInput): Promise<void>
 
-  /** List recent reports submitted with a specific API key. */
-  listReportsForApiKey(keyHash: string, limit: number): Promise<Report[]>
+  /**
+   * Page through reports submitted with a specific API key. Used by the
+   * admin API-key detail view. The previous limit-only signature was a
+   * usability footgun for high-volume keys: a key with hundreds of
+   * submissions would silently truncate at 20 rows with no UI affordance
+   * to see the rest. Sorted newest-first by `(created_at, id)` so a
+   * deterministic tie-breaker survives same-millisecond inserts.
+   */
+  listReportsForApiKey(keyHash: string, limit: number, offset?: number): Promise<Report[]>
+
+  /** Total count of reports submitted with a specific API key. */
+  countReportsForApiKey(keyHash: string): Promise<number>
 
   /** Get API key by id (admin view). */
   getApiKey(id: string): Promise<AdminApiKey | null>

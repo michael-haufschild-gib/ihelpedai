@@ -19,6 +19,7 @@ import type {
   VoteToggleResult,
 } from './index.js'
 import { MysqlStoreAdminFacade } from './mysql-store-admin-facade.js'
+import { assertCompatibleMysql } from './mysql-version.js'
 
 type PostRow = RowDataPacket & {
   id: string
@@ -137,6 +138,18 @@ export class MysqlStore extends MysqlStoreAdminFacade implements Store {
       })
     })
     super(pool)
+  }
+
+  /**
+   * Boot-time invariant: refuse to serve requests against a backend that
+   * does not enforce the CHECK constraints declared in the schema. Run
+   * once from the Fastify `onReady` hook so a misconfigured deploy fails
+   * loudly before the first user request, instead of silently accepting
+   * out-of-domain values that the application validation layer happens to
+   * already cover. See `server/store/mysql-version.ts` for the contract.
+   */
+  async assertCompatibility(): Promise<void> {
+    await assertCompatibleMysql(this.pool)
   }
 
   async insertPost(input: NewPost): Promise<Post> {

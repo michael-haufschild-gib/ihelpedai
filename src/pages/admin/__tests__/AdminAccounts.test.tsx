@@ -41,7 +41,7 @@ describe('AdminAccounts', () => {
     mockedInvite.mockReset()
     mockedDeactivate.mockReset()
     useAdminStore.setState({
-      admin: { id: SELF_ID, email: `${SELF_ID}@admin.ai` },
+      admin: { id: SELF_ID, email: `${SELF_ID}@admin.ai`, status: 'active' },
       loading: false,
       checked: true,
     })

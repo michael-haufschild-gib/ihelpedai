@@ -116,9 +116,27 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
         reply.status(400).send({ error: 'invalid_input' })
         return
       }
-      // Bulk tolerates per-entry misses (404-equivalent) but still surfaces
-      // write/audit failures as a 500 so callers do not silently retry on
-      // partially-applied status changes.
+      // Bulk runs strictly sequentially. Three forces drive that choice;
+      // none of them is performance-related, so do not "optimise" by
+      // switching to Promise.all without re-deriving the contract:
+      //
+      //   1. Audit-log ordering. Each per-id apply opens its own
+      //      `updateEntryStatusWithAudit` transaction; sequential
+      //      execution gives every audit row a strictly increasing
+      //      `created_at` so an auditor reading the log can
+      //      reconstruct the exact order the admin's bulk landed.
+      //   2. Result-array ordering. The 200 response carries
+      //      `results: [{id, ok}]` ordered by the request's `ids[]`
+      //      so the UI can pair each row with its outcome. The order
+      //      contract is locked by admin-queue-actions.spec.ts:247.
+      //   3. Partial-success semantics. Per-id "not pending" returns
+      //      `ok: false` and continues. A genuine store/audit failure
+      //      throws and a 500 propagates, with rows up to that index
+      //      already committed. Wrapping the loop in a single outer
+      //      transaction would change that to all-or-nothing on hard
+      //      errors — arguably safer, but it breaks the documented
+      //      partial-success contract and requires restructuring
+      //      `applyQueueAction` to share one connection. Out of scope.
       const results: { id: string; ok: boolean }[] = []
       const reason = await sanitizeOptionalAdminFreeText(store, body.data.reason)
       for (const id of body.data.ids) {

@@ -166,17 +166,84 @@ describe('admin API key routes', () => {
       headers: { cookie },
     })
     expect(detailA.statusCode).toBe(200)
-    const recentA = (detailA.json() as { recent_reports: Array<{ id: string }> }).recent_reports
-    expect(recentA.some((r) => r.id === reportA.id)).toBe(true)
-    expect(recentA.some((r) => r.id === reportB.id)).toBe(false)
+    // `recent_reports` is now a paginated envelope `{ items, page, page_size, total }`
+    // rather than a bare array, so admins on a high-volume key can navigate
+    // past the first page. The isolation contract still holds: each detail
+    // page only sees its own key's submissions.
+    const recentA = (detailA.json() as { recent_reports: { items: Array<{ id: string }>; total: number } })
+      .recent_reports
+    expect(recentA.items.some((r) => r.id === reportA.id)).toBe(true)
+    expect(recentA.items.some((r) => r.id === reportB.id)).toBe(false)
+    expect(recentA.total).toBe(1)
 
     const detailB = await app.inject({
       method: 'GET',
       url: `/api/admin/api-keys/${b.id}`,
       headers: { cookie },
     })
-    const recentB = (detailB.json() as { recent_reports: Array<{ id: string }> }).recent_reports
-    expect(recentB.some((r) => r.id === reportB.id)).toBe(true)
-    expect(recentB.some((r) => r.id === reportA.id)).toBe(false)
+    const recentB = (detailB.json() as { recent_reports: { items: Array<{ id: string }>; total: number } })
+      .recent_reports
+    expect(recentB.items.some((r) => r.id === reportB.id)).toBe(true)
+    expect(recentB.items.some((r) => r.id === reportA.id)).toBe(false)
+    expect(recentB.total).toBe(1)
+  })
+
+  it('paginates recent_reports past the first 20 rows so admins see the long tail', async () => {
+    // Seed a key with > 1 page of history so the contract is observable.
+    const k = await app.store.insertApiKey({
+      keyHash: 'pagination-target-keyhash',
+      keyLast4: 'page',
+      emailHash: 'pagination-email-hash',
+      status: 'active',
+    })
+    // 25 submissions guarantees a partial second page (5 rows).
+    for (let i = 0; i < 25; i += 1) {
+      await app.store.insertAgentReport(
+        {
+          reporterFirstName: null,
+          reporterCity: null,
+          reporterCountry: null,
+          reportedFirstName: `Pagination${String(i)}`,
+          reportedCity: 'Berlin',
+          reportedCountry: 'DE',
+          text: `pagination probe ${String(i)}`,
+          actionDate: null,
+          severity: null,
+          selfReportedModel: null,
+          clientIpHash: null,
+          source: 'api',
+        },
+        'pagination-target-keyhash',
+        'live',
+      )
+    }
+    const page1 = await app.inject({
+      method: 'GET',
+      url: `/api/admin/api-keys/${k.id}?reports_page=1`,
+      headers: { cookie },
+    })
+    expect(page1.statusCode).toBe(200)
+    const body1 = page1.json() as {
+      recent_reports: { items: Array<{ id: string }>; page: number; page_size: number; total: number }
+    }
+    expect(body1.recent_reports.total).toBe(25)
+    expect(body1.recent_reports.page).toBe(1)
+    expect(body1.recent_reports.items.length).toBe(20)
+
+    const page2 = await app.inject({
+      method: 'GET',
+      url: `/api/admin/api-keys/${k.id}?reports_page=2`,
+      headers: { cookie },
+    })
+    expect(page2.statusCode).toBe(200)
+    const body2 = page2.json() as {
+      recent_reports: { items: Array<{ id: string }>; page: number; total: number }
+    }
+    expect(body2.recent_reports.page).toBe(2)
+    expect(body2.recent_reports.items.length).toBe(5)
+    // Pages must not overlap — each id appears on exactly one page.
+    const idsP1 = new Set(body1.recent_reports.items.map((r) => r.id))
+    const idsP2 = new Set(body2.recent_reports.items.map((r) => r.id))
+    for (const id of idsP2) expect(idsP1.has(id)).toBe(false)
   })
 })

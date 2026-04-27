@@ -357,15 +357,23 @@ export function revokeApiKey(db: SqliteDatabase, id: string): void {
   db.prepare(`UPDATE agent_keys SET status = 'revoked' WHERE id = ?`).run(id)
 }
 
-/** List reports submitted with a given API key. */
-export function listReportsForApiKey(db: SqliteDatabase, keyHash: string, limit: number): Report[] {
+/** Page through reports submitted with a given API key (newest-first). */
+export function listReportsForApiKey(db: SqliteDatabase, keyHash: string, limit: number, offset = 0): Report[] {
   return (
     db
       .prepare(
-        `SELECT * FROM reports WHERE source = 'api' AND api_key_hash = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
+        `SELECT * FROM reports WHERE source = 'api' AND api_key_hash = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       )
-      .all(keyHash, limit) as ReportRowLike[]
+      .all(keyHash, limit, offset) as ReportRowLike[]
   ).map(reportFromRow)
+}
+
+/** Count of reports submitted with a given API key. */
+export function countReportsForApiKey(db: SqliteDatabase, keyHash: string): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM reports WHERE source = 'api' AND api_key_hash = ?`).get(keyHash) as
+    | { n: number }
+    | undefined
+  return row?.n ?? 0
 }
 
 /** Get a single API key for admin view. */

@@ -157,8 +157,10 @@ describe('POST /api/api-keys/issue — input validation', () => {
     expect(typeof body.fields?.email).toBe('string')
   })
 
-  it('rejects an oversize email at the schema layer (max=200)', async () => {
-    const huge = `${'x'.repeat(190)}@example.com` // 202 chars
+  it('rejects an oversize email at the schema layer (RFC 5321 max=254)', async () => {
+    // Was previously pinned at 200; raised to RFC 5321's 254-octet cap so
+    // every public-facing email field shares the same length contract.
+    const huge = `${'x'.repeat(244)}@example.com` // 256 chars
     const res = await app.inject({
       method: 'POST',
       url: '/api/api-keys/issue',

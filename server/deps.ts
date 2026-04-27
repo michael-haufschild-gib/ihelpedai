@@ -14,12 +14,26 @@ import type { Store } from './store/index.js'
 import { MysqlStore } from './store/mysql-store.js'
 import { SqliteStore } from './store/sqlite-store.js'
 
+/**
+ * Hourly cadence for the periodic auth-state sweep. Tuned so a deployment
+ * with no admin activity for days does not accumulate expired sessions and
+ * stale reset tokens — the on-login cleanup the routes already perform is a
+ * best-effort sweep, not a guarantee.
+ */
+const AUTH_CLEANUP_INTERVAL_MS = 60 * 60 * 1000
+
 declare module 'fastify' {
   interface FastifyInstance {
     store: Store
     limiter: RateLimiter
     mailer: Mailer
     searchIndex: SearchIndex
+    /**
+     * Handle for the periodic auth-state sweep. `null` when no timer is
+     * registered (test environment skips registration to avoid cross-spec
+     * interference). `onClose` clears it before tearing down the store.
+     */
+    authCleanupTimer: ReturnType<typeof setInterval> | null
   }
 }
 
@@ -71,6 +85,40 @@ function buildSearch(store: Store): SearchIndex {
 }
 
 /**
+ * Verify boot-time backend invariants: when the store is the production
+ * MySQL backend, refuse to serve requests against a server that does not
+ * enforce CHECK constraints (MySQL <8.0.16 or MariaDB). The dev SQLite
+ * backend has no equivalent footgun. Failures throw and bubble out of the
+ * onReady hook, blocking listen() so a misconfigured deploy crashes loud.
+ */
+async function assertStoreCompatibility(store: Store): Promise<void> {
+  if (store instanceof MysqlStore) {
+    await store.assertCompatibility()
+  }
+}
+
+/**
+ * Schedule the hourly auth-state cleanup. Skips registration in
+ * NODE_ENV=test because Vitest workers reuse the process: a fired interval
+ * could DELETE rows another spec just inserted. Deliberately uses
+ * `setInterval(...).unref()` so the timer never blocks process exit even
+ * if a caller forgets to await `app.close()`.
+ */
+function scheduleAuthCleanup(app: FastifyInstance): ReturnType<typeof setInterval> | null {
+  if (config.NODE_ENV === 'test') return null
+  const timer = setInterval(() => {
+    // Wrap the awaited cleanup so an unhandled rejection cannot crash the
+    // worker — the cleanup is best-effort. Errors are logged at error
+    // level so SRE sees the outage in the same channel as request logs.
+    void app.store.cleanupExpiredAuthState().catch((err: unknown) => {
+      app.log.error({ err, op: 'auth_cleanup' }, 'auth_cleanup_failed')
+    })
+  }, AUTH_CLEANUP_INTERVAL_MS)
+  if (typeof timer.unref === 'function') timer.unref()
+  return timer
+}
+
+/**
  * Build concrete Store/RateLimiter/Mailer/Search instances from config and
  * decorate the Fastify app so route modules can resolve them via `app.store`
  * etc. Route modules must never construct these directly.
@@ -81,14 +129,21 @@ export function registerDeps(app: FastifyInstance): void {
   app.decorate('limiter', buildLimiter())
   app.decorate('mailer', buildMailer())
   app.decorate('searchIndex', buildSearch(store))
-  // Kick off index setup once the app is ready. Failures are logged but do
-  // not block boot — the read path falls back to SQL LIKE if Meili is down.
+  app.decorate('authCleanupTimer', null as ReturnType<typeof setInterval> | null)
+  // Kick off boot-time invariants once the app is ready. Backend
+  // compatibility runs FIRST: a wrong MySQL major would also break
+  // search-index setup in a less obvious way, so surface the version
+  // mismatch ahead of any downstream symptom. Search index setup runs
+  // after — its failures are logged but do not block boot, because the
+  // read path falls back to SQL LIKE when Meili is unreachable.
   app.addHook('onReady', async () => {
+    await assertStoreCompatibility(app.store)
     try {
       await app.searchIndex.ensureSetup()
     } catch (err) {
       app.log.error({ err, op: 'search_setup' }, 'search_setup_failed')
     }
+    app.authCleanupTimer = scheduleAuthCleanup(app)
   })
   // Release backing resources on graceful shutdown (mysql2 pool, sqlite
   // handle, redis client). Without this the process hangs on SIGTERM.
@@ -97,6 +152,13 @@ export function registerDeps(app: FastifyInstance): void {
   // client alive and prevent the process from exiting cleanly.
   app.addHook('onClose', async (instance) => {
     const errors: unknown[] = []
+    // Cancel the periodic cleanup BEFORE closing the store. The reverse
+    // order would let an in-flight tick race a closed handle and throw
+    // an unhandled rejection during shutdown.
+    if (instance.authCleanupTimer !== null) {
+      clearInterval(instance.authCleanupTimer)
+      instance.authCleanupTimer = null
+    }
     try {
       await instance.store.close()
     } catch (err) {

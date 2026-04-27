@@ -378,14 +378,19 @@ export async function revokeApiKey(pool: Pool, id: string): Promise<void> {
   await pool.execute(`UPDATE agent_keys SET status = 'revoked' WHERE id = ?`, [id])
 }
 
-/** List reports submitted with a given API key. */
-export async function listReportsForApiKey(pool: Pool, keyHash: string, limit: number): Promise<Report[]> {
+/** Page through reports submitted with a given API key (newest-first). */
+export async function listReportsForApiKey(pool: Pool, keyHash: string, limit: number, offset = 0): Promise<Report[]> {
   return selectMany<ReportRowLike, Report>(
     pool,
-    `SELECT * FROM reports WHERE source = 'api' AND api_key_hash = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
-    [keyHash, limit],
+    `SELECT * FROM reports WHERE source = 'api' AND api_key_hash = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+    [keyHash, limit, offset],
     reportFromRow,
   )
+}
+
+/** Count of reports submitted with a given API key. */
+export async function countReportsForApiKey(pool: Pool, keyHash: string): Promise<number> {
+  return selectCount(pool, `SELECT COUNT(*) AS n FROM reports WHERE source = 'api' AND api_key_hash = ?`, [keyHash])
 }
 
 /** Get a single API key for admin view. */

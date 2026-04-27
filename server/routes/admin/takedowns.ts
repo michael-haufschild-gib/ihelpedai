@@ -17,7 +17,8 @@ const listQuerySchema = z.object({
 })
 
 const createSchema = z.object({
-  requester_email: z.string().email().max(255).nullable().optional(),
+  // RFC 5321 forward-path cap. Aligned with auth.ts/api-keys.ts/accounts.ts.
+  requester_email: z.string().email().max(254).nullable().optional(),
   entry_id: z.string().trim().max(64).nullable().optional(),
   entry_kind: z.enum(['post', 'report']).nullable().optional(),
   reason: z.string().min(1).max(2000),
