@@ -122,6 +122,7 @@ describe('search wiring', () => {
     await waitFor(() => recorder.indexCalls.length >= 1)
     expect(recorder.indexCalls).toHaveLength(1)
     const call = recorder.indexCalls[0]
+    if (call === undefined) throw new Error('expected index call')
     expect(call.entry.type).toBe('posts')
     expect(call.entry.doc).toMatchObject({ first_name: 'Sam', city: 'NYC', country: 'US' })
     // Verify last_name never reached the index doc — the invariant.
@@ -146,8 +147,10 @@ describe('search wiring', () => {
     await waitFor(() => recorder.indexCalls.some((c) => c.entry.type === 'reports'))
     const reportCalls = recorder.indexCalls.filter((c) => c.entry.type === 'reports')
     expect(reportCalls).toHaveLength(1)
-    expect(reportCalls[0].entry.doc).toMatchObject({ reported_first_name: 'Alex' })
-    expect(JSON.stringify(reportCalls[0].entry.doc)).not.toContain('Doe')
+    const reportCall = reportCalls[0]
+    if (reportCall === undefined) throw new Error('expected report index call')
+    expect(reportCall.entry.doc).toMatchObject({ reported_first_name: 'Alex' })
+    expect(JSON.stringify(reportCall.entry.doc)).not.toContain('Doe')
   })
 
   it('uses the search index for ?q= and hydrates from the store', async () => {
@@ -203,7 +206,9 @@ describe('search wiring', () => {
     const body = listRes.json() as { items: { slug: string; text: string }[]; total: number }
     // Fallback path runs the store's LIKE query — should still return the row.
     expect(body.total).toBe(1)
-    expect(body.items[0].text).toContain('fallbackword')
+    const item = body.items[0]
+    if (item === undefined) throw new Error('expected fallback result')
+    expect(item.text).toContain('fallbackword')
   })
 
   it('skips non-search list without touching the search index', async () => {

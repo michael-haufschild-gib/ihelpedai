@@ -66,7 +66,10 @@ export class RedisRateLimiter implements RateLimiter {
 
   async checkAll(specs: ReadonlyArray<BucketSpec>): Promise<RateLimitDecision> {
     if (specs.length === 0) return { allowed: true, retryAfter: 0 }
+    const seen = new Set<string>()
     for (const spec of specs) {
+      if (seen.has(spec.bucket)) return { allowed: false, retryAfter: 1 }
+      seen.add(spec.bucket)
       if (
         !Number.isFinite(spec.limit) ||
         spec.limit < 1 ||
@@ -111,9 +114,7 @@ export class RedisRateLimiter implements RateLimiter {
     if (now - this.lastOutageLogAt < 30_000) return
     this.lastOutageLogAt = now
     const message = err instanceof Error ? err.message : String(err)
-    process.stderr.write(
-      `[redis-limiter] outage, failing open: ${message}\n`,
-    )
+    process.stderr.write(`[redis-limiter] outage, failing open: ${message}\n`)
   }
 }
 

@@ -34,6 +34,7 @@ async function seedDevKey(): Promise<void> {
   const store = new SqliteStore(process.env.SQLITE_PATH ?? '')
   await store.insertApiKey({
     keyHash: hashWithSalt(DEV_API_KEY),
+    keyLast4: DEV_API_KEY.slice(-4),
     emailHash: hashWithSalt('dev@ihelped.ai'),
     status: 'active',
   })

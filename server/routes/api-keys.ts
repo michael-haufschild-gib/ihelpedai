@@ -85,14 +85,17 @@ export async function apiKeysRoutes(app: FastifyInstance): Promise<void> {
     const emailHash = hashWithSalt(parsed.email.toLowerCase())
     const decision = await app.limiter.checkAll(issueBuckets(emailHash, ipHash))
     if (!decision.allowed) {
-      reply
-        .status(429)
-        .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
+      reply.status(429).send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
       return
     }
     const apiKey = generateApiKey()
     const keyHash = hashWithSalt(apiKey)
-    const saved = await app.store.insertApiKey({ keyHash, emailHash, status: 'active' })
+    const saved = await app.store.insertApiKey({
+      keyHash,
+      keyLast4: apiKey.slice(-4),
+      emailHash,
+      status: 'active',
+    })
     try {
       await app.mailer.send({
         to: parsed.email,

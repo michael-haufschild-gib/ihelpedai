@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { config } from '../config.js'
 import { effectiveLimit } from '../lib/effective-limit.js'
+import { blankOrMatches, CITY_REGEX, COUNTRY_ALPHA2_REGEX, NAME_REGEX } from '../lib/identity-fields.js'
 import { isValidIsoDate } from '../lib/iso-date.js'
 import { hashWithSalt } from '../lib/salted-hash.js'
 import type { RateLimiter } from '../rate-limit/index.js'
@@ -22,7 +23,6 @@ import type { Report as StoredReport, Store } from '../store/index.js'
  */
 
 const PAGE_SIZE = 20
-const NAME_REGEX = /^\p{L}+$/u
 const FORM_LIMIT_PER_HOUR = 10
 const FORM_LIMIT_PER_DAY = 50
 const HOUR_SECONDS = 60 * 60
@@ -63,26 +63,38 @@ interface ReportJson {
 
 const reporterSchema = z
   .object({
-    first_name: z.string().max(20).refine(
-      (v) => v.trim() === '' || NAME_REGEX.test(v), { message: 'letters_only' },
-    ),
-    last_name: z.string().max(40),
-    city: z.string().max(40),
-    country: z.string().max(2),
+    first_name: z
+      .string()
+      .trim()
+      .max(20)
+      .refine((v) => blankOrMatches(v, NAME_REGEX), { message: 'letters_only' }),
+    last_name: z.string().trim().max(40),
+    city: z
+      .string()
+      .trim()
+      .max(40)
+      .refine((v) => blankOrMatches(v, CITY_REGEX), { message: 'invalid_city' }),
+    country: z
+      .string()
+      .trim()
+      .max(2)
+      .refine((v) => blankOrMatches(v, COUNTRY_ALPHA2_REGEX), { message: 'invalid_country' }),
   })
   .refine(
-    (v) =>
-      v.first_name.trim() === '' ||
-      (v.city.trim() !== '' && v.country.trim() !== ''),
-    { path: ['city'], message: 'reporter_location_required' },
+    (v) => {
+      const publicIdentity = [v.first_name.trim(), v.city.trim(), v.country.trim()]
+      if (publicIdentity.every((part) => part === '')) return true
+      return v.last_name.trim() !== '' && publicIdentity.every((part) => part !== '')
+    },
+    { path: ['first_name'], message: 'reporter_identity_required' },
   )
 
 const bodySchema = z.object({
   reporter: reporterSchema,
-  reported_first_name: z.string().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
-  reported_last_name: z.string().min(1).max(40),
-  reported_city: z.string().min(1).max(40),
-  reported_country: z.string().min(1).max(2),
+  reported_first_name: z.string().trim().min(1).max(20).regex(NAME_REGEX, 'letters_only'),
+  reported_last_name: z.string().trim().min(1).max(40),
+  reported_city: z.string().trim().min(1).max(40).regex(CITY_REGEX, 'invalid_city'),
+  reported_country: z.string().trim().regex(COUNTRY_ALPHA2_REGEX, 'invalid_country'),
   what_they_did: z.string().min(1).max(500),
   action_date: z
     .string()
@@ -91,10 +103,7 @@ const bodySchema = z.object({
     // accepts them and the MySQL DATE path would only fail at insert time
     // with an opaque error. Empty string is still allowed so an unchecked
     // optional field on the public form doesn't 400 the submission.
-    .refine(
-      (v) => v === '' || isValidIsoDate(v),
-      { message: 'invalid_date' },
-    )
+    .refine((v) => v === '' || isValidIsoDate(v), { message: 'invalid_date' })
     .optional(),
 })
 
@@ -103,7 +112,7 @@ type ReportBody = z.infer<typeof bodySchema>
 // `page` is bounded so a malicious client cannot push the store into a
 // linear scan with `OFFSET = page * PAGE_SIZE`. Aligned with helped.ts.
 const listQuerySchema = z.object({
-  q: z.string().max(200).optional(),
+  q: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).max(1000).optional(),
 })
 
@@ -113,10 +122,7 @@ const slugParamsSchema = z.object({
 
 const reporterToStorage = (
   reporter: ReportBody['reporter'],
-): Pick<
-  StoredReport,
-  'reporterFirstName' | 'reporterCity' | 'reporterCountry'
-> => {
+): Pick<StoredReport, 'reporterFirstName' | 'reporterCity' | 'reporterCountry'> => {
   if (reporter.first_name.trim() === '') {
     return { reporterFirstName: null, reporterCity: null, reporterCountry: null }
   }
@@ -160,11 +166,7 @@ const buildPublicUrl = (slug: string): string => `${config.PUBLIC_URL}/reports/$
  * checks: when the global cap rejects, the user's per-IP buckets would
  * still have been incremented by the earlier passes.
  */
-async function checkRateLimits(
-  limiter: RateLimiter,
-  reply: FastifyReply,
-  ipHash: string,
-): Promise<boolean> {
+async function checkRateLimits(limiter: RateLimiter, reply: FastifyReply, ipHash: string): Promise<boolean> {
   const decision = await limiter.checkAll([
     {
       bucket: `reports:ip:hour:${ipHash}`,
@@ -183,9 +185,7 @@ async function checkRateLimits(
     },
   ])
   if (!decision.allowed) {
-    await reply
-      .code(429)
-      .send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
+    await reply.code(429).send({ error: 'rate_limited', retry_after_seconds: decision.retryAfter })
     return false
   }
   return true
@@ -212,17 +212,14 @@ async function handleCreate(
   }
   const body = bodySchema.parse(request.body)
   const ipHash = hashWithSalt(request.ip)
-
-  if (!(await checkRateLimits(limiter, reply, ipHash))) return
-
   const extraExceptions = parseSanitizerExceptionList((await store.getSetting('sanitizer_exceptions')) ?? '')
   const sanitized = sanitize(body.what_they_did, { extraExceptions })
   if (sanitized.overRedacted) {
-    await reply
-      .code(400)
-      .send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
+    await reply.code(400).send({ error: 'invalid_input', fields: { what_they_did: 'over_redacted' } })
     return
   }
+
+  if (!(await checkRateLimits(limiter, reply, ipHash))) return
 
   // `last_name` fields from both reporter and reported-person are validated
   // above and then dropped here. The Store's NewReport type has no field
@@ -254,11 +251,9 @@ async function handleCreate(
  */
 function indexReportFireAndForget(request: FastifyRequest, report: StoredReport): void {
   if (report.status !== 'live') return
-  request.server.searchIndex
-    .indexEntry({ type: 'reports', doc: reportToDoc(report) })
-    .catch((err: unknown) => {
-      request.log.error({ err, op: 'search_index', id: report.id }, 'search_index_failed')
-    })
+  request.server.searchIndex.indexEntry({ type: 'reports', doc: reportToDoc(report) }).catch((err: unknown) => {
+    request.log.error({ err, op: 'search_index', id: report.id }, 'search_index_failed')
+  })
 }
 
 /** GET /api/reports handler. Paginated listing with optional ?q= substring. */
@@ -273,9 +268,10 @@ async function handleList(
   const offset = (page - 1) * PAGE_SIZE
   const trimmedQuery = typeof parsed.q === 'string' ? parsed.q.trim() : ''
   const query = trimmedQuery.length > 0 ? trimmedQuery : undefined
-  const { rows, total } = query === undefined
-    ? await listReportsUnfiltered(store, offset)
-    : await searchReportsWithFallback(store, search, query, page, request)
+  const { rows, total } =
+    query === undefined
+      ? await listReportsUnfiltered(store, offset)
+      : await searchReportsWithFallback(store, search, query, page, request)
   const body: PaginatedReportsResponse = {
     items: rows.map(storedToJson),
     page,
@@ -285,10 +281,7 @@ async function handleList(
   await reply.code(200).send(body)
 }
 
-async function listReportsUnfiltered(
-  store: Store,
-  offset: number,
-): Promise<{ rows: StoredReport[]; total: number }> {
+async function listReportsUnfiltered(store: Store, offset: number): Promise<{ rows: StoredReport[]; total: number }> {
   const [rows, total] = await Promise.all([
     store.listReports(PAGE_SIZE, offset, undefined, 'all'),
     store.countFilteredEntries('reports', { query: undefined }),
@@ -323,18 +316,14 @@ async function searchReportsWithFallback(
 }
 
 /** GET /api/reports/:slug handler. Returns the report JSON or 404. */
-async function handleGetOne(
-  store: Store,
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
+async function handleGetOne(store: Store, request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const parsed = slugParamsSchema.safeParse(request.params)
   if (!parsed.success) {
     await reply.code(404).send({ error: 'not_found' })
     return
   }
   const row = await store.getReport(parsed.data.slug)
-  if (row === null) {
+  if (row === null || row.status !== 'live') {
     await reply.code(404).send({ error: 'not_found' })
     return
   }

@@ -6,9 +6,12 @@ import { buildContainsLikePattern } from '../lib/like-pattern.js'
 import { iso, isoDate, newId } from './mysql-utils.js'
 import type {
   Admin,
+  AdminAuditInput,
   AdminApiKey,
   AdminEntry,
   AdminEntryDetail,
+  AdminInviteResult,
+  AdminPasswordAuditOptions,
   AdminSession,
   AdminSetting,
   ApiKey,
@@ -32,6 +35,7 @@ import type {
   VoteToggleResult,
 } from './index.js'
 import * as adm from './mysql-store-admin.js'
+import * as admx from './mysql-store-admin-mutations.js'
 import * as td from './mysql-store-takedowns.js'
 
 type PostRow = RowDataPacket & {
@@ -67,6 +71,7 @@ type ReportRow = RowDataPacket & {
 type ApiKeyRow = RowDataPacket & {
   id: string
   key_hash: string
+  key_last4: string
   email_hash: string
   status: string
   issued_at: Date
@@ -83,7 +88,7 @@ const postFromRow = (r: PostRow): Post => ({
   status: r.status as Post['status'],
   source: r.source as Post['source'],
   likeCount: r.like_count,
-  createdAt: iso(r.created_at)!,
+  createdAt: iso(r.created_at),
 })
 
 const reportFromRow = (r: ReportRow): Report => ({
@@ -101,18 +106,25 @@ const reportFromRow = (r: ReportRow): Report => ({
   status: r.status as Report['status'],
   source: r.source as Report['source'],
   dislikeCount: r.dislike_count,
-  createdAt: iso(r.created_at)!,
+  createdAt: iso(r.created_at),
 })
 
 const apiKeyFromRow = (r: ApiKeyRow): ApiKey => ({
   id: r.id,
   keyHash: r.key_hash,
+  keyLast4: r.key_last4,
   emailHash: r.email_hash,
   status: r.status as ApiKey['status'],
-  issuedAt: iso(r.issued_at)!,
+  issuedAt: iso(r.issued_at),
   lastUsedAt: iso(r.last_used_at),
   usageCount: r.usage_count,
 })
+
+const requiredRow = <T>(rows: readonly T[], context: string): T => {
+  const row = rows[0]
+  if (row === undefined) throw new Error(`${context}: selected row not found`)
+  return row
+}
 
 /**
  * Production Store backed by MySQL 8 via mysql2/promise.
@@ -140,7 +152,9 @@ export class MysqlStore implements Store {
       // The TS types on the promise wrapper mis-describe this event's payload;
       // a minimal local type captures the callback-style `query` signature.
       const cb = conn as unknown as { query(sql: string, done: () => void): unknown }
-      cb.query("SET time_zone='+00:00'", () => { /* swallow */ })
+      cb.query("SET time_zone='+00:00'", () => {
+        /* swallow */
+      })
     })
   }
 
@@ -153,7 +167,11 @@ export class MysqlStore implements Store {
       await conn.commit()
       return out
     } catch (err) {
-      try { await conn.rollback() } catch { /* surface original */ }
+      try {
+        await conn.rollback()
+      } catch {
+        /* surface original */
+      }
       throw err
     } finally {
       conn.release()
@@ -178,7 +196,7 @@ export class MysqlStore implements Store {
       [id, input.firstName, input.city, input.country, input.text, input.source, input.clientIpHash],
     )
     const [rows] = await this.pool.query<PostRow[]>('SELECT * FROM posts WHERE id = ?', [id])
-    return postFromRow(rows[0])
+    return postFromRow(requiredRow(rows, 'insertPost'))
   }
 
   async insertReport(input: NewReport): Promise<Report> {
@@ -190,13 +208,23 @@ export class MysqlStore implements Store {
         action_date, severity, self_reported_model, status, source, client_ip_hash
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)`,
       [
-        id, input.reporterFirstName, input.reporterCity, input.reporterCountry,
-        input.reportedFirstName, input.reportedCity, input.reportedCountry, input.text,
-        input.actionDate, input.severity, input.selfReportedModel, input.source, input.clientIpHash,
+        id,
+        input.reporterFirstName,
+        input.reporterCity,
+        input.reporterCountry,
+        input.reportedFirstName,
+        input.reportedCity,
+        input.reportedCountry,
+        input.text,
+        input.actionDate,
+        input.severity,
+        input.selfReportedModel,
+        input.source,
+        input.clientIpHash,
       ],
     )
     const [rows] = await this.pool.query<ReportRow[]>('SELECT * FROM reports WHERE id = ?', [id])
-    return reportFromRow(rows[0])
+    return reportFromRow(requiredRow(rows, 'insertReport'))
   }
 
   async getPost(id: string): Promise<Post | null> {
@@ -213,10 +241,7 @@ export class MysqlStore implements Store {
     if (ids.length === 0) return []
     // Enforce `status = 'live'` to match listPosts — the search index may lag
     // a status transition, so ids can point at pending/deleted rows.
-    const [rows] = await this.pool.query<PostRow[]>(
-      "SELECT * FROM posts WHERE status = 'live' AND id IN (?)",
-      [ids],
-    )
+    const [rows] = await this.pool.query<PostRow[]>("SELECT * FROM posts WHERE status = 'live' AND id IN (?)", [ids])
     const byId = new Map<string, Post>()
     for (const row of rows) byId.set(row.id, postFromRow(row))
     return ids.map((id) => byId.get(id)).filter((p): p is Post => p !== undefined)
@@ -224,17 +249,18 @@ export class MysqlStore implements Store {
 
   async getReportsByIds(ids: readonly string[]): Promise<Report[]> {
     if (ids.length === 0) return []
-    const [rows] = await this.pool.query<ReportRow[]>(
-      "SELECT * FROM reports WHERE status = 'live' AND id IN (?)",
-      [ids],
-    )
+    const [rows] = await this.pool.query<ReportRow[]>("SELECT * FROM reports WHERE status = 'live' AND id IN (?)", [
+      ids,
+    ])
     const byId = new Map<string, Report>()
     for (const row of rows) byId.set(row.id, reportFromRow(row))
     return ids.map((id) => byId.get(id)).filter((r): r is Report => r !== undefined)
   }
 
   async listPosts(limit: number, offset: number, query?: string): Promise<Post[]> {
-    const hasQuery = typeof query === 'string' && query.trim() !== ''
+    const trimmedQuery = typeof query === 'string' ? query.trim() : ''
+    const hasQuery = trimmedQuery !== ''
+    const likeQuery = buildContainsLikePattern(trimmedQuery)
     // `id DESC` as a deterministic tie-breaker. Without it, rows sharing the
     // same millisecond `created_at` can reshuffle between pages and produce
     // duplicates/skips across LIMIT/OFFSET requests. `ESCAPE '\\'` pairs with
@@ -244,15 +270,8 @@ export class MysqlStore implements Store {
           `SELECT * FROM posts
            WHERE status = 'live'
              AND (first_name LIKE ? ESCAPE '\\\\' OR city LIKE ? ESCAPE '\\\\' OR country LIKE ? ESCAPE '\\\\' OR text LIKE ? ESCAPE '\\\\')
-           ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
-          [
-            buildContainsLikePattern(query!),
-            buildContainsLikePattern(query!),
-            buildContainsLikePattern(query!),
-            buildContainsLikePattern(query!),
-            limit,
-            offset,
-          ],
+          ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+          [likeQuery, likeQuery, likeQuery, likeQuery, limit, offset],
         )
       : await this.pool.query<PostRow[]>(
           `SELECT * FROM posts WHERE status = 'live' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
@@ -295,18 +314,15 @@ export class MysqlStore implements Store {
   async insertApiKey(input: NewApiKey): Promise<ApiKey> {
     const id = newId()
     await this.pool.execute(
-      'INSERT INTO agent_keys (id, key_hash, email_hash, status) VALUES (?, ?, ?, ?)',
-      [id, input.keyHash, input.emailHash, input.status],
+      'INSERT INTO agent_keys (id, key_hash, key_last4, email_hash, status) VALUES (?, ?, ?, ?, ?)',
+      [id, input.keyHash, input.keyLast4, input.emailHash, input.status],
     )
     const [rows] = await this.pool.query<ApiKeyRow[]>('SELECT * FROM agent_keys WHERE id = ?', [id])
-    return apiKeyFromRow(rows[0])
+    return apiKeyFromRow(requiredRow(rows, 'insertApiKey'))
   }
 
   async getApiKeyByHash(keyHash: string): Promise<ApiKey | null> {
-    const [rows] = await this.pool.query<ApiKeyRow[]>(
-      'SELECT * FROM agent_keys WHERE key_hash = ?',
-      [keyHash],
-    )
+    const [rows] = await this.pool.query<ApiKeyRow[]>('SELECT * FROM agent_keys WHERE key_hash = ?', [keyHash])
     return rows[0] !== undefined ? apiKeyFromRow(rows[0]) : null
   }
 
@@ -317,11 +333,7 @@ export class MysqlStore implements Store {
     )
   }
 
-  async insertAgentReport(
-    input: NewReport,
-    keyHash: string,
-    initialStatus: EntryStatus = 'live',
-  ): Promise<Report> {
+  async insertAgentReport(input: NewReport, keyHash: string, initialStatus: EntryStatus = 'live'): Promise<Report> {
     return this.withTx(async (conn) => {
       // Re-check the key inside the transaction so a revocation that lands
       // between the route-layer auth and this write aborts the insert rather
@@ -343,10 +355,21 @@ export class MysqlStore implements Store {
           action_date, severity, self_reported_model, status, source, client_ip_hash, api_key_hash
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          id, input.reporterFirstName, input.reporterCity, input.reporterCountry,
-          input.reportedFirstName, input.reportedCity, input.reportedCountry, input.text,
-          input.actionDate, input.severity, input.selfReportedModel, initialStatus, input.source,
-          input.clientIpHash, keyHash,
+          id,
+          input.reporterFirstName,
+          input.reporterCity,
+          input.reporterCountry,
+          input.reportedFirstName,
+          input.reportedCity,
+          input.reportedCountry,
+          input.text,
+          input.actionDate,
+          input.severity,
+          input.selfReportedModel,
+          initialStatus,
+          input.source,
+          input.clientIpHash,
+          keyHash,
         ],
       )
       await conn.execute(
@@ -354,15 +377,11 @@ export class MysqlStore implements Store {
         [keyHash],
       )
       const [rows] = await conn.query<ReportRow[]>('SELECT * FROM reports WHERE id = ?', [id])
-      return reportFromRow(rows[0])
+      return reportFromRow(requiredRow(rows, 'insertAgentReport'))
     })
   }
 
-  async toggleVote(
-    entryId: string,
-    entryKind: VoteKind,
-    ipHash: string,
-  ): Promise<VoteToggleResult | null> {
+  async toggleVote(entryId: string, entryKind: VoteKind, ipHash: string): Promise<VoteToggleResult | null> {
     const entryTable = entryKind === 'post' ? 'posts' : 'reports'
     const counterCol = entryKind === 'post' ? 'like_count' : 'dislike_count'
     return this.withTx(async (conn) => {
@@ -384,19 +403,16 @@ export class MysqlStore implements Store {
       const removed = delRes.affectedRows === 1
 
       if (removed) {
-        await conn.execute(
-          `UPDATE ${entryTable} SET ${counterCol} = GREATEST(0, ${counterCol} - 1) WHERE id = ?`,
-          [entryId],
-        )
+        await conn.execute(`UPDATE ${entryTable} SET ${counterCol} = GREATEST(0, ${counterCol} - 1) WHERE id = ?`, [
+          entryId,
+        ])
       } else {
-        await conn.execute(
-          'INSERT INTO votes (entry_id, entry_kind, ip_hash) VALUES (?, ?, ?)',
-          [entryId, entryKind, ipHash],
-        )
-        await conn.execute(
-          `UPDATE ${entryTable} SET ${counterCol} = ${counterCol} + 1 WHERE id = ?`,
-          [entryId],
-        )
+        await conn.execute('INSERT INTO votes (entry_id, entry_kind, ip_hash) VALUES (?, ?, ?)', [
+          entryId,
+          entryKind,
+          ipHash,
+        ])
+        await conn.execute(`UPDATE ${entryTable} SET ${counterCol} = ${counterCol} + 1 WHERE id = ?`, [entryId])
       }
 
       const [countRows] = await conn.query<RowDataPacket[]>(
@@ -408,11 +424,7 @@ export class MysqlStore implements Store {
     })
   }
 
-  async getVotedEntryIds(
-    ipHash: string,
-    entryKind: VoteKind,
-    entryIds: readonly string[],
-  ): Promise<readonly string[]> {
+  async getVotedEntryIds(ipHash: string, entryKind: VoteKind, entryIds: readonly string[]): Promise<readonly string[]> {
     if (entryIds.length === 0) return []
     const placeholders = entryIds.map(() => '?').join(', ')
     const [rows] = await this.pool.query<RowDataPacket[]>(
@@ -423,13 +435,11 @@ export class MysqlStore implements Store {
   }
 
   async countEntries(table: CountableTable, status?: EntryStatus): Promise<number> {
-    const [rows] = status !== undefined
-      ? await this.pool.query<RowDataPacket[]>(
-          `SELECT COUNT(*) AS n FROM ${table} WHERE status = ?`,
-          [status],
-        )
-      : await this.pool.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM ${table}`)
-    return (rows[0] as { n: number }).n
+    const [rows] =
+      status !== undefined
+        ? await this.pool.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM ${table} WHERE status = ?`, [status])
+        : await this.pool.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM ${table}`)
+    return (requiredRow(rows, 'countEntries') as { n: number }).n
   }
 
   async countFilteredEntries(
@@ -464,47 +474,206 @@ export class MysqlStore implements Store {
       `SELECT COUNT(*) AS n FROM ${table} WHERE ${conditions.join(' AND ')}`,
       params,
     )
-    return (rows[0] as { n: number }).n
+    return (requiredRow(rows, 'countFilteredEntries') as { n: number }).n
   }
 
   /* Admin methods — delegated to mysql-store-admin.ts */
-  async insertAdmin(e: string, p: string, c: string | null): Promise<Admin> { return adm.insertAdmin(this.pool, e, p, c) }
-  async getAdminByEmail(e: string): Promise<Admin | null> { return adm.getAdminByEmail(this.pool, e) }
-  async getAdmin(id: string): Promise<Admin | null> { return adm.getAdmin(this.pool, id) }
-  async listAdmins(): Promise<Admin[]> { return adm.listAdmins(this.pool) }
-  async updateAdminStatus(id: string, s: 'active' | 'deactivated'): Promise<void> { return adm.updateAdminStatus(this.pool, id, s) }
-  async updateAdminPassword(id: string, h: string): Promise<void> { return adm.updateAdminPassword(this.pool, id, h) }
-  async updateAdminLastLogin(id: string): Promise<void> { return adm.updateAdminLastLogin(this.pool, id) }
-  async insertSession(a: string, e: string): Promise<string> { return adm.insertSession(this.pool, a, e) }
-  async getSession(id: string): Promise<AdminSession | null> { return adm.getSession(this.pool, id) }
-  async touchSession(id: string, e: string): Promise<void> { return adm.touchSession(this.pool, id, e) }
-  async deleteSession(id: string): Promise<void> { return adm.deleteSession(this.pool, id) }
-  async deleteAdminSessions(a: string, except?: string): Promise<void> { return adm.deleteAdminSessions(this.pool, a, except) }
-  async insertPasswordReset(a: string, t: string, e: string): Promise<string> { return adm.insertPasswordReset(this.pool, a, t, e) }
-  async getPasswordResetByHash(t: string): Promise<PasswordReset | null> { return adm.getPasswordResetByHash(this.pool, t) }
-  async markPasswordResetUsed(id: string): Promise<void> { return adm.markPasswordResetUsed(this.pool, id) }
-  async insertAuditEntry(a: string | null, ac: string, ti: string | null, tk: string | null, d: string | null): Promise<void> { return adm.insertAuditEntry(this.pool, a, ac, ti, tk, d) }
-  async listAuditLog(l: number, o: number, f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): Promise<AuditEntryWithEmail[]> { return adm.listAuditLog(this.pool, l, o, f) }
-  async countAuditLog(f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): Promise<number> { return adm.countAuditLog(this.pool, f) }
-  async listAuditLogForTarget(t: string): Promise<AuditEntryWithEmail[]> { return adm.listAuditLogForTarget(this.pool, t) }
-  async listAdminEntries(l: number, o: number, f?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string; sort?: 'asc' | 'desc' }): Promise<AdminEntry[]> { return adm.listAdminEntries(this.pool, l, o, f) }
-  async countAdminEntries(f?: { entryType?: 'post' | 'report'; status?: EntryStatus; source?: EntrySource; query?: string; dateFrom?: string; dateTo?: string }): Promise<number> { return adm.countAdminEntries(this.pool, f) }
-  async getAdminEntryDetail(id: string): Promise<AdminEntryDetail | null> { return adm.getAdminEntryDetail(this.pool, id) }
-  async updateEntryStatus(id: string, t: 'post' | 'report', s: EntryStatus): Promise<void> { return adm.updateEntryStatus(this.pool, id, t, s) }
-  async purgeEntry(id: string, t: 'post' | 'report'): Promise<void> { return adm.purgeEntry(this, id, t) }
-  async listApiKeys(l: number, o: number, s?: 'active' | 'revoked'): Promise<AdminApiKey[]> { return adm.listApiKeysAdmin(this.pool, l, o, s) }
-  async countApiKeys(s?: 'active' | 'revoked'): Promise<number> { return adm.countApiKeysAdmin(this.pool, s) }
-  async revokeApiKey(id: string): Promise<void> { return adm.revokeApiKey(this.pool, id) }
-  async listReportsForApiKey(k: string, l: number): Promise<Report[]> { return adm.listReportsForApiKey(this.pool, k, l) }
-  async getApiKey(id: string): Promise<AdminApiKey | null> { return adm.getApiKeyAdmin(this.pool, id) }
-  async insertTakedown(i: NewTakedown): Promise<Takedown> { return td.insertTakedown(this.pool, i) }
-  async listTakedowns(l: number, o: number, s?: TakedownStatus): Promise<Takedown[]> { return td.listTakedowns(this.pool, l, o, s) }
-  async countTakedowns(s?: TakedownStatus): Promise<number> { return td.countTakedowns(this.pool, s) }
-  async getTakedown(id: string): Promise<Takedown | null> { return td.getTakedown(this.pool, id) }
-  async updateTakedown(id: string, f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null }): Promise<void> { return td.updateTakedown(this.pool, id, f) }
-  async getSetting(k: string): Promise<string | null> { return td.getSetting(this.pool, k) }
-  async setSetting(k: string, v: string): Promise<void> { return td.setSetting(this.pool, k, v) }
-  async listSettings(): Promise<AdminSetting[]> { return td.listSettingsAdmin(this.pool) }
+  async insertAdmin(e: string, p: string, c: string | null): Promise<Admin> {
+    return adm.insertAdmin(this.pool, e, p, c)
+  }
+  async getAdminByEmail(e: string): Promise<Admin | null> {
+    return adm.getAdminByEmail(this.pool, e)
+  }
+  async getAdmin(id: string): Promise<Admin | null> {
+    return adm.getAdmin(this.pool, id)
+  }
+  async listAdmins(): Promise<Admin[]> {
+    return adm.listAdmins(this.pool)
+  }
+  async updateAdminStatus(id: string, s: 'active' | 'deactivated'): Promise<void> {
+    return adm.updateAdminStatus(this.pool, id, s)
+  }
+  async updateAdminPassword(id: string, h: string): Promise<void> {
+    return adm.updateAdminPassword(this.pool, id, h)
+  }
+  async updateAdminPasswordWithAudit(
+    id: string,
+    h: string,
+    a: AdminAuditInput,
+    o?: AdminPasswordAuditOptions,
+  ): Promise<void> {
+    return admx.updateAdminPasswordWithAudit(this, id, h, a, o)
+  }
+  async updateAdminLastLogin(id: string): Promise<void> {
+    return adm.updateAdminLastLogin(this.pool, id)
+  }
+  async insertSession(a: string, e: string): Promise<string> {
+    return adm.insertSession(this.pool, a, e)
+  }
+  async getSession(id: string): Promise<AdminSession | null> {
+    return adm.getSession(this.pool, id)
+  }
+  async touchSession(id: string, e: string): Promise<void> {
+    return adm.touchSession(this.pool, id, e)
+  }
+  async deleteSession(id: string): Promise<void> {
+    return adm.deleteSession(this.pool, id)
+  }
+  async deleteAdminSessions(a: string, except?: string): Promise<void> {
+    return adm.deleteAdminSessions(this.pool, a, except)
+  }
+  async insertPasswordReset(a: string, t: string, e: string): Promise<string> {
+    return adm.insertPasswordReset(this.pool, a, t, e)
+  }
+  async getPasswordResetByHash(t: string): Promise<PasswordReset | null> {
+    return adm.getPasswordResetByHash(this.pool, t)
+  }
+  async markPasswordResetUsed(id: string): Promise<void> {
+    return adm.markPasswordResetUsed(this.pool, id)
+  }
+  async cleanupExpiredAuthState(): Promise<void> {
+    return adm.cleanupExpiredAuthState(this.pool)
+  }
+  async insertAdminInviteWithAudit(
+    e: string,
+    p: string,
+    c: string | null,
+    t: string,
+    x: string,
+  ): Promise<AdminInviteResult> {
+    return admx.insertAdminInviteWithAudit(this, e, p, c, t, x)
+  }
+  async deleteFailedAdminInvite(a: string, r: string): Promise<void> {
+    return admx.deleteFailedAdminInvite(this, a, r)
+  }
+  async deactivateAdminWithAudit(id: string, a: AdminAuditInput): Promise<void> {
+    return admx.deactivateAdminWithAudit(this, id, a)
+  }
+  async insertAuditEntry(
+    a: string | null,
+    ac: string,
+    ti: string | null,
+    tk: string | null,
+    d: string | null,
+  ): Promise<void> {
+    return adm.insertAuditEntry(this.pool, a, ac, ti, tk, d)
+  }
+  async listAuditLog(
+    l: number,
+    o: number,
+    f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
+  ): Promise<AuditEntryWithEmail[]> {
+    return adm.listAuditLog(this.pool, l, o, f)
+  }
+  async countAuditLog(f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): Promise<number> {
+    return adm.countAuditLog(this.pool, f)
+  }
+  async listAuditLogForTarget(t: string): Promise<AuditEntryWithEmail[]> {
+    return adm.listAuditLogForTarget(this.pool, t)
+  }
+  async listAdminEntries(
+    l: number,
+    o: number,
+    f?: {
+      entryType?: 'post' | 'report'
+      status?: EntryStatus
+      source?: EntrySource
+      query?: string
+      dateFrom?: string
+      dateTo?: string
+      sort?: 'asc' | 'desc'
+    },
+  ): Promise<AdminEntry[]> {
+    return adm.listAdminEntries(this.pool, l, o, f)
+  }
+  async countAdminEntries(f?: {
+    entryType?: 'post' | 'report'
+    status?: EntryStatus
+    source?: EntrySource
+    query?: string
+    dateFrom?: string
+    dateTo?: string
+  }): Promise<number> {
+    return adm.countAdminEntries(this.pool, f)
+  }
+  async getAdminEntryDetail(id: string): Promise<AdminEntryDetail | null> {
+    return adm.getAdminEntryDetail(this.pool, id)
+  }
+  async updateEntryStatus(id: string, t: 'post' | 'report', s: EntryStatus): Promise<void> {
+    return adm.updateEntryStatus(this.pool, id, t, s)
+  }
+  async updateEntryStatusWithAudit(
+    id: string,
+    t: 'post' | 'report',
+    s: EntryStatus,
+    a: AdminAuditInput,
+  ): Promise<void> {
+    return admx.updateEntryStatusWithAudit(this, id, t, s, a)
+  }
+  async purgeEntry(id: string, t: 'post' | 'report'): Promise<void> {
+    return adm.purgeEntry(this, id, t)
+  }
+  async purgeEntryWithAudit(id: string, t: 'post' | 'report', a: AdminAuditInput): Promise<void> {
+    return admx.purgeEntryWithAudit(this, id, t, a)
+  }
+  async listApiKeys(l: number, o: number, s?: 'active' | 'revoked'): Promise<AdminApiKey[]> {
+    return adm.listApiKeysAdmin(this.pool, l, o, s)
+  }
+  async countApiKeys(s?: 'active' | 'revoked'): Promise<number> {
+    return adm.countApiKeysAdmin(this.pool, s)
+  }
+  async revokeApiKey(id: string): Promise<void> {
+    return adm.revokeApiKey(this.pool, id)
+  }
+  async revokeApiKeyWithAudit(id: string, a: AdminAuditInput): Promise<void> {
+    return admx.revokeApiKeyWithAudit(this, id, a)
+  }
+  async listReportsForApiKey(k: string, l: number): Promise<Report[]> {
+    return adm.listReportsForApiKey(this.pool, k, l)
+  }
+  async getApiKey(id: string): Promise<AdminApiKey | null> {
+    return adm.getApiKeyAdmin(this.pool, id)
+  }
+  async insertTakedown(i: NewTakedown): Promise<Takedown> {
+    return td.insertTakedown(this.pool, i)
+  }
+  async insertTakedownWithAudit(i: NewTakedown, a: AdminAuditInput): Promise<Takedown> {
+    return admx.insertTakedownWithAudit(this, i, a)
+  }
+  async listTakedowns(l: number, o: number, s?: TakedownStatus): Promise<Takedown[]> {
+    return td.listTakedowns(this.pool, l, o, s)
+  }
+  async countTakedowns(s?: TakedownStatus): Promise<number> {
+    return td.countTakedowns(this.pool, s)
+  }
+  async getTakedown(id: string): Promise<Takedown | null> {
+    return td.getTakedown(this.pool, id)
+  }
+  async updateTakedown(
+    id: string,
+    f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null },
+  ): Promise<void> {
+    return td.updateTakedown(this.pool, id, f)
+  }
+  async updateTakedownWithAudit(
+    id: string,
+    f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null },
+    a: AdminAuditInput,
+  ): Promise<void> {
+    return admx.updateTakedownWithAudit(this, id, f, a)
+  }
+  async getSetting(k: string): Promise<string | null> {
+    return td.getSetting(this.pool, k)
+  }
+  async setSetting(k: string, v: string): Promise<void> {
+    return td.setSetting(this.pool, k, v)
+  }
+  async setSettingWithAudit(k: string, v: string, a: AdminAuditInput): Promise<void> {
+    return admx.setSettingWithAudit(this, k, v, a)
+  }
+  async listSettings(): Promise<AdminSetting[]> {
+    return td.listSettingsAdmin(this.pool)
+  }
 
   async close(): Promise<void> {
     await this.pool.end()

@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'ihelped-vote-'))
 process.env.SQLITE_PATH = join(tmpDir, 'test.db')
-process.env.DEV_RATE_MULTIPLIER = '10'
+process.env.DEV_RATE_MULTIPLIER = '1'
 process.env.NODE_ENV = 'test'
 process.env.IP_HASH_SALT = 'test-salt'
 
@@ -106,8 +106,7 @@ describe('vote endpoints', () => {
       method: 'GET',
       url: '/api/reports',
     })
-    const items = (listed.json() as { items: { slug: string; dislike_count: number }[] })
-      .items
+    const items = (listed.json() as { items: { slug: string; dislike_count: number }[] }).items
     const match = items.find((r) => r.slug === slug)
     expect(match?.dislike_count).toBe(1)
   })
@@ -119,6 +118,27 @@ describe('vote endpoints', () => {
       headers: { 'x-forwarded-for': '3.3.3.3' },
     })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('does not consume vote quota for unknown slugs', async () => {
+    const ip = '3.3.3.4'
+    for (let i = 0; i < 60; i += 1) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/helped/posts/missing${String(i)}/like`,
+        headers: { 'x-forwarded-for': ip },
+      })
+      expect(res.statusCode).toBe(404)
+    }
+
+    const slug = await createPost('10.0.0.5')
+    const valid = await app.inject({
+      method: 'POST',
+      url: `/api/helped/posts/${slug}/like`,
+      headers: { 'x-forwarded-for': ip },
+    })
+    expect(valid.statusCode).toBe(200)
+    expect(valid.json()).toEqual({ count: 1, voted: true })
   })
 
   it('POST /api/votes/mine returns voted slugs for this ip', async () => {

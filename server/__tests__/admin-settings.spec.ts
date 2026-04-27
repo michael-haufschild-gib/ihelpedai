@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
  *  - GET returns defaults merged with stored overrides
  *  - PUT rejects an unknown key via the Zod enum
  *  - PUT round-trip + audit-log entry
+ *  - sanitizer_exceptions audit detail never echoes exception text
  *  - PUT rejects payloads past the 10000-char limit
  */
 describe('admin settings routes', () => {
@@ -20,10 +21,7 @@ describe('admin settings routes', () => {
   let cookie: string
 
   beforeAll(async () => {
-    process.env.SQLITE_PATH = join(
-      mkdtempSync(join(tmpdir(), 'ihelped-admin-settings-')),
-      'test.db',
-    )
+    process.env.SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'ihelped-admin-settings-')), 'test.db')
     const { buildApp } = await import('../index.js')
     app = await buildApp()
     const hash = await bcrypt.hash('testpassword12', 10)
@@ -35,7 +33,8 @@ describe('admin settings routes', () => {
     })
     expect(login.statusCode).toBe(200)
     const raw = login.headers['set-cookie']
-    cookie = typeof raw === 'string' ? raw : (raw as string[])[0]
+    cookie = typeof raw === 'string' ? raw : ((raw as string[])[0] ?? '')
+    expect(cookie).not.toBe('')
   })
 
   afterAll(async () => {
@@ -56,12 +55,34 @@ describe('admin settings routes', () => {
     expect(body.sanitizer_exceptions).toBe('')
   })
 
+  it('GET ignores unknown setting rows instead of echoing them into the contract', async () => {
+    await app.store.setSetting('legacy_unknown_setting', 'secret')
+    const res = await app.inject({ method: 'GET', url: '/api/admin/settings', headers: { cookie } })
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as Record<string, string>
+    expect(body.auto_publish_agents).toBe('false')
+    expect(body.submission_freeze).toBe('false')
+    expect(body.sanitizer_exceptions).toBe('')
+    expect(body).not.toHaveProperty('legacy_unknown_setting')
+  })
+
   it('PUT rejects an unknown key with 400 invalid_input', async () => {
     const res = await app.inject({
       method: 'PUT',
       url: '/api/admin/settings',
       headers: { cookie },
       payload: { key: 'secret_admin_password', value: 'hunter2' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect((res.json() as { error: string }).error).toBe('invalid_input')
+  })
+
+  it('PUT rejects non-boolean values for boolean settings', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings',
+      headers: { cookie },
+      payload: { key: 'auto_publish_agents', value: 'sometimes' },
     })
     expect(res.statusCode).toBe(400)
     expect((res.json() as { error: string }).error).toBe('invalid_input')
@@ -98,19 +119,18 @@ describe('admin settings routes', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('PUT truncates the audit-log details line for long values', async () => {
-    const long = 'A'.repeat(200)
+  it('PUT records only exception count in audit details for sanitizer_exceptions', async () => {
     const res = await app.inject({
       method: 'PUT',
       url: '/api/admin/settings',
       headers: { cookie },
-      payload: { key: 'sanitizer_exceptions', value: long },
+      payload: { key: 'sanitizer_exceptions', value: 'Ada Lovelace\nAda Lovelace\n' },
     })
     expect(res.statusCode).toBe(200)
     const audits = await app.store.listAuditLogForTarget('sanitizer_exceptions')
     const latest = audits[0]
-    // "Set to: " prefix (8 chars) + 100 value chars = 108 chars total.
-    expect(latest.details?.length).toBe(108)
-    expect(latest.details?.startsWith('Set to: A')).toBe(true)
+    if (latest === undefined) throw new Error('expected audit entry')
+    expect(latest.details).toBe('Updated sanitizer exception list (1 entry)')
+    expect(latest.details).not.toContain('Ada Lovelace')
   })
 })

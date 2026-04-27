@@ -5,7 +5,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { config } from '../../config.js'
-import { requireAdmin } from './middleware.js'
+import { idParamsSchema } from './ids.js'
+import { getRequestAdmin, requireAdmin } from './middleware.js'
+import { sanitizeOptionalAdminFreeText } from './sanitize-admin-text.js'
 
 const BCRYPT_ROUNDS = 12
 
@@ -23,7 +25,10 @@ type AppInstance = FastifyInstance
 async function handleInvite(app: AppInstance, request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const store = app.store
   const parsed = inviteSchema.safeParse(request.body)
-  if (!parsed.success) { reply.status(400).send({ error: 'invalid_input' }); return }
+  if (!parsed.success) {
+    reply.status(400).send({ error: 'invalid_input' })
+    return
+  }
 
   const existing = await store.getAdminByEmail(parsed.data.email)
   if (existing) {
@@ -33,13 +38,17 @@ async function handleInvite(app: AppInstance, request: FastifyRequest, reply: Fa
 
   const tempPassword = randomBytes(32).toString('base64url')
   const hash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS)
-  const admin = await store.insertAdmin(parsed.data.email, hash, request.admin!.id)
-  await store.insertAuditEntry(request.admin!.id, 'create_admin', admin.id, 'admin', null)
-
+  const actor = getRequestAdmin(request)
   const token = randomBytes(32).toString('base64url')
   const tokenHash = createHash('sha256').update(token).digest('hex')
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-  const resetId = await store.insertPasswordReset(admin.id, tokenHash, expiresAt)
+  const { admin, resetId } = await store.insertAdminInviteWithAudit(
+    parsed.data.email,
+    hash,
+    actor.id,
+    tokenHash,
+    expiresAt,
+  )
 
   const setupUrl = `${config.PUBLIC_URL}/admin/reset-password?token=${token}`
   try {
@@ -49,14 +58,14 @@ async function handleInvite(app: AppInstance, request: FastifyRequest, reply: Fa
       text: `You've been invited as an admin. Set your password: ${setupUrl}\n\nThis link expires in 24 hours.`,
     })
   } catch (err) {
-    // Invite mail failed. Deactivate the stranded admin row and mark the
-    // reset token used so neither can be abused; the inviter can retry.
+    // Invite mail failed before the recipient saw the reset token. Remove
+    // the invite rows so a transient SMTP outage does not permanently
+    // consume that email address.
     request.log.error({ err, adminId: admin.id }, 'invite: mail delivery failed')
     try {
-      await store.updateAdminStatus(admin.id, 'deactivated')
-      await store.markPasswordResetUsed(resetId)
-    } catch (rollbackErr) {
-      request.log.error({ err: rollbackErr, adminId: admin.id }, 'invite: rollback failed after mail error')
+      await store.deleteFailedAdminInvite(admin.id, resetId)
+    } catch (compensationErr) {
+      request.log.error({ err: compensationErr, adminId: admin.id }, 'invite: compensation failed after mail error')
     }
     reply.status(502).send({ error: 'internal_error', message: 'Invite email could not be delivered. Try again.' })
     return
@@ -69,56 +78,64 @@ async function handleInvite(app: AppInstance, request: FastifyRequest, reply: Fa
 export async function adminAccountRoutes(app: FastifyInstance): Promise<void> {
   const store = app.store
 
-  app.get('/api/admin/admins', { preHandler: [requireAdmin] }, async (_request: FastifyRequest, reply: FastifyReply) => {
-    const admins = await store.listAdmins()
-    const safe = admins.map((a) => ({
-      id: a.id,
-      email: a.email,
-      status: a.status,
-      createdBy: a.createdBy,
-      lastLoginAt: a.lastLoginAt,
-      createdAt: a.createdAt,
-    }))
-    reply.status(200).send({ items: safe })
-  })
+  app.get(
+    '/api/admin/admins',
+    { preHandler: [requireAdmin] },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const admins = await store.listAdmins()
+      const safe = admins.map((a) => ({
+        id: a.id,
+        email: a.email,
+        status: a.status,
+        createdBy: a.createdBy,
+        lastLoginAt: a.lastLoginAt,
+        createdAt: a.createdAt,
+      }))
+      reply.status(200).send({ items: safe })
+    },
+  )
 
   app.post('/api/admin/admins/invite', { preHandler: [requireAdmin] }, async (request, reply) => {
     await handleInvite(app, request, reply)
   })
 
-  app.post('/api/admin/admins/:id/deactivate', { preHandler: [requireAdmin] }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const params = z.object({ id: z.string().min(1) }).safeParse(request.params)
-    if (!params.success) {
-      reply.status(404).send({ error: 'not_found' })
-      return
-    }
+  app.post(
+    '/api/admin/admins/:id/deactivate',
+    { preHandler: [requireAdmin] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = idParamsSchema.safeParse(request.params)
+      if (!params.success) {
+        reply.status(404).send({ error: 'not_found' })
+        return
+      }
 
-    if (params.data.id === request.admin!.id) {
-      reply.status(400).send({ error: 'invalid_input', message: 'You cannot deactivate your own account.' })
-      return
-    }
+      const actor = getRequestAdmin(request)
+      if (params.data.id === actor.id) {
+        reply.status(400).send({ error: 'invalid_input', message: 'You cannot deactivate your own account.' })
+        return
+      }
 
-    const target = await store.getAdmin(params.data.id)
-    if (!target) {
-      reply.status(404).send({ error: 'not_found' })
-      return
-    }
+      const target = await store.getAdmin(params.data.id)
+      if (!target) {
+        reply.status(404).send({ error: 'not_found' })
+        return
+      }
 
-    const body = deactivateSchema.safeParse(request.body)
-    if (!body.success) {
-      reply.status(400).send({ error: 'invalid_input' })
-      return
-    }
-    await store.updateAdminStatus(target.id, 'deactivated')
-    await store.deleteAdminSessions(target.id)
-    await store.insertAuditEntry(
-      request.admin!.id,
-      'deactivate_admin',
-      target.id,
-      'admin',
-      body.data.reason ?? null,
-    )
+      const body = deactivateSchema.safeParse(request.body)
+      if (!body.success) {
+        reply.status(400).send({ error: 'invalid_input' })
+        return
+      }
+      const reason = await sanitizeOptionalAdminFreeText(store, body.data.reason)
+      await store.deactivateAdminWithAudit(target.id, {
+        adminId: actor.id,
+        action: 'deactivate_admin',
+        targetId: target.id,
+        targetKind: 'admin',
+        details: reason,
+      })
 
-    reply.status(200).send({ status: 'ok' })
-  })
+      reply.status(200).send({ status: 'ok' })
+    },
+  )
 }

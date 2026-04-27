@@ -46,7 +46,9 @@ describe('FileMailer', () => {
     await mailer.send({ to: 'u@example.com', subject: 'Your key', text: 'secret' })
     const entries = await readdir(dir)
     expect(entries).toHaveLength(1)
-    const fileStat = await stat(join(dir, entries[0]!))
+    const entry = entries[0]
+    if (entry === undefined) throw new Error('expected mail file')
+    const fileStat = await stat(join(dir, entry))
     expect(fileStat.mode & 0o777).toBe(MAIL_FILE_MODE)
   })
 
@@ -58,7 +60,8 @@ describe('FileMailer', () => {
       text: 'line one\nline two',
     })
     const [name] = await readdir(dir)
-    const raw = await readFile(join(dir, name!), 'utf8')
+    if (name === undefined) throw new Error('expected mail file')
+    const raw = await readFile(join(dir, name), 'utf8')
     expect(raw).toContain('From: noreply@ihelped.ai')
     expect(raw).toContain('To: user@example.com')
     expect(raw).toContain('Subject: Your ihelped.ai API key')
@@ -74,8 +77,9 @@ describe('FileMailer', () => {
     const mailer = new FileMailer('noreply@ihelped.ai', dir)
     await mailer.send({ to: 'u@example.com', subject: 's', text: 't' })
     const [name] = await readdir(dir)
-    const raw = await readFile(join(dir, name!), 'utf8')
-    const headerBlock = raw.split('\r\n\r\n')[0]!
+    if (name === undefined) throw new Error('expected mail file')
+    const raw = await readFile(join(dir, name), 'utf8')
+    const headerBlock = raw.split('\r\n\r\n')[0] ?? ''
     // Every header line is terminated with CRLF — no bare LF allowed in
     // headers or permissive parsers will split them differently. The
     // `(^|[^\r])` prefix catches a bare LF at index 0 as well, which a
@@ -88,7 +92,8 @@ describe('FileMailer', () => {
     const longSubject = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/\\:*?"<>|'
     await mailer.send({ to: 'u@example.com', subject: longSubject, text: 't' })
     const [name] = await readdir(dir)
-    expect(name!.endsWith('.eml')).toBe(true)
+    if (name === undefined) throw new Error('expected mail file')
+    expect(name.endsWith('.eml')).toBe(true)
     // Path separators and special shell chars must never leak into the name.
     expect(name).not.toContain('/')
     expect(name).not.toContain('\\')
@@ -96,7 +101,7 @@ describe('FileMailer', () => {
     expect(name).not.toContain('*')
     // Filename template is `<epoch>-<uuid>-<subject>.eml`; the sanitized
     // subject segment must be capped at 40 chars.
-    const subjectSegment = name!.replace(/^\d+-[0-9a-f-]{36}-/, '').replace(/\.eml$/, '')
+    const subjectSegment = name.replace(/^\d+-[0-9a-f-]{36}-/, '').replace(/\.eml$/, '')
     expect(subjectSegment.length).toBeLessThanOrEqual(40)
   })
 
@@ -112,7 +117,8 @@ describe('FileMailer', () => {
     const mailer = new FileMailer('noreply@ihelped.ai', dir)
     await mailer.send({ to: 'u@example.com', subject: 's', text: 't' })
     const [name] = await readdir(dir)
+    if (name === undefined) throw new Error('expected mail file')
     const emitted = writeSpy.mock.calls.map((args: unknown[]) => String(args[0])).join('')
-    expect(emitted).toContain(join(dir, name!))
+    expect(emitted).toContain(join(dir, name))
   })
 })

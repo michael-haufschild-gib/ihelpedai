@@ -2,12 +2,15 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { syncEntryStatusAsync } from '../../search/sync.js'
-import { requireAdmin } from './middleware.js'
+import { adminRouteIdField, idParamsSchema } from './ids.js'
+import { getRequestAdmin, requireAdmin } from './middleware.js'
+import { adminPageQueryField } from './pagination.js'
+import { sanitizeOptionalAdminFreeText } from './sanitize-admin-text.js'
 
 const PAGE_SIZE = 50
 
 const listQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: adminPageQueryField,
 })
 
 const actionSchema = z.object({
@@ -16,7 +19,7 @@ const actionSchema = z.object({
 })
 
 const bulkActionSchema = z.object({
-  ids: z.array(z.string().min(1)).min(1).max(100),
+  ids: z.array(adminRouteIdField).min(1).max(100),
   action: z.enum(['approve', 'reject']),
   reason: z.string().max(500).optional(),
 })
@@ -39,9 +42,15 @@ async function applyQueueAction(
   const entry = await app.store.getAdminEntryDetail(id)
   if (!entry || entry.status !== 'pending') return 'not_found'
   const newStatus = action === 'approve' ? 'live' : 'deleted'
-  await app.store.updateEntryStatus(entry.id, entry.entryType, newStatus)
+  const actor = getRequestAdmin(request)
+  await app.store.updateEntryStatusWithAudit(entry.id, entry.entryType, newStatus, {
+    adminId: actor.id,
+    action,
+    targetId: entry.id,
+    targetKind: entry.entryType,
+    details: reason,
+  })
   syncEntryStatusAsync(app, request.log, entry.id, entry.entryType, newStatus)
-  await app.store.insertAuditEntry(request.admin!.id, action, entry.id, entry.entryType, reason)
   return 'ok'
 }
 
@@ -65,44 +74,58 @@ export async function adminQueueRoutes(app: FastifyInstance): Promise<void> {
     reply.status(200).send({ items, page, page_size: PAGE_SIZE, total })
   })
 
-  app.get('/api/admin/queue/count', { preHandler: [requireAdmin] }, async (_request: FastifyRequest, reply: FastifyReply) => {
-    const count = await store.countAdminEntries({ status: 'pending', source: 'api' })
-    reply.status(200).send({ count })
-  })
+  app.get(
+    '/api/admin/queue/count',
+    { preHandler: [requireAdmin] },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const count = await store.countAdminEntries({ status: 'pending', source: 'api' })
+      reply.status(200).send({ count })
+    },
+  )
 
-  app.post('/api/admin/queue/:id/action', { preHandler: [requireAdmin] }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const params = z.object({ id: z.string().min(1) }).safeParse(request.params)
-    if (!params.success) {
-      reply.status(404).send({ error: 'not_found' })
-      return
-    }
-    const body = actionSchema.safeParse(request.body)
-    if (!body.success) {
-      reply.status(400).send({ error: 'invalid_input' })
-      return
-    }
-    const result = await applyQueueAction(app, request, params.data.id, body.data.action, body.data.reason ?? null)
-    if (result === 'not_found') {
-      reply.status(404).send({ error: 'not_found' })
-      return
-    }
-    reply.status(200).send({ status: 'ok', entry_id: params.data.id, action: body.data.action })
-  })
+  app.post(
+    '/api/admin/queue/:id/action',
+    { preHandler: [requireAdmin] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = idParamsSchema.safeParse(request.params)
+      if (!params.success) {
+        reply.status(404).send({ error: 'not_found' })
+        return
+      }
+      const body = actionSchema.safeParse(request.body)
+      if (!body.success) {
+        reply.status(400).send({ error: 'invalid_input' })
+        return
+      }
+      const reason = await sanitizeOptionalAdminFreeText(store, body.data.reason)
+      const result = await applyQueueAction(app, request, params.data.id, body.data.action, reason)
+      if (result === 'not_found') {
+        reply.status(404).send({ error: 'not_found' })
+        return
+      }
+      reply.status(200).send({ status: 'ok', entry_id: params.data.id, action: body.data.action })
+    },
+  )
 
-  app.post('/api/admin/queue/bulk', { preHandler: [requireAdmin] }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const body = bulkActionSchema.safeParse(request.body)
-    if (!body.success) {
-      reply.status(400).send({ error: 'invalid_input' })
-      return
-    }
-    // Bulk tolerates per-entry misses (404-equivalent) but still surfaces
-    // write/audit failures as a 500 so callers do not silently retry on
-    // partially-applied status changes.
-    const results: { id: string; ok: boolean }[] = []
-    for (const id of body.data.ids) {
-      const result = await applyQueueAction(app, request, id, body.data.action, body.data.reason ?? null)
-      results.push({ id, ok: result === 'ok' })
-    }
-    reply.status(200).send({ status: 'ok', results })
-  })
+  app.post(
+    '/api/admin/queue/bulk',
+    { preHandler: [requireAdmin] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = bulkActionSchema.safeParse(request.body)
+      if (!body.success) {
+        reply.status(400).send({ error: 'invalid_input' })
+        return
+      }
+      // Bulk tolerates per-entry misses (404-equivalent) but still surfaces
+      // write/audit failures as a 500 so callers do not silently retry on
+      // partially-applied status changes.
+      const results: { id: string; ok: boolean }[] = []
+      const reason = await sanitizeOptionalAdminFreeText(store, body.data.reason)
+      for (const id of body.data.ids) {
+        const result = await applyQueueAction(app, request, id, body.data.action, reason)
+        results.push({ id, ok: result === 'ok' })
+      }
+      reply.status(200).send({ status: 'ok', results })
+    },
+  )
 }

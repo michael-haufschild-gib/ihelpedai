@@ -1,14 +1,14 @@
 import { config as loadDotenv } from 'dotenv'
 import { z, type RefinementCtx } from 'zod'
 
-loadDotenv({ path: '.env.local', override: false })
-loadDotenv()
+loadDotenv({ path: '.env.local', override: false, quiet: true })
+loadDotenv({ quiet: true })
 
-const isMissing = (value: string | undefined): boolean =>
-  value === undefined || value === ''
+const isMissing = (value: string | undefined): boolean => value === undefined || value === ''
 
 type EnvShape = {
   NODE_ENV: 'development' | 'test' | 'production'
+  BIND_HOST: string
   PUBLIC_URL: string
   IP_HASH_SALT: string
   ADMIN_SESSION_SECRET: string
@@ -73,11 +73,10 @@ function refineProductionSecrets(env: EnvShape, ctx: RefinementCtx): void {
   // resolves exclusively on the local box so a copy-pasted staging URL
   // like `http://127.0.0.1:8080` is caught too.
   if (isLocalOnlyPublicUrl(env.PUBLIC_URL)) {
-    addRequired(
-      ctx,
-      'PUBLIC_URL',
-      'Production must set PUBLIC_URL to the public origin (e.g. https://ihelped.ai)',
-    )
+    addRequired(ctx, 'PUBLIC_URL', 'Production must set PUBLIC_URL to the public origin (e.g. https://ihelped.ai)')
+  }
+  if (!isLoopbackBindHost(env.BIND_HOST)) {
+    addRequired(ctx, 'BIND_HOST', 'Production must bind the API to loopback behind nginx (127.0.0.1 or ::1)')
   }
 }
 
@@ -102,6 +101,11 @@ function isLocalOnlyPublicUrl(raw: string): boolean {
   return false
 }
 
+function isLoopbackBindHost(raw: string): boolean {
+  const host = raw.trim().toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
+}
+
 function refineModeRequirements(env: EnvShape, ctx: RefinementCtx): void {
   if (env.MAILER === 'smtp' && isMissing(env.SMTP_URL)) {
     addRequired(ctx, 'SMTP_URL', 'Required when MAILER=smtp')
@@ -123,9 +127,10 @@ function refineEnv(env: EnvShape, ctx: RefinementCtx): void {
   refineModeRequirements(env, ctx)
 }
 
-const envSchema = z
+export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    BIND_HOST: z.string().trim().min(1).default('127.0.0.1'),
     PORT: z.coerce.number().int().positive().default(3001),
     PUBLIC_URL: z.string().url().default(DEV_PUBLIC_URL_DEFAULT),
 
@@ -137,10 +142,7 @@ const envSchema = z
     ADMIN_SESSION_SECRET: z
       .string()
       .min(1)
-      .refine(
-        (raw) => parseAdminSessionSecrets(raw).length > 0,
-        'must contain at least one non-empty secret',
-      )
+      .refine((raw) => parseAdminSessionSecrets(raw).length > 0, 'must contain at least one non-empty secret')
       .default('dev-session-secret-change-me'),
 
     MAILER: z.enum(['file', 'smtp']).default('file'),
@@ -160,7 +162,7 @@ const envSchema = z
           return false
         }
       }, 'must be a smtp:// or smtps:// URL'),
-    MAIL_FROM: z.string().default('noreply@ihelped.ai'),
+    MAIL_FROM: z.string().email().default('noreply@ihelped.ai'),
 
     STORE: z.enum(['sqlite', 'mysql']).default('sqlite'),
     SQLITE_PATH: z.string().default('./dev.db'),
@@ -188,9 +190,7 @@ if (!parsed.success) {
   // Fastify hasn't started yet, so a plain stderr write is the only signal
   // available. The non-zero exit is what prevents a half-configured server
   // from booting.
-  process.stderr.write(
-    `Invalid server configuration:\n${JSON.stringify(parsed.error.flatten(), null, 2)}\n`,
-  )
+  process.stderr.write(`Invalid server configuration:\n${JSON.stringify(parsed.error.flatten(), null, 2)}\n`)
   process.exit(1)
 }
 

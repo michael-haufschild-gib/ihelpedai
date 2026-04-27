@@ -171,7 +171,7 @@ async function seedDevApiKey(store: Store): Promise<void> {
   const keyHash = hashWithSalt(DEV_API_KEY)
   if ((await store.getApiKeyByHash(keyHash)) !== null) return
   const emailHash = hashWithSalt(DEV_API_KEY_EMAIL.toLowerCase())
-  await store.insertApiKey({ keyHash, emailHash, status: 'active' })
+  await store.insertApiKey({ keyHash, keyLast4: DEV_API_KEY.slice(-4), emailHash, status: 'active' })
 }
 
 /**

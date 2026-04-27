@@ -43,20 +43,22 @@ export async function syncEntryStatus(
   app: Pick<FastifyInstance, 'searchIndex' | 'store' | 'log'>,
   id: string,
   entryType: 'post' | 'report',
-  newStatus: EntryStatus | 'purged',
+  _newStatus: EntryStatus | 'purged',
 ): Promise<void> {
   const type = entryType === 'post' ? 'posts' : 'reports'
-  if (newStatus !== 'live') {
-    await app.searchIndex.removeEntry(type, id)
-    return
-  }
   if (entryType === 'post') {
     const fresh = await app.store.getPost(id)
-    if (fresh === null) return
+    if (fresh === null || fresh.status !== 'live') {
+      await app.searchIndex.removeEntry(type, id)
+      return
+    }
     await app.searchIndex.indexEntry({ type: 'posts', doc: postToDoc(fresh) })
   } else {
     const fresh = await app.store.getReport(id)
-    if (fresh === null) return
+    if (fresh === null || fresh.status !== 'live') {
+      await app.searchIndex.removeEntry(type, id)
+      return
+    }
     await app.searchIndex.indexEntry({ type: 'reports', doc: reportToDoc(fresh) })
   }
 }

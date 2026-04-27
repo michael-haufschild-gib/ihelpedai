@@ -2,9 +2,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { isValidIsoDate } from '../../lib/iso-date.js'
+import { adminRouteIdField } from './ids.js'
 import { requireAdmin } from './middleware.js'
+import { adminPageQueryField } from './pagination.js'
 
 const PAGE_SIZE = 100
+const MAX_AUDIT_ACTION_LENGTH = 64
 
 // Empty string (UI clear) and YYYY-MM-DD are the only accepted inputs.
 // Allowing any string would let typos pass through to the SQL comparison
@@ -24,11 +27,11 @@ const dateQueryField = z
   .optional()
 
 const listQuerySchema = z.object({
-  admin_id: z.string().optional(),
-  action: z.string().optional(),
+  admin_id: adminRouteIdField.optional(),
+  action: z.string().max(MAX_AUDIT_ACTION_LENGTH).optional(),
   date_from: dateQueryField,
   date_to: dateQueryField,
-  page: z.coerce.number().int().min(1).default(1),
+  page: adminPageQueryField,
 })
 
 /** Register admin audit log routes. */

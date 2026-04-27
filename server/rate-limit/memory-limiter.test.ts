@@ -60,18 +60,21 @@ describe('MemoryRateLimiter.checkAll — atomicity', () => {
     expect((await limiter.check('user', 5, 60)).allowed).toBe(false)
   })
 
-  it('returns the first denying bucket retryAfter, not the last', async () => {
+  it('returns the longest denying bucket retryAfter', async () => {
     for (let i = 0; i < 2; i += 1) {
       await limiter.check('first', 2, 60)
     }
+    await limiter.check('second', 1, 600)
     const decision = await limiter.checkAll([
       { bucket: 'first', limit: 2, windowSeconds: 60 },
       { bucket: 'second', limit: 1, windowSeconds: 600 }, // long window
     ])
     expect(decision.allowed).toBe(false)
-    // retryAfter must come from `first` (which has the 60s window), not the
-    // 600s `second` window — `first` is the one actually blocking.
-    expect(decision.retryAfter).toBeLessThanOrEqual(60)
+    // Match the Redis Lua implementation: when several buckets deny, tell
+    // callers the longest blocking window so their next retry is not
+    // immediately rejected by another bucket.
+    expect(decision.retryAfter).toBeGreaterThan(60)
+    expect(decision.retryAfter).toBeLessThanOrEqual(600)
   })
 
   // Defensive: a typo like `limit: 0` or `windowSeconds: NaN` in a future
@@ -79,17 +82,21 @@ describe('MemoryRateLimiter.checkAll — atomicity', () => {
   // the math underflow — silent acceptance of invalid limits has in the past
   // allowed unbounded hits on a bucket the author thought they'd disabled.
   it('denies with retryAfter=1 when a spec has an invalid limit', async () => {
-    const decision = await limiter.checkAll([
-      { bucket: 'bad', limit: 0, windowSeconds: 60 },
-    ])
+    const decision = await limiter.checkAll([{ bucket: 'bad', limit: 0, windowSeconds: 60 }])
     expect(decision).toEqual({ allowed: false, retryAfter: 1 })
   })
 
   it('denies when a spec has a non-finite windowSeconds', async () => {
-    const decision = await limiter.checkAll([
-      { bucket: 'bad', limit: 5, windowSeconds: Number.NaN },
-    ])
+    const decision = await limiter.checkAll([{ bucket: 'bad', limit: 5, windowSeconds: Number.NaN }])
     expect(decision.allowed).toBe(false)
+  })
+
+  it('denies duplicate bucket specs so one call cannot double-count a bucket', async () => {
+    const decision = await limiter.checkAll([
+      { bucket: 'same', limit: 2, windowSeconds: 60 },
+      { bucket: 'same', limit: 2, windowSeconds: 60 },
+    ])
+    expect(decision).toEqual({ allowed: false, retryAfter: 1 })
   })
 
   it('returns allowed without mutating when specs is empty', async () => {

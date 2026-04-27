@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { Database as SqliteDatabase } from 'better-sqlite3'
 
 import { SqliteStore } from '../store/sqlite-store.js'
 
@@ -16,10 +17,12 @@ import { SqliteStore } from '../store/sqlite-store.js'
  */
 describe('SqliteStore pagination tie-breaker', () => {
   let store: SqliteStore
+  let rawDb: SqliteDatabase
 
   beforeEach(() => {
     const dir = mkdtempSync(join(tmpdir(), 'ihelped-paginate-'))
     store = new SqliteStore(join(dir, 'test.db'))
+    rawDb = (store as unknown as { db: SqliteDatabase }).db
   })
 
   afterEach(async () => {
@@ -74,5 +77,62 @@ describe('SqliteStore pagination tie-breaker', () => {
     const firstPage = await store.listReports(5, 0, undefined, 'all')
     const secondPage = await store.listReports(5, 0, undefined, 'all')
     expect(firstPage.map((r) => r.id)).toEqual(secondPage.map((r) => r.id))
+  })
+
+  it('orders admin entries deterministically when created_at collides', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await store.insertPost({
+        firstName: `Admin${String(i)}`,
+        city: 'Paris',
+        country: 'FR',
+        text: `admin entry ${String(i)}`,
+        clientIpHash: null,
+        source: 'form',
+      })
+    }
+    rawDb.prepare("UPDATE posts SET created_at = '2026-01-01T00:00:00.000Z'").run()
+    const window1 = await store.listAdminEntries(3, 0, { entryType: 'post' })
+    const window2 = await store.listAdminEntries(3, 3, { entryType: 'post' })
+    const ids = [...window1, ...window2].map((entry) => entry.id)
+    expect(ids).toHaveLength(5)
+    expect(new Set(ids).size).toBe(5)
+  })
+
+  it('orders audit, API-key, and takedown pages deterministically under timestamp ties', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await store.insertAuditEntry(null, 'test_action', `target-${String(i)}`, 'test', null)
+      await store.insertApiKey({
+        keyHash: `key-${String(i)}`,
+        keyLast4: `k-${String(i)}`,
+        emailHash: `email-${String(i)}`,
+        status: 'active',
+      })
+      await store.insertTakedown({
+        requesterEmail: null,
+        entryId: null,
+        entryKind: null,
+        reason: `reason ${String(i)}`,
+        dateReceived: '2026-01-01T00:00:00.000Z',
+      })
+    }
+    rawDb.prepare("UPDATE audit_log SET created_at = '2026-01-01T00:00:00.000Z'").run()
+    rawDb.prepare("UPDATE agent_keys SET issued_at = '2026-01-01T00:00:00.000Z'").run()
+
+    const auditIds = [
+      ...(await store.listAuditLog(3, 0)).map((entry) => entry.id),
+      ...(await store.listAuditLog(3, 3)).map((entry) => entry.id),
+    ]
+    const apiKeyIds = [
+      ...(await store.listApiKeys(3, 0)).map((entry) => entry.id),
+      ...(await store.listApiKeys(3, 3)).map((entry) => entry.id),
+    ]
+    const takedownIds = [
+      ...(await store.listTakedowns(3, 0)).map((entry) => entry.id),
+      ...(await store.listTakedowns(3, 3)).map((entry) => entry.id),
+    ]
+
+    expect(new Set(auditIds).size).toBe(5)
+    expect(new Set(apiKeyIds).size).toBe(5)
+    expect(new Set(takedownIds).size).toBe(5)
   })
 })

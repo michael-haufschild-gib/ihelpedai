@@ -24,8 +24,8 @@ export interface RateLimiter {
 
   /**
    * Atomic multi-bucket check. Either every bucket allows AND every bucket
-   * increments, or no bucket increments and the first denying decision is
-   * returned. This eliminates the over-counting that occurs with sequential
+   * increments, or no bucket increments and the longest denying retry window
+   * is returned. This eliminates the over-counting that occurs with sequential
    * `check` calls when an early bucket allows but a later one denies — the
    * earlier hit gets recorded against a bucket that the request never used.
    */
