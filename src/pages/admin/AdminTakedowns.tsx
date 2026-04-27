@@ -189,6 +189,7 @@ function StatusFilter({ value, onChange }: { value: TakedownStatusFilter; onChan
   return (
     <Select
       data-testid="admin-takedowns-status-filter"
+      label="Status filter"
       value={value}
       onChange={onChange}
       options={[
@@ -247,6 +248,16 @@ export function AdminTakedowns() {
   }
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 0
+
+  // Clamp `page` back into [1, totalPages] after each fetch. Without this a
+  // close-or-create that shrinks the dataset (e.g. closing the last item on
+  // page 3) leaves the user stranded on a stale ?page=N — the list would
+  // render "No takedown requests" for a non-empty backing dataset, and the
+  // pager hides itself when totalPages <= 1, so nothing nudges them back.
+  useEffect(() => {
+    if (loading || data === null) return
+    if (totalPages > 0 && page > totalPages) setPage(totalPages)
+  }, [loading, data, page, totalPages, setPage])
 
   return (
     <section data-testid="admin-takedowns-page" className="flex flex-col gap-4">
@@ -371,24 +382,28 @@ function CreateModal({
       <div className="flex flex-col gap-4 p-4">
         <Input
           data-testid="admin-takedown-email"
+          label="Requester email"
           placeholder="Requester email"
           value={form.requester_email}
           onChange={(e) => onFormChange({ ...form, requester_email: e.target.value })}
         />
         <Input
           data-testid="admin-takedown-entry-id"
+          label="Entry ID (optional)"
           placeholder="Entry ID (optional)"
           value={form.entry_id}
           onChange={(e) => onFormChange({ ...form, entry_id: e.target.value })}
         />
         <Textarea
           data-testid="admin-takedown-reason"
+          label="Reason"
           placeholder="Reason"
           value={form.reason}
           onChange={(e) => onFormChange({ ...form, reason: e.target.value })}
         />
         <Input
           data-testid="admin-takedown-date"
+          label="Date received"
           type="date"
           value={form.date_received}
           onChange={(e) => onFormChange({ ...form, date_received: e.target.value })}
@@ -425,6 +440,7 @@ function CloseModal({
       <div className="flex flex-col gap-4 p-4">
         <Select
           data-testid="admin-takedown-disposition"
+          label="Disposition"
           value={closeForm.disposition}
           onChange={(v) => onFormChange({ ...closeForm, disposition: v })}
           options={[
@@ -437,6 +453,7 @@ function CloseModal({
         />
         <Textarea
           data-testid="admin-takedown-notes"
+          label="Notes"
           placeholder="Notes"
           value={closeForm.notes}
           onChange={(e) => onFormChange({ ...closeForm, notes: e.target.value })}

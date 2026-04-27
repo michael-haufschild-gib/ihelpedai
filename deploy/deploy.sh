@@ -28,6 +28,13 @@ fi
 
 resolve_app_version() {
   if [[ -n "${IHELPED_APP_VERSION:-}" ]]; then
+    # APP_VERSION is later written verbatim into /etc/ihelped.env; a multiline
+    # override would inject extra `KEY=value` lines that systemd would then
+    # source as real settings. Refuse it before we can damage the env file.
+    if [[ "${IHELPED_APP_VERSION}" == *$'\n'* || "${IHELPED_APP_VERSION}" == *$'\r'* ]]; then
+      echo "[deploy] IHELPED_APP_VERSION must be a single line (no CR/LF)" >&2
+      exit 1
+    fi
     printf '%s\n' "${IHELPED_APP_VERSION}"
     return
   fi

@@ -44,6 +44,16 @@ function loadEntryDetail(
   setLoading: (v: boolean) => void,
 ): () => void {
   let cancelled = false
+  // Reset previous fetch state inside a microtask. The naive sync calls would
+  // trip the `react-hooks/set-state-in-effect` rule because this helper is
+  // invoked synchronously from the page's useEffect; without the reset, an
+  // earlier failed load would leave a stale error banner on screen across an
+  // `id` change.
+  void Promise.resolve().then(() => {
+    if (cancelled) return
+    setLoading(true)
+    setFetchError(null)
+  })
   getEntry(id)
     .then((e) => {
       if (!cancelled) setEntry(e)
