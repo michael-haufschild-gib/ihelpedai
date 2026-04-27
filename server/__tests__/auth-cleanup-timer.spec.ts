@@ -51,15 +51,20 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  if (app !== undefined) {
-    await app.close()
-    app = undefined
+  // Wrap close in try/finally so a teardown failure on one spec cannot
+  // skip env restoration / tmpdir cleanup and bleed state into the next.
+  try {
+    if (app !== undefined) {
+      await app.close()
+      app = undefined
+    }
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    rmSync(tmpDir, { recursive: true, force: true })
   }
-  for (const [key, value] of Object.entries(previousEnv)) {
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
-  }
-  rmSync(tmpDir, { recursive: true, force: true })
 })
 
 describe('periodic auth-state cleanup wiring', () => {

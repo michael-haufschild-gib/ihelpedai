@@ -54,23 +54,35 @@ function generateDevPassword(): string {
 }
 
 function tryReadCredentialsFile(): DevCredentials | null {
+  let raw: string
   try {
-    const raw = readFileSync(CREDENTIALS_FILE, 'utf8')
-    const parsed = JSON.parse(raw) as unknown
-    if (
-      parsed !== null &&
-      typeof parsed === 'object' &&
-      typeof (parsed as { adminPassword?: unknown }).adminPassword === 'string' &&
-      (parsed as { adminPassword: string }).adminPassword.length > 0
-    ) {
-      return parsed as DevCredentials
-    }
-    return null
+    raw = readFileSync(CREDENTIALS_FILE, 'utf8')
+  } catch (error) {
+    // Only "file does not exist" should fall through to regen; surfacing
+    // permission/I/O errors keeps a real filesystem problem from silently
+    // rotating the dev admin password each time the seed runs.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as unknown
   } catch {
-    // ENOENT or malformed JSON both fall through to "no existing creds".
-    // The seed will generate fresh and overwrite.
+    // Malformed JSON (manual edit, partial write, truncation) is recoverable
+    // by overwriting with a freshly generated credentials object.
     return null
   }
+
+  if (
+    parsed !== null &&
+    typeof parsed === 'object' &&
+    typeof (parsed as { adminPassword?: unknown }).adminPassword === 'string' &&
+    (parsed as { adminPassword: string }).adminPassword.length > 0
+  ) {
+    return parsed as DevCredentials
+  }
+  return null
 }
 
 function writeCredentialsFile(creds: DevCredentials): void {

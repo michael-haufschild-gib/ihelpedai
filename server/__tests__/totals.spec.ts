@@ -41,7 +41,7 @@ process.env.NODE_ENV = 'test'
 process.env.IP_HASH_SALT = 'test-salt'
 process.env.DEV_RATE_MULTIPLIER = '50'
 
-let app: FastifyInstance
+let app: FastifyInstance | undefined
 
 beforeAll(async () => {
   const { buildApp } = await import('../index.js')
@@ -49,7 +49,9 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await app.close()
+  // Guard close so a setup failure (where `app` was never assigned)
+  // doesn't mask the real beforeAll error with a TypeError.
+  await app?.close()
   rmSync(tmpDir, { recursive: true, force: true })
   for (const [key, value] of Object.entries(previousEnv)) {
     if (value === undefined) delete process.env[key]
@@ -57,16 +59,21 @@ afterAll(async () => {
   }
 })
 
+function getApp(): FastifyInstance {
+  if (app === undefined) throw new Error('app not initialized')
+  return app
+}
+
 describe('GET /api/totals', () => {
   it('returns zeros against an empty store and matches the wire schema', async () => {
-    const res = await app.inject({ method: 'GET', url: '/api/totals' })
+    const res = await getApp().inject({ method: 'GET', url: '/api/totals' })
     expect(res.statusCode).toBe(200)
     const body = parseResponse('GET /api/totals', totalsSchema, res.json())
     expect(body).toEqual({ posts: 0, reports: 0, agents: 0 })
   })
 
   it('counts live posts and form-source live reports separately from api-source agent reports', async () => {
-    await app.store.insertPost({
+    await getApp().store.insertPost({
       firstName: 'Totals',
       city: 'Austin',
       country: 'US',
@@ -74,7 +81,7 @@ describe('GET /api/totals', () => {
       clientIpHash: null,
       source: 'form',
     })
-    await app.store.insertReport({
+    await getApp().store.insertReport({
       reporterFirstName: null,
       reporterCity: null,
       reporterCountry: null,
@@ -88,13 +95,13 @@ describe('GET /api/totals', () => {
       clientIpHash: null,
       source: 'form',
     })
-    await app.store.insertApiKey({
+    await getApp().store.insertApiKey({
       keyHash: 'totals-keyhash',
       keyLast4: 'totl',
       emailHash: 'totals-email',
       status: 'active',
     })
-    await app.store.insertAgentReport(
+    await getApp().store.insertAgentReport(
       {
         reporterFirstName: null,
         reporterCity: null,
@@ -112,7 +119,7 @@ describe('GET /api/totals', () => {
       'totals-keyhash',
       'live',
     )
-    const res = await app.inject({ method: 'GET', url: '/api/totals' })
+    const res = await getApp().inject({ method: 'GET', url: '/api/totals' })
     expect(res.statusCode).toBe(200)
     const body = parseResponse('GET /api/totals', totalsSchema, res.json())
     // posts: 1 (form post seeded above)
@@ -127,14 +134,16 @@ describe('GET /api/totals', () => {
   })
 
   it('ignores pending and deleted rows so soft-deletes do not inflate the strip', async () => {
-    // A deleted post must not increment the posts count. Insert one
-    // row, soft-delete it, and assert the totals stay where they were.
+    // Both a deleted post and a pending post must leave the totals
+    // unchanged. The suite lock-text claims pending coverage; assert it
+    // here so a regression that drops the pending filter from the totals
+    // path fails loud rather than silent.
     const before = parseResponse(
       'GET /api/totals',
       totalsSchema,
-      (await app.inject({ method: 'GET', url: '/api/totals' })).json(),
+      (await getApp().inject({ method: 'GET', url: '/api/totals' })).json(),
     )
-    const ghost = await app.store.insertPost({
+    const ghost = await getApp().store.insertPost({
       firstName: 'Ghost',
       city: 'Limbo',
       country: 'US',
@@ -142,12 +151,23 @@ describe('GET /api/totals', () => {
       clientIpHash: null,
       source: 'form',
     })
-    await app.store.updateEntryStatus(ghost.id, 'post', 'deleted')
+    await getApp().store.updateEntryStatus(ghost.id, 'post', 'deleted')
+    const pending = await getApp().store.insertPost({
+      firstName: 'Soon',
+      city: 'Queue',
+      country: 'US',
+      text: 'not yet live',
+      clientIpHash: null,
+      source: 'form',
+    })
+    await getApp().store.updateEntryStatus(pending.id, 'post', 'pending')
     const after = parseResponse(
       'GET /api/totals',
       totalsSchema,
-      (await app.inject({ method: 'GET', url: '/api/totals' })).json(),
+      (await getApp().inject({ method: 'GET', url: '/api/totals' })).json(),
     )
     expect(after.posts).toBe(before.posts)
+    expect(after.reports).toBe(before.reports)
+    expect(after.agents).toBe(before.agents)
   })
 })
