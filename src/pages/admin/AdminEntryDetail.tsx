@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import type { AdminEntryDetail as EntryDetail, AdminEntryStatusAction } from '@/lib/adminApi'
 import { ApiError } from '@/lib/api'
 import { entryAction, getEntry, purgeEntry } from '@/lib/adminApi'
+import { sanitize } from '@/lib/sanitizePreview'
 
 type EntryModalAction = AdminEntryStatusAction | 'purge'
 
@@ -92,11 +93,18 @@ async function runEntryAction(
   if (!entry) return
   setActionLoading(true)
   setActionError(null)
+  // Mirror the server sanitizer on the client so the value the admin types
+  // matches the value that lands in the audit log. Without this client-side
+  // mirror an admin can submit reason text whose final stored form differs
+  // from what they read on screen — same parity contract that public forms
+  // honor in HelpedForm/ReportForm.
+  const cleanedReason = sanitize(reason).clean
+  const reasonArg = cleanedReason !== '' ? cleanedReason : undefined
   try {
     if (action === 'purge') {
-      await purgeEntry(entry.id, confirmation, reason !== '' ? reason : undefined)
+      await purgeEntry(entry.id, confirmation, reasonArg)
     } else {
-      await entryAction(entry.id, action, reason !== '' ? reason : undefined)
+      await entryAction(entry.id, action, reasonArg)
     }
     navigate('/admin', { replace: true })
   } catch (err) {
