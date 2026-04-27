@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 
 import { ApiError, createHelpedPost } from '@/lib/api'
 import { formatApiError } from '@/lib/formatApiError'
 import { bumpLoyalty } from '@/lib/loyalty'
-import { sanitize } from '@/lib/sanitizePreview'
 
 import { ComposerBody, type ComposerCallbacks } from './composer/ComposerBody'
 import type { ComposerFieldsProps } from './composer/types'
@@ -57,29 +56,32 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const closedButtonRef = useRef<HTMLButtonElement | null>(null)
   const cancelFocusTimeoutRef = useRef<number | null>(null)
-  const inFlightRef = useRef(false)
-  const sanitized = useMemo(() => sanitize(state.values.text), [state.values.text])
+  // `sanitized` and `submitLatchRef` come from the shared
+  // `useHelpedSubmission` core via `useComposerState` — both used to be
+  // duplicated here with the standalone HelpedForm and the two
+  // implementations had drifted. Pulling them off `state` keeps the two
+  // submission surfaces locked to the same memoisation and latch
+  // semantics.
 
   // Unmount clears any pending cancel-focus callback so we never focus a
   // stale ref after the component has torn down.
   useEffect(() => () => cancelFocusRestore(cancelFocusTimeoutRef), [])
 
   const submit = (): void => {
-    if (inFlightRef.current) return
-    inFlightRef.current = true
+    if (!state.claimSubmit()) return
     state.setSubmitting(true)
     state.setSubmitError(null)
     createHelpedPost(trimHelpedValues(state.values))
       .then(() => {
         bumpLoyalty()
-        inFlightRef.current = false
+        state.releaseSubmit()
         state.setSubmitting(false)
         state.setMode('posted')
         state.reset()
         onPosted?.()
       })
       .catch((err: unknown) => {
-        inFlightRef.current = false
+        state.releaseSubmit()
         state.setSubmitting(false)
         if (err instanceof ApiError) state.setSubmitError(formatApiError(err))
         else state.setSubmitError('Something went wrong. Try again.')
@@ -145,7 +147,13 @@ export function FeedComposer({ onPosted }: FeedComposerProps) {
       data-testid="feed-composer"
       className="rounded-xl border border-border-subtle bg-panel/40 p-3 backdrop-blur-sm sm:p-4"
     >
-      <ComposerBody state={state} fields={fields} sanitized={sanitized} cb={cb} closedButtonRef={closedButtonRef} />
+      <ComposerBody
+        state={state}
+        fields={fields}
+        sanitized={state.sanitized}
+        cb={cb}
+        closedButtonRef={closedButtonRef}
+      />
     </section>
   )
 }

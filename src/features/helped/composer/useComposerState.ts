@@ -1,61 +1,31 @@
 import { useState } from 'react'
 
-import {
-  EMPTY_HELPED_VALUES,
-  validateHelpedField,
-  type HelpedFieldName,
-  type HelpedFormValues,
-} from '@/features/helped/form/validators'
+import { useHelpedSubmission, type HelpedSubmissionState } from '@/features/helped/form/useHelpedSubmission'
 
 import type { ComposerMode } from './types'
 
 /**
- * State holder for the FeedComposer. Keeps the composer body lean by
- * encapsulating mode + values + per-field errors + in-flight + submit error
- * into a single hook with stable setters. Each mode transition is handled
- * at the call site; this hook only mutates state.
+ * State holder for the FeedComposer. Wraps the shared
+ * {@link useHelpedSubmission} core (values + errors + submit-latch +
+ * sanitiser memo) and adds only what is unique to the composer: the
+ * `closed → editing → previewing → posted` lifecycle axis.
+ *
+ * The standalone {@link HelpedForm} consumes the same core but with a
+ * lighter `form ↔ preview` toggle held in the page itself, so the
+ * lifecycle does not need to live in this hook.
  */
-export function useComposerState() {
+export function useComposerState(): ComposerState {
+  const core = useHelpedSubmission()
   const [mode, setMode] = useState<ComposerMode>('closed')
-  const [values, setValues] = useState<HelpedFormValues>(EMPTY_HELPED_VALUES)
-  const [errors, setErrors] = useState<Partial<Record<HelpedFieldName, string>>>({})
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-
-  const setValue = (name: HelpedFieldName, value: string) => {
-    setValues((prev) => ({ ...prev, [name]: value }))
-    // Read the latest errors via the functional updater — the
-    // `errors` captured in render scope can lag a just-dispatched
-    // setErrors in tight event sequencing (e.g. blur-then-type on the
-    // same render), which would re-run validation against a stale map.
-    setErrors((prev) => {
-      if (prev[name] === undefined) return prev
-      return { ...prev, [name]: validateHelpedField(name, value) }
-    })
-  }
-  const setBlurred = (name: HelpedFieldName, value: string) => {
-    setErrors((prev) => ({ ...prev, [name]: validateHelpedField(name, value) }))
-  }
-  const reset = () => {
-    setValues(EMPTY_HELPED_VALUES)
-    setErrors({})
-    setSubmitError(null)
-    setSubmitting(false)
-  }
   return {
+    ...core,
     mode,
     setMode,
-    values,
-    errors,
-    submitting,
-    setSubmitting,
-    submitError,
-    setSubmitError,
-    setValue,
-    setBlurred,
-    reset,
   }
 }
 
 /** Aggregate state shape returned by {@link useComposerState}. */
-export type ComposerState = ReturnType<typeof useComposerState>
+export type ComposerState = HelpedSubmissionState & {
+  mode: ComposerMode
+  setMode: (mode: ComposerMode) => void
+}

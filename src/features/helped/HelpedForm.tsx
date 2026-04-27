@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -6,18 +6,16 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { ApiError, createHelpedPost, type HelpedPostInput } from '@/lib/api'
 import { formatApiError } from '@/lib/formatApiError'
-import { sanitize } from '@/lib/sanitizePreview'
 
 import {
   COUNTRY_OPTIONS,
-  EMPTY_HELPED_VALUES,
   MAX_HELPED_TEXT,
   isHelpedFormValid,
   trimHelpedValues,
-  validateHelpedField,
   type HelpedFieldName,
   type HelpedFormValues,
 } from './form/validators'
+import { useHelpedSubmission } from './form/useHelpedSubmission'
 import { PreviewCard } from './PreviewCard'
 
 /** Props for the "I helped" submission form. */
@@ -34,11 +32,9 @@ type FormValues = HelpedFormValues
 type FieldName = HelpedFieldName
 type Mode = 'form' | 'preview'
 
-const EMPTY = EMPTY_HELPED_VALUES
 const MAX_TEXT = MAX_HELPED_TEXT
 const countryOptions = COUNTRY_OPTIONS
 
-const validateField = validateHelpedField
 const isFormValid = isHelpedFormValid
 
 type StepProps = {
@@ -239,38 +235,30 @@ async function submitPost(
  * payload per PRD Story 11 — the server drops it.
  */
 export function HelpedForm({ onPosted }: HelpedFormProps) {
-  const [values, setValues] = useState<FormValues>(EMPTY)
-  const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({})
+  // Shared form state core. Owns values, per-field errors, sanitiser
+  // memo, submitting/submitError flags, and the submit-latch via
+  // `claimSubmit` / `releaseSubmit`. The FeedComposer surface uses the
+  // same core via `useComposerState`, so both surfaces stay locked to
+  // the same memoisation and latch semantics — drift between them used
+  // to require parallel edits.
+  const submission = useHelpedSubmission()
+  const { values, errors, submitting, submitError, sanitized, setValue, setBlurred } = submission
   const [mode, setMode] = useState<Mode>('form')
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const submitLatchRef = useRef(false)
-
-  const setValue = (name: FieldName, value: string) => {
-    setValues((prev) => ({ ...prev, [name]: value }))
-    if (errors[name] !== undefined) setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }))
-  }
-
-  const setBlurred = (name: FieldName, value: string) => {
-    setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }))
-  }
 
   const previewValues = useMemo(() => trimHelpedValues(values), [values])
-  const sanitized = useMemo(() => sanitize(values.text), [values.text])
 
   const handlePost = async () => {
-    if (submitLatchRef.current) return
-    submitLatchRef.current = true
-    setSubmitting(true)
-    setSubmitError(null)
+    if (!submission.claimSubmit()) return
+    submission.setSubmitting(true)
+    submission.setSubmitError(null)
     try {
       const submitted = trimHelpedValues(values)
       const result = await submitPost(submitted)
       if (result.ok) onPosted({ first_name: submitted.first_name, slug: result.slug })
-      else setSubmitError(result.message)
+      else submission.setSubmitError(result.message)
     } finally {
-      submitLatchRef.current = false
-      setSubmitting(false)
+      submission.releaseSubmit()
+      submission.setSubmitting(false)
     }
   }
 
