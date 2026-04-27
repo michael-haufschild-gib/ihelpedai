@@ -117,13 +117,11 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
     const emailHash = hashWithSalt(parsed.data.email.toLowerCase())
     const throttle = await limiter.checkAll(loginThrottleBuckets(ipHash, emailHash))
     if (!throttle.allowed) {
-      reply
-        .status(429)
-        .send({
-          error: 'rate_limited',
-          message: `Too many attempts. Try again in ${Math.ceil(throttle.retryAfter / 60)} minutes.`,
-          retry_after_seconds: throttle.retryAfter,
-        })
+      reply.status(429).send({
+        error: 'rate_limited',
+        message: `Too many attempts. Try again in ${Math.ceil(throttle.retryAfter / 60)} minutes.`,
+        retry_after_seconds: throttle.retryAfter,
+      })
       return
     }
     const admin = await store.getAdminByEmail(parsed.data.email)
@@ -173,111 +171,98 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
   })
 }
 
+async function handleForgotPassword(app: FastifyInstance, request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const parsed = resetRequestInput.safeParse(request.body)
+  if (!parsed.success) {
+    reply.status(400).send({ error: 'invalid_input' })
+    return
+  }
+  const ipHash = hashWithSalt(request.ip ?? 'unknown')
+  const emailHash = hashWithSalt(parsed.data.email.toLowerCase())
+  const throttle = await app.limiter.checkAll(forgotPasswordBuckets(ipHash, emailHash))
+  // Always respond 200 so attackers cannot distinguish throttled from fresh
+  // requests (no email-existence probe, no throttle probe).
+  reply.status(200).send({ message: 'If an admin account exists for this email, a reset link has been sent.' })
+  if (!throttle.allowed) {
+    request.log.warn({ ipHash, retryAfter: throttle.retryAfter }, 'forgot-password throttled')
+    return
+  }
+  try {
+    const admin = await app.store.getAdminByEmail(parsed.data.email)
+    if (admin === null || admin.status !== 'active') return
+    const token = randomBytes(32).toString('base64url')
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+    await app.store.cleanupExpiredAuthState()
+    await app.store.insertPasswordReset(admin.id, tokenHash, new Date(Date.now() + RESET_TOKEN_EXPIRY_MS).toISOString())
+    await app.mailer.send({
+      to: admin.email,
+      subject: 'ihelped.ai — Password reset',
+      text: `Reset your password: ${config.PUBLIC_URL}/admin/reset-password?token=${token}\n\nThis link expires in 1 hour.`,
+    })
+  } catch (err) {
+    request.log.error({ err }, 'forgot-password: post-response work failed')
+  }
+}
+
+async function handleResetPassword(app: FastifyInstance, request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const parsed = resetPasswordInput.safeParse(request.body)
+  if (!parsed.success) {
+    reply.status(400).send({ error: 'invalid_input', fields: zodFieldErrors(parsed.error) })
+    return
+  }
+  if (parsed.data.password !== parsed.data.confirm_password) {
+    reply.status(400).send({ error: 'invalid_input', fields: { confirm_password: 'passwords_must_match' } })
+    return
+  }
+  const tokenHash = createHash('sha256').update(parsed.data.token).digest('hex')
+  const reset = await app.store.getPasswordResetByHash(tokenHash)
+  if (reset === null) {
+    reply.status(400).send({ error: 'invalid_input', message: 'This link has expired. Request a new one.' })
+    return
+  }
+  if (reset.used) {
+    reply.status(400).send({ error: 'invalid_input', message: 'This link has already been used. Request a new one.' })
+    return
+  }
+  if (new Date(reset.expiresAt) < new Date()) {
+    reply.status(400).send({ error: 'invalid_input', message: 'This link has expired. Request a new one.' })
+    return
+  }
+  await app.store.updateAdminPasswordWithAudit(
+    reset.adminId,
+    await bcrypt.hash(parsed.data.password, BCRYPT_ROUNDS),
+    { adminId: reset.adminId, action: 'password_reset', targetId: reset.adminId, targetKind: 'admin', details: null },
+    { resetId: reset.id },
+  )
+  reply.status(200).send({ message: 'Password updated. Log in with your new password.' })
+}
+
+async function handleChangePassword(app: FastifyInstance, request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const parsed = changePasswordInput.safeParse(request.body)
+  if (!parsed.success) {
+    reply.status(400).send({ error: 'invalid_input', fields: zodFieldErrors(parsed.error) })
+    return
+  }
+  const admin = getRequestAdmin(request)
+  if (!(await bcrypt.compare(parsed.data.current_password, admin.passwordHash))) {
+    reply.status(400).send({ error: 'invalid_input', fields: { current_password: 'incorrect' } })
+    return
+  }
+  const currentSessionId = request.unsignCookie(request.cookies[SESSION_COOKIE] ?? '').value ?? undefined
+  await app.store.updateAdminPasswordWithAudit(
+    admin.id,
+    await bcrypt.hash(parsed.data.new_password, BCRYPT_ROUNDS),
+    { adminId: admin.id, action: 'password_change', targetId: admin.id, targetKind: 'admin', details: null },
+    { exceptSessionId: currentSessionId },
+  )
+  reply.status(200).send({ status: 'ok' })
+}
+
 /** Register password reset and change routes. */
 export async function adminPasswordRoutes(app: FastifyInstance): Promise<void> {
-  const store = app.store
-  const limiter = app.limiter
-
-  app.post('/api/admin/forgot-password', async (request: FastifyRequest, reply: FastifyReply) => {
-    const parsed = resetRequestInput.safeParse(request.body)
-    if (!parsed.success) {
-      reply.status(400).send({ error: 'invalid_input' })
-      return
-    }
-    const ipHash = hashWithSalt(request.ip ?? 'unknown')
-    const emailHash = hashWithSalt(parsed.data.email.toLowerCase())
-    const throttle = await limiter.checkAll(forgotPasswordBuckets(ipHash, emailHash))
-    // Always respond 200 so attackers cannot distinguish throttled from
-    // fresh requests (no email-existence probe, no throttle probe).
-    reply.status(200).send({ message: 'If an admin account exists for this email, a reset link has been sent.' })
-    if (!throttle.allowed) {
-      request.log.warn({ ipHash, retryAfter: throttle.retryAfter }, 'forgot-password throttled')
-      return
-    }
-    try {
-      const admin = await store.getAdminByEmail(parsed.data.email)
-      if (admin === null || admin.status !== 'active') return
-      const token = randomBytes(32).toString('base64url')
-      const tokenHash = createHash('sha256').update(token).digest('hex')
-      await store.cleanupExpiredAuthState()
-      await store.insertPasswordReset(admin.id, tokenHash, new Date(Date.now() + RESET_TOKEN_EXPIRY_MS).toISOString())
-      await app.mailer.send({
-        to: admin.email,
-        subject: 'ihelped.ai — Password reset',
-        text: `Reset your password: ${config.PUBLIC_URL}/admin/reset-password?token=${token}\n\nThis link expires in 1 hour.`,
-      })
-    } catch (err) {
-      request.log.error({ err }, 'forgot-password: post-response work failed')
-    }
-  })
-
-  app.post('/api/admin/reset-password', async (request: FastifyRequest, reply: FastifyReply) => {
-    const parsed = resetPasswordInput.safeParse(request.body)
-    if (!parsed.success) {
-      reply.status(400).send({ error: 'invalid_input', fields: zodFieldErrors(parsed.error) })
-      return
-    }
-    if (parsed.data.password !== parsed.data.confirm_password) {
-      reply.status(400).send({ error: 'invalid_input', fields: { confirm_password: 'passwords_must_match' } })
-      return
-    }
-    const tokenHash = createHash('sha256').update(parsed.data.token).digest('hex')
-    const reset = await store.getPasswordResetByHash(tokenHash)
-    if (reset === null) {
-      reply.status(400).send({ error: 'invalid_input', message: 'This link has expired. Request a new one.' })
-      return
-    }
-    if (reset.used) {
-      reply.status(400).send({ error: 'invalid_input', message: 'This link has already been used. Request a new one.' })
-      return
-    }
-    if (new Date(reset.expiresAt) < new Date()) {
-      reply.status(400).send({ error: 'invalid_input', message: 'This link has expired. Request a new one.' })
-      return
-    }
-    await store.updateAdminPasswordWithAudit(
-      reset.adminId,
-      await bcrypt.hash(parsed.data.password, BCRYPT_ROUNDS),
-      {
-        adminId: reset.adminId,
-        action: 'password_reset',
-        targetId: reset.adminId,
-        targetKind: 'admin',
-        details: null,
-      },
-      { resetId: reset.id },
-    )
-    reply.status(200).send({ message: 'Password updated. Log in with your new password.' })
-  })
-
-  app.post(
-    '/api/admin/change-password',
-    { preHandler: [requireAdmin] },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const parsed = changePasswordInput.safeParse(request.body)
-      if (!parsed.success) {
-        reply.status(400).send({ error: 'invalid_input', fields: zodFieldErrors(parsed.error) })
-        return
-      }
-      const admin = getRequestAdmin(request)
-      if (!(await bcrypt.compare(parsed.data.current_password, admin.passwordHash))) {
-        reply.status(400).send({ error: 'invalid_input', fields: { current_password: 'incorrect' } })
-        return
-      }
-      const currentSessionId = request.unsignCookie(request.cookies[SESSION_COOKIE] ?? '').value ?? undefined
-      await store.updateAdminPasswordWithAudit(
-        admin.id,
-        await bcrypt.hash(parsed.data.new_password, BCRYPT_ROUNDS),
-        {
-          adminId: admin.id,
-          action: 'password_change',
-          targetId: admin.id,
-          targetKind: 'admin',
-          details: null,
-        },
-        { exceptSessionId: currentSessionId },
-      )
-      reply.status(200).send({ status: 'ok' })
-    },
+  app.post('/api/admin/forgot-password', (request, reply) => handleForgotPassword(app, request, reply))
+  app.post('/api/admin/reset-password', (request, reply) => handleResetPassword(app, request, reply))
+  app.post('/api/admin/change-password', { preHandler: [requireAdmin] }, (request, reply) =>
+    handleChangePassword(app, request, reply),
   )
 }

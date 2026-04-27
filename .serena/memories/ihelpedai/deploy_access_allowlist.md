@@ -12,7 +12,7 @@ Current allowlist snippet:
 - `195.244.212.162  1;`
 - `104.30.165.193   1;`
 - `178.208.215.209  1;`
-- `109.74.199.233  1;` (calmerapy public IPv4, so public-domain self health checks do not hairpin into a 403)
+- `109.74.199.233  1;` (calmerapy public IPv4, so public-domain self-health checks do not hairpin into a 403)
 
 Verification:
 

@@ -14,7 +14,9 @@ import type {
   TakedownDisposition,
   TakedownStatus,
 } from './index.js'
-import type { MysqlStore } from './mysql-store.js'
+import type { MysqlStoreAdminFacade } from './mysql-store-admin-facade.js'
+
+type MysqlStore = MysqlStoreAdminFacade
 import { iso, isoDate, newId } from './mysql-utils.js'
 import { takedownEntryKindFromDb } from './takedown-entry-kind.js'
 
@@ -121,9 +123,19 @@ export async function deleteFailedAdminInvite(store: MysqlStore, adminId: string
   })
 }
 
+/**
+ * Take a row-level lock on the target so concurrent deletes/updates can't make
+ * us audit a state change that never landed. Throws when the row is missing.
+ */
+async function lockExistingRow(conn: PoolConnection, table: string, id: string, context: string): Promise<void> {
+  const [rows] = await conn.query<RowDataPacket[]>(`SELECT 1 FROM ${table} WHERE id = ? FOR UPDATE`, [id])
+  if (rows[0] === undefined) throw new Error(`${context}: ${table} row ${id} not found`)
+}
+
 /** Deactivate an admin, clear sessions, and audit atomically. */
 export async function deactivateAdminWithAudit(store: MysqlStore, id: string, audit: AdminAuditInput): Promise<void> {
   await store.tx(async (conn) => {
+    await lockExistingRow(conn, 'admins', id, 'deactivateAdminWithAudit')
     await conn.execute(`UPDATE admins SET status = 'deactivated' WHERE id = ?`, [id])
     await conn.execute('DELETE FROM admin_sessions WHERE admin_id = ?', [id])
     await insertAudit(conn, audit)
@@ -139,6 +151,7 @@ export async function updateAdminPasswordWithAudit(
   opts: AdminPasswordAuditOptions = {},
 ): Promise<void> {
   await store.tx(async (conn) => {
+    await lockExistingRow(conn, 'admins', id, 'updateAdminPasswordWithAudit')
     await conn.execute('UPDATE admins SET password_hash = ? WHERE id = ?', [passwordHash, id])
     if (opts.resetId !== undefined) {
       await conn.execute('UPDATE password_resets SET used = 1 WHERE id = ?', [opts.resetId])
@@ -162,6 +175,7 @@ export async function updateEntryStatusWithAudit(
 ): Promise<void> {
   const table = entryType === 'post' ? 'posts' : 'reports'
   await store.tx(async (conn) => {
+    await lockExistingRow(conn, table, id, 'updateEntryStatusWithAudit')
     await conn.execute(`UPDATE ${table} SET status = ? WHERE id = ?`, [status, id])
     await insertAudit(conn, audit)
   })
@@ -176,6 +190,7 @@ export async function purgeEntryWithAudit(
 ): Promise<void> {
   const table = entryType === 'post' ? 'posts' : 'reports'
   await store.tx(async (conn) => {
+    await lockExistingRow(conn, table, id, 'purgeEntryWithAudit')
     await conn.execute('DELETE FROM votes WHERE entry_id = ? AND entry_kind = ?', [id, entryType])
     await conn.execute(`DELETE FROM ${table} WHERE id = ?`, [id])
     await insertAudit(conn, audit)
@@ -185,6 +200,7 @@ export async function purgeEntryWithAudit(
 /** Revoke an API key and audit atomically. */
 export async function revokeApiKeyWithAudit(store: MysqlStore, id: string, audit: AdminAuditInput): Promise<void> {
   await store.tx(async (conn) => {
+    await lockExistingRow(conn, 'agent_keys', id, 'revokeApiKeyWithAudit')
     await conn.execute(`UPDATE agent_keys SET status = 'revoked' WHERE id = ?`, [id])
     await insertAudit(conn, audit)
   })
@@ -216,6 +232,7 @@ export async function updateTakedownWithAudit(
   audit: AdminAuditInput,
 ): Promise<void> {
   await store.tx(async (conn) => {
+    await lockExistingRow(conn, 'takedowns', id, 'updateTakedownWithAudit')
     const sets: string[] = ['updated_at = UTC_TIMESTAMP(3)']
     const params: (string | number | null)[] = []
     if (fields.status !== undefined) {

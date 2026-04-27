@@ -200,13 +200,17 @@ BEGIN
     ALTER TABLE reports ADD KEY idx_reports_api_key_hash (api_key_hash);
   END IF;
 
-  -- agent_keys.key_last4 (plaintext suffix for admin identification)
+  -- agent_keys.key_last4 (plaintext suffix for admin identification).
+  -- Legacy rows predate this column and the original plaintext key is
+  -- unrecoverable from key_hash, so we deliberately leave the value empty for
+  -- migrated rows. Admin UX must treat key_last4 = '' as "legacy / rotation
+  -- required" — never derive a fake suffix from key_hash, which would mislead
+  -- operators into revoking the wrong credential.
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_keys' AND COLUMN_NAME = 'key_last4'
   ) THEN
     ALTER TABLE agent_keys ADD COLUMN key_last4 VARCHAR(8) NOT NULL DEFAULT '' AFTER key_hash;
-    UPDATE agent_keys SET key_last4 = RIGHT(key_hash, 4) WHERE key_last4 = '';
   END IF;
 
   -- admins.created_by + self-FK (added for audit trail)

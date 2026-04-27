@@ -32,7 +32,9 @@ describe('MySQL schema contract', () => {
   it('stores API-key plaintext suffix separately from the verifier hash', () => {
     expect(schema).toContain('key_last4     VARCHAR(8)   NOT NULL')
     expect(schema).toContain('ALTER TABLE agent_keys ADD COLUMN key_last4 VARCHAR(8) NOT NULL DEFAULT')
-    expect(schema).toContain('UPDATE agent_keys SET key_last4 = RIGHT(key_hash, 4)')
+    // Legacy rows must NOT be backfilled from key_hash — RIGHT(key_hash, 4)
+    // is not the original key suffix and would mislead operators.
+    expect(schema).not.toContain('UPDATE agent_keys SET key_last4 = RIGHT(key_hash, 4)')
   })
 
   it('canonicalizes legacy takedown entry kinds before adding the CHECK constraint', () => {

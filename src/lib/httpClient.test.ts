@@ -85,6 +85,15 @@ describe('request', () => {
     vi.unstubAllGlobals()
   })
 
+  /** Pull `init` off the n-th recorded fetch call with consistent guards. */
+  const getFetchInit = (callIndex = 0): RequestInit => {
+    const call = fetchSpy.mock.calls[callIndex]
+    if (call === undefined) throw new Error(`expected fetch call at index ${callIndex}`)
+    const init = call[1]
+    if (init === undefined) throw new Error('expected fetch init argument')
+    return init as RequestInit
+  }
+
   it('returns the parsed JSON body on 2xx', async () => {
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ hello: 'world' }), { status: 200 }))
     const out = await request<{ hello: string }>('/api/example')
@@ -140,9 +149,7 @@ describe('request', () => {
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     await request('/api/example', jsonBody({ foo: 1 }))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    const firstCall = fetchSpy.mock.calls[0]
-    if (firstCall === undefined) throw new Error('expected fetch call')
-    const init = firstCall[1] as RequestInit
+    const init = getFetchInit()
     const headers = init.headers as Headers
     expect(headers.get('content-type')).toBe('application/json')
     expect(headers.get('accept')).toBe('application/json')
@@ -153,9 +160,7 @@ describe('request', () => {
   it('omits content-type when no body is provided (GET)', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     await request('/api/example')
-    const firstCall = fetchSpy.mock.calls[0]
-    if (firstCall === undefined) throw new Error('expected fetch call')
-    const init = firstCall[1] as RequestInit
+    const init = getFetchInit()
     const headers = init.headers as Headers
     expect(headers.has('content-type')).toBe(false)
     expect(headers.get('accept')).toBe('application/json')
@@ -165,9 +170,7 @@ describe('request', () => {
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     const supplied = new Headers({ 'x-caller': 'kept', 'content-type': 'text/plain' })
     await request('/api/example', { method: 'POST', body: 'raw', headers: supplied })
-    const firstCall = fetchSpy.mock.calls[0]
-    if (firstCall === undefined) throw new Error('expected fetch call')
-    const init = firstCall[1] as RequestInit
+    const init = getFetchInit()
     const headers = init.headers as Headers
     expect(headers.get('x-caller')).toBe('kept')
     // Caller overrides the default content-type — we only set it when absent.

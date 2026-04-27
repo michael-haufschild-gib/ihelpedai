@@ -282,6 +282,9 @@ describe('AdminEntryDetail — confirmation modal flow', () => {
     const user = userEvent.setup()
     await user.click(screen.getByTestId('admin-entry-delete'))
     await user.type(screen.getByTestId('admin-action-confirmation'), 'partial')
+    // Populate the reason field too so the post-cancel empty-value assertion
+    // actually exercises the reason-reset path.
+    await user.type(screen.getByTestId('admin-action-reason'), 'spam')
     await user.click(screen.getByTestId('admin-action-cancel'))
     expect(screen.queryByTestId('admin-action-modal')).toBe(null)
 
@@ -291,6 +294,7 @@ describe('AdminEntryDetail — confirmation modal flow', () => {
     // bug that auto-fires the wrong destructive action on the wrong row.
     await user.click(screen.getByTestId('admin-entry-delete'))
     expect(screen.getByTestId('admin-action-confirmation')).toHaveValue('')
+    expect(screen.getByTestId('admin-action-reason')).toHaveValue('')
   })
 })
 

@@ -79,7 +79,7 @@ describe('SqliteStore migrations', () => {
     }
   })
 
-  it('backfills key_last4 on legacy agent key rows', async () => {
+  it('leaves key_last4 empty on legacy agent key rows so admins can identify them as rotation-required', async () => {
     const path = makeDbPath()
     const db = new Database(path)
     db.exec(`
@@ -98,7 +98,8 @@ describe('SqliteStore migrations', () => {
     const store = new SqliteStore(path)
     try {
       const key = await store.getApiKeyByHash('legacy-hash-1234')
-      expect(key?.keyLast4).toBe('1234')
+      // Plaintext suffix is unrecoverable from key_hash; deliberately empty.
+      expect(key?.keyLast4).toBe('')
     } finally {
       await store.close()
     }

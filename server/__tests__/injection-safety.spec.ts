@@ -32,6 +32,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
  */
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'ihelped-injection-'))
+const previousEnv = {
+  SQLITE_PATH: process.env.SQLITE_PATH,
+  NODE_ENV: process.env.NODE_ENV,
+  IP_HASH_SALT: process.env.IP_HASH_SALT,
+  DEV_RATE_MULTIPLIER: process.env.DEV_RATE_MULTIPLIER,
+} as const
 process.env.SQLITE_PATH = join(tmpDir, 'test.db')
 process.env.NODE_ENV = 'test'
 process.env.IP_HASH_SALT = 'test-salt'
@@ -45,8 +51,17 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await app.close()
-  rmSync(tmpDir, { recursive: true, force: true })
+  try {
+    await app.close()
+  } finally {
+    // Restore prior env values so a later spec running in the same worker
+    // does not inherit a deleted SQLITE_PATH or our test-only overrides.
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    rmSync(tmpDir, { recursive: true, force: true })
+  }
 })
 
 describe('text storage — script tags survive verbatim', () => {
@@ -81,7 +96,7 @@ describe('text storage — script tags survive verbatim', () => {
     expect(stored).not.toContain('&gt;')
   })
 
-  it('redacts a non-allowlisted javascript: URL to [link]', async () => {
+  it('preserves a literal javascript: URL verbatim (URL_REGEX matches https?:// only)', async () => {
     // The URL_REGEX in sanitize.ts matches https?:// only. javascript: is
     // not http/https, so it does NOT trigger the link-extraction. The
     // assertion locks the current behaviour: javascript: passes through
@@ -170,10 +185,11 @@ describe('SQL injection through query params', () => {
     })
     expect(res.statusCode).toBe(200)
     const body = res.json() as { items: { text: string }[] }
-    if (body.items.length > 0) {
-      const item = body.items[0]
-      if (item === undefined) throw new Error('expected literal match')
-      expect(item.text).toContain('foo_bar')
-    }
+    // Empty results would silently mask a broken LIKE...ESCAPE path because
+    // wildcard `_` would still match the seeded row. Demand at least one hit
+    // and re-confirm the literal substring made it back to the client.
+    const item = body.items.find(({ text }) => text.includes('foo_bar'))
+    if (item === undefined) throw new Error('expected literal foo_bar match in report list')
+    expect(item.text).toContain('literal foo_bar should match exact')
   })
 })

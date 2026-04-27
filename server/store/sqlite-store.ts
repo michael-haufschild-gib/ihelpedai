@@ -3,43 +3,25 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import Database from 'better-sqlite3'
-import type { Database as SqliteDatabase } from 'better-sqlite3'
 import { customAlphabet } from 'nanoid'
 
 import { buildContainsLikePattern } from '../lib/like-pattern.js'
 
 import type {
-  Admin,
-  AdminAuditInput,
-  AdminApiKey,
-  AdminEntry,
-  AdminEntryDetail,
-  AdminInviteResult,
-  AdminPasswordAuditOptions,
-  AdminSession,
-  AdminSetting,
-  AuditEntryWithEmail,
   ApiKey,
   CountableTable,
-  EntrySource,
   EntryStatus,
   NewApiKey,
   NewPost,
   NewReport,
-  NewTakedown,
-  PasswordReset,
   Post,
   Report,
   ReportSourceFilter,
   Store,
-  Takedown,
-  TakedownDisposition,
-  TakedownStatus,
   VoteKind,
   VoteToggleResult,
 } from './index.js'
-import * as adm from './sqlite-store-admin.js'
-import * as admx from './sqlite-store-admin-mutations.js'
+import { SqliteStoreAdminFacade } from './sqlite-store-admin-facade.js'
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 const newId = customAlphabet(ID_ALPHABET, 10)
@@ -134,13 +116,12 @@ const apiKeyFromRow = (r: ApiKeyRow): ApiKey => ({
  * Uses better-sqlite3 which is synchronous; we wrap results in Promises
  * to conform to the async Store interface.
  */
-export class SqliteStore implements Store {
-  private readonly db: SqliteDatabase
-
+export class SqliteStore extends SqliteStoreAdminFacade implements Store {
   constructor(path: string) {
-    this.db = new Database(path)
-    this.db.pragma('journal_mode = WAL')
-    this.db.pragma('foreign_keys = ON')
+    const db = new Database(path)
+    db.pragma('journal_mode = WAL')
+    db.pragma('foreign_keys = ON')
+    super(db)
     const ddl = readFileSync(SCHEMA_PATH, 'utf8')
     this.migrate({ ignoreMissingTables: true })
     this.db.exec(ddl)
@@ -160,13 +141,10 @@ export class SqliteStore implements Store {
     addColumn('posts', 'like_count INTEGER NOT NULL DEFAULT 0')
     addColumn('reports', 'dislike_count INTEGER NOT NULL DEFAULT 0')
     addColumn('reports', 'api_key_hash TEXT')
+    // Legacy agent_keys rows predate this column; the plaintext suffix cannot
+    // be recovered from key_hash. Leave migrated rows empty so admin UX can
+    // surface them as "legacy / rotation required" instead of a fake suffix.
     addColumn('agent_keys', "key_last4 TEXT NOT NULL DEFAULT ''")
-    try {
-      this.db.prepare("UPDATE agent_keys SET key_last4 = SUBSTR(key_hash, -4) WHERE key_last4 = ''").run()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : ''
-      if (!(opts.ignoreMissingTables === true && msg.includes('no such table'))) throw err
-    }
     try {
       this.db
         .prepare(
@@ -488,204 +466,6 @@ export class SqliteStore implements Store {
     }
     const sql = `SELECT COUNT(*) AS n FROM ${table} WHERE ${conditions.join(' AND ')}`
     return (this.db.prepare(sql).get(...params) as { n: number }).n
-  }
-
-  /* Admin methods — delegated to sqlite-store-admin.ts */
-  async insertAdmin(e: string, p: string, c: string | null): Promise<Admin> {
-    return adm.insertAdmin(this.db, e, p, c)
-  }
-  async getAdminByEmail(e: string): Promise<Admin | null> {
-    return adm.getAdminByEmail(this.db, e)
-  }
-  async getAdmin(id: string): Promise<Admin | null> {
-    return adm.getAdmin(this.db, id)
-  }
-  async listAdmins(): Promise<Admin[]> {
-    return adm.listAdmins(this.db)
-  }
-  async updateAdminStatus(id: string, s: 'active' | 'deactivated'): Promise<void> {
-    adm.updateAdminStatus(this.db, id, s)
-  }
-  async updateAdminPassword(id: string, h: string): Promise<void> {
-    adm.updateAdminPassword(this.db, id, h)
-  }
-  async updateAdminPasswordWithAudit(
-    id: string,
-    h: string,
-    a: AdminAuditInput,
-    o?: AdminPasswordAuditOptions,
-  ): Promise<void> {
-    admx.updateAdminPasswordWithAudit(this.db, id, h, a, o)
-  }
-  async updateAdminLastLogin(id: string): Promise<void> {
-    adm.updateAdminLastLogin(this.db, id)
-  }
-  async insertSession(a: string, e: string): Promise<string> {
-    return adm.insertSession(this.db, a, e)
-  }
-  async getSession(id: string): Promise<AdminSession | null> {
-    return adm.getSession(this.db, id)
-  }
-  async touchSession(id: string, e: string): Promise<void> {
-    adm.touchSession(this.db, id, e)
-  }
-  async deleteSession(id: string): Promise<void> {
-    adm.deleteSession(this.db, id)
-  }
-  async deleteAdminSessions(a: string, except?: string): Promise<void> {
-    adm.deleteAdminSessions(this.db, a, except)
-  }
-  async insertPasswordReset(a: string, t: string, e: string): Promise<string> {
-    return adm.insertPasswordReset(this.db, a, t, e)
-  }
-  async getPasswordResetByHash(t: string): Promise<PasswordReset | null> {
-    return adm.getPasswordResetByHash(this.db, t)
-  }
-  async markPasswordResetUsed(id: string): Promise<void> {
-    adm.markPasswordResetUsed(this.db, id)
-  }
-  async cleanupExpiredAuthState(): Promise<void> {
-    adm.cleanupExpiredAuthState(this.db)
-  }
-  async insertAdminInviteWithAudit(
-    e: string,
-    p: string,
-    c: string | null,
-    t: string,
-    x: string,
-  ): Promise<AdminInviteResult> {
-    return admx.insertAdminInviteWithAudit(this.db, e, p, c, t, x)
-  }
-  async deleteFailedAdminInvite(a: string, r: string): Promise<void> {
-    admx.deleteFailedAdminInvite(this.db, a, r)
-  }
-  async deactivateAdminWithAudit(id: string, a: AdminAuditInput): Promise<void> {
-    admx.deactivateAdminWithAudit(this.db, id, a)
-  }
-  async insertAuditEntry(
-    a: string | null,
-    ac: string,
-    ti: string | null,
-    tk: string | null,
-    d: string | null,
-  ): Promise<void> {
-    adm.insertAuditEntry(this.db, a, ac, ti, tk, d)
-  }
-  async listAuditLog(
-    l: number,
-    o: number,
-    f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string },
-  ): Promise<AuditEntryWithEmail[]> {
-    return adm.listAuditLog(this.db, l, o, f)
-  }
-  async countAuditLog(f?: { adminId?: string; action?: string; dateFrom?: string; dateTo?: string }): Promise<number> {
-    return adm.countAuditLog(this.db, f)
-  }
-  async listAuditLogForTarget(t: string): Promise<AuditEntryWithEmail[]> {
-    return adm.listAuditLogForTarget(this.db, t)
-  }
-  async listAdminEntries(
-    l: number,
-    o: number,
-    f?: {
-      entryType?: 'post' | 'report'
-      status?: EntryStatus
-      source?: EntrySource
-      query?: string
-      dateFrom?: string
-      dateTo?: string
-      sort?: 'asc' | 'desc'
-    },
-  ): Promise<AdminEntry[]> {
-    return adm.listAdminEntries(this.db, l, o, f)
-  }
-  async countAdminEntries(f?: {
-    entryType?: 'post' | 'report'
-    status?: EntryStatus
-    source?: EntrySource
-    query?: string
-    dateFrom?: string
-    dateTo?: string
-  }): Promise<number> {
-    return adm.countAdminEntries(this.db, f)
-  }
-  async getAdminEntryDetail(id: string): Promise<AdminEntryDetail | null> {
-    return adm.getAdminEntryDetail(this.db, id)
-  }
-  async updateEntryStatus(id: string, t: 'post' | 'report', s: EntryStatus): Promise<void> {
-    adm.updateEntryStatus(this.db, id, t, s)
-  }
-  async updateEntryStatusWithAudit(
-    id: string,
-    t: 'post' | 'report',
-    s: EntryStatus,
-    a: AdminAuditInput,
-  ): Promise<void> {
-    admx.updateEntryStatusWithAudit(this.db, id, t, s, a)
-  }
-  async purgeEntry(id: string, t: 'post' | 'report'): Promise<void> {
-    adm.purgeEntry(this.db, id, t)
-  }
-  async purgeEntryWithAudit(id: string, t: 'post' | 'report', a: AdminAuditInput): Promise<void> {
-    admx.purgeEntryWithAudit(this.db, id, t, a)
-  }
-  async listApiKeys(l: number, o: number, s?: 'active' | 'revoked'): Promise<AdminApiKey[]> {
-    return adm.listApiKeysAdmin(this.db, l, o, s)
-  }
-  async countApiKeys(s?: 'active' | 'revoked'): Promise<number> {
-    return adm.countApiKeysAdmin(this.db, s)
-  }
-  async revokeApiKey(id: string): Promise<void> {
-    adm.revokeApiKey(this.db, id)
-  }
-  async revokeApiKeyWithAudit(id: string, a: AdminAuditInput): Promise<void> {
-    admx.revokeApiKeyWithAudit(this.db, id, a)
-  }
-  async listReportsForApiKey(k: string, l: number): Promise<Report[]> {
-    return adm.listReportsForApiKey(this.db, k, l)
-  }
-  async getApiKey(id: string): Promise<AdminApiKey | null> {
-    return adm.getApiKeyAdmin(this.db, id)
-  }
-  async insertTakedown(i: NewTakedown): Promise<Takedown> {
-    return adm.insertTakedown(this.db, i)
-  }
-  async insertTakedownWithAudit(i: NewTakedown, a: AdminAuditInput): Promise<Takedown> {
-    return admx.insertTakedownWithAudit(this.db, i, a)
-  }
-  async listTakedowns(l: number, o: number, s?: TakedownStatus): Promise<Takedown[]> {
-    return adm.listTakedowns(this.db, l, o, s)
-  }
-  async countTakedowns(s?: TakedownStatus): Promise<number> {
-    return adm.countTakedowns(this.db, s)
-  }
-  async getTakedown(id: string): Promise<Takedown | null> {
-    return adm.getTakedown(this.db, id)
-  }
-  async updateTakedown(
-    id: string,
-    f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null },
-  ): Promise<void> {
-    adm.updateTakedown(this.db, id, f)
-  }
-  async updateTakedownWithAudit(
-    id: string,
-    f: { status?: TakedownStatus; disposition?: TakedownDisposition; notes?: string; closedBy?: string | null },
-    a: AdminAuditInput,
-  ): Promise<void> {
-    admx.updateTakedownWithAudit(this.db, id, f, a)
-  }
-  async getSetting(k: string): Promise<string | null> {
-    return adm.getSetting(this.db, k)
-  }
-  async setSetting(k: string, v: string): Promise<void> {
-    adm.setSetting(this.db, k, v)
-  }
-  async setSettingWithAudit(k: string, v: string, a: AdminAuditInput): Promise<void> {
-    admx.setSettingWithAudit(this.db, k, v, a)
-  }
-  async listSettings(): Promise<AdminSetting[]> {
-    return adm.listSettingsAdmin(this.db)
   }
 
   async close(): Promise<void> {

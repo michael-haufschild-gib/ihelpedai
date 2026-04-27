@@ -281,6 +281,10 @@
   color: var(--text-success) !important;
 }
 
+[data-app-theme] .text-inverse {
+  color: var(--text-inverse) !important;
+}
+
 [data-app-theme] .bg-warning\/10 {
   background-color: color-mix(in oklch, var(--text-warning) 10%, transparent) !important;
 }
@@ -487,4 +491,3 @@
 [data-app-theme][data-mode='paper-day'] h4 {
   font-family: var(--font-serif);
 }
-

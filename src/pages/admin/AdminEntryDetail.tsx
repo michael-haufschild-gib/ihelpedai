@@ -34,6 +34,60 @@ function describeActionError(err: unknown): string {
   return 'Action failed. Try again.'
 }
 
+type EntryNavigate = (path: string, opts: { replace: boolean }) => void
+
+/** Fetch the entry detail and surface unauthorized/network errors distinctly. */
+function loadEntryDetail(
+  id: string,
+  setEntry: (e: EntryDetail | null) => void,
+  setFetchError: (m: string | null) => void,
+  setLoading: (v: boolean) => void,
+): () => void {
+  let cancelled = false
+  getEntry(id)
+    .then((e) => {
+      if (!cancelled) setEntry(e)
+    })
+    .catch((err) => {
+      if (cancelled) return
+      setEntry(null)
+      if (err instanceof ApiError && err.kind === 'unauthorized') setFetchError('Session expired.')
+      else if (!(err instanceof ApiError)) setFetchError('Network error.')
+    })
+    .finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+  return () => {
+    cancelled = true
+  }
+}
+
+/** Run a status / purge action against the entry, redirecting to /admin on success. */
+async function runEntryAction(
+  entry: EntryDetail | null,
+  action: EntryModalAction,
+  confirmation: string,
+  reason: string,
+  setActionLoading: (v: boolean) => void,
+  setActionError: (m: string | null) => void,
+  navigate: EntryNavigate,
+): Promise<void> {
+  if (!entry) return
+  setActionLoading(true)
+  setActionError(null)
+  try {
+    if (action === 'purge') {
+      await purgeEntry(entry.id, confirmation, reason !== '' ? reason : undefined)
+    } else {
+      await entryAction(entry.id, action, reason !== '' ? reason : undefined)
+    }
+    navigate('/admin', { replace: true })
+  } catch (err) {
+    setActionError(describeActionError(err))
+    setActionLoading(false)
+  }
+}
+
 /** Admin entry detail page (Story 4). */
 export function AdminEntryDetail() {
   const { id } = useParams<{ id: string }>()
@@ -49,42 +103,11 @@ export function AdminEntryDetail() {
 
   useEffect(() => {
     if (!id) return undefined
-    let cancelled = false
-    getEntry(id)
-      .then((e) => {
-        if (!cancelled) setEntry(e)
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setEntry(null)
-          if (err instanceof ApiError && err.kind === 'unauthorized') setFetchError('Session expired.')
-          else if (!(err instanceof ApiError)) setFetchError('Network error.')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
+    return loadEntryDetail(id, setEntry, setFetchError, setLoading)
   }, [id])
 
-  const handleAction = async (action: EntryModalAction) => {
-    if (!entry) return
-    setActionLoading(true)
-    setActionError(null)
-    try {
-      if (action === 'purge') {
-        await purgeEntry(entry.id, confirmation, reason !== '' ? reason : undefined)
-      } else {
-        await entryAction(entry.id, action, reason !== '' ? reason : undefined)
-      }
-      navigate('/admin', { replace: true })
-    } catch (err) {
-      setActionError(describeActionError(err))
-      setActionLoading(false)
-    }
-  }
+  const handleAction = (action: EntryModalAction) =>
+    runEntryAction(entry, action, confirmation, reason, setActionLoading, setActionError, navigate)
 
   if (loading) return <p className="text-text-secondary">Loading...</p>
   if (fetchError !== null)

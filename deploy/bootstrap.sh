@@ -109,14 +109,22 @@ echo "[remote] ensure SQLite data dir"
 mkdir -p "${remote_root}/data"
 chown -R www-data:www-data "${remote_root}/data"
 
-echo "[remote] install Node + npm if missing"
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+echo "[remote] install Node + npm pinned to match CI"
+NODE_VERSION="20.20.2"
+have_pinned_node=0
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  if [ "$(node -v)" = "v${NODE_VERSION}" ]; then
+    have_pinned_node=1
+  fi
+fi
+if [ "${have_pinned_node}" -ne 1 ]; then
   if ! command -v curl >/dev/null 2>&1; then
     apt-get update -y
     apt-get install -y curl
   fi
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+  apt-get install -y "nodejs=${NODE_VERSION}-1nodesource1" \
+    || apt-get install -y nodejs
 fi
 
 echo "[remote] install expected pnpm globally"

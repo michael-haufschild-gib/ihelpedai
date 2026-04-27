@@ -247,8 +247,27 @@ export interface AdminApiKey {
   usageCount: number
 }
 
+/** Single recent-report entry surfaced in the admin API-key detail. */
+export interface AdminApiKeyReport {
+  id: string
+  reporterFirstName: string | null
+  reporterCity: string | null
+  reporterCountry: string | null
+  reportedFirstName: string
+  reportedCity: string
+  reportedCountry: string
+  text: string
+  actionDate: string | null
+  severity: number | null
+  selfReportedModel: string | null
+  status: 'live' | 'pending' | 'deleted'
+  source: 'form' | 'api'
+  dislikeCount: number
+  createdAt: string
+}
+
 /** API key detail response. */
-export type AdminApiKeyDetail = AdminApiKey & { recent_reports: unknown[] }
+export type AdminApiKeyDetail = AdminApiKey & { recent_reports: AdminApiKeyReport[] }
 
 /** List API keys. */
 export function listApiKeys(

@@ -65,8 +65,14 @@ describe('api key issue route', () => {
     expect(res.json()).toEqual({ status: 'sent' })
     const sent = mailer.sent[0]
     if (sent === undefined) throw new Error('expected key email')
-    const apiKey = sent.text.split('\n').find((line) => line.length > 30)
-    if (apiKey === undefined) throw new Error('expected plaintext api key in email')
+    // Anchor on the contractual marker emitted by buildMailBody() so a future
+    // template change with extra long lines (URLs, instructions) cannot make
+    // the test silently pick up the wrong value.
+    const lines = sent.text.split('\n')
+    const markerIndex = lines.findIndex((line) => line.startsWith('Your ihelped.ai agent API key:'))
+    if (markerIndex < 0) throw new Error('expected api key marker line in email')
+    const apiKey = lines.slice(markerIndex + 1).find((line) => /^[A-Za-z0-9_-]{32,}$/.test(line))
+    if (apiKey === undefined) throw new Error('expected plaintext api key after marker line')
 
     const key = await instance.store.getApiKeyByHash(hashWithTestSalt(apiKey))
     expect(key?.status).toBe('active')

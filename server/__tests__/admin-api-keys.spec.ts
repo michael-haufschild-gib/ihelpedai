@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,9 +10,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 describe('admin API key routes', () => {
   let app: FastifyInstance
   let cookie: string
+  let tmpRoot: string
 
   beforeAll(async () => {
-    process.env.SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'ihelped-admin-api-keys-')), 'test.db')
+    tmpRoot = mkdtempSync(join(tmpdir(), 'ihelped-admin-api-keys-'))
+    process.env.SQLITE_PATH = join(tmpRoot, 'test.db')
     const { buildApp } = await import('../index.js')
     app = await buildApp()
     const hash = await bcrypt.hash('testpassword12', 10)
@@ -24,12 +26,16 @@ describe('admin API key routes', () => {
     })
     expect(login.statusCode).toBe(200)
     const raw = login.headers['set-cookie']
-    cookie = typeof raw === 'string' ? raw : ((raw as string[])[0] ?? '')
+    cookie = typeof raw === 'string' ? raw : Array.isArray(raw) ? (raw[0] ?? '') : ''
     expect(cookie).not.toBe('')
   })
 
   afterAll(async () => {
-    await app.close()
+    try {
+      await app.close()
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true })
+    }
   })
 
   it('omits keyHash from list and detail responses', async () => {

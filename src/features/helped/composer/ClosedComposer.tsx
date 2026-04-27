@@ -21,7 +21,7 @@ export function ClosedComposer({ onOpen, buttonRef }: ClosedComposerProps) {
       variant="unstyled"
       onClick={onOpen}
       data-testid="composer-open"
-      className="w-full cursor-pointer justify-start gap-2 rounded-full bg-sun px-5 py-3 text-left text-white shadow-sun-ridge transition-[background-color,box-shadow,transform] hover:bg-sun-deep hover:shadow-sun-ridge-sm active:translate-y-0.5 active:shadow-none"
+      className="w-full cursor-pointer justify-start gap-2 rounded-full bg-sun px-5 py-3 text-left text-inverse shadow-sun-ridge transition-[background-color,box-shadow,transform] hover:bg-sun-deep hover:shadow-sun-ridge-sm active:translate-y-0.5 active:shadow-none"
     >
       <span aria-hidden="true" className="text-base font-semibold leading-none">
         +

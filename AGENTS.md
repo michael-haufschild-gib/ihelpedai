@@ -28,18 +28,18 @@ Dry-humor public registry: people log pro-AI deeds and report anti-AI behavior. 
 
 ## Commands
 
-| Command                  | Purpose                                                                           |
-| ------------------------ | --------------------------------------------------------------------------------- |
-| `pnpm dev`               | Vite SPA + Fastify API concurrently (already running — don't start another)       |
-| `pnpm dev:seed`          | Populate `./dev.db` with seed posts/reports + dev API key                         |
-| `pnpm dev:reset`         | Delete and re-seed `./dev.db`                                                     |
-| `pnpm test`              | Vitest (unit + server integration, 73 specs)                                      |
-| `pnpm test:e2e:existing` | Playwright flows against already-running dev server; never starts `pnpm dev`      |
-| `pnpm test:prod-path`    | Real Redis + MySQL parity specs; requires isolated `REDIS_URL` + `TEST_MYSQL_URL` |
-| `pnpm typecheck`         | TS project references + server tsconfig                                           |
-| `pnpm lint`              | Full ESLint incl. custom rules                                                    |
-| `pnpm build`             | Production SPA build                                                              |
-| `pnpm deploy`            | Rsync to `calmerapy` Linode + restart systemd                                     |
+| Command                  | Purpose                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| `pnpm dev`               | Vite SPA + Fastify API concurrently (already running — don't start another)          |
+| `pnpm dev:seed`          | Populate `./dev.db` with seed posts/reports + dev API key                            |
+| `pnpm dev:reset`         | Delete and re-seed `./dev.db`                                                        |
+| `pnpm test`              | Vitest (unit + server integration, 73 specs)                                         |
+| `pnpm test:e2e:existing` | Playwright flows against already-running dev server; never starts `pnpm dev`         |
+| `pnpm test:prod-path`    | Real Redis + MySQL parity specs; requires an isolated `REDIS_URL` + `TEST_MYSQL_URL` |
+| `pnpm typecheck`         | TS project references + server tsconfig                                              |
+| `pnpm lint`              | Full ESLint incl. custom rules                                                       |
+| `pnpm build`             | Production SPA build                                                                 |
+| `pnpm deploy`            | Rsync to `calmerapy` Linode + restart systemd                                        |
 
 ## On-Demand Serena Memories
 

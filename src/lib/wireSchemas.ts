@@ -233,9 +233,35 @@ export const adminApiKeySchema = z
   })
   .strict()
 
+/**
+ * Concrete schema for the admin "recent reports for API key" payload. Mirrors
+ * the server-side `Report` DTO (camelCase, untransformed) so any drift between
+ * store and admin route surfaces here at parse time instead of leaking unknown
+ * fields into the admin UI.
+ */
+export const adminApiKeyReportSchema = z
+  .object({
+    id: z.string().min(1),
+    reporterFirstName: z.string().nullable(),
+    reporterCity: z.string().nullable(),
+    reporterCountry: z.string().nullable(),
+    reportedFirstName: z.string(),
+    reportedCity: z.string(),
+    reportedCountry: z.string(),
+    text: z.string(),
+    actionDate: z.string().nullable(),
+    severity: z.number().int().min(0).max(10).nullable(),
+    selfReportedModel: z.string().nullable(),
+    status: z.enum(['live', 'pending', 'deleted']),
+    source: z.enum(['form', 'api']),
+    dislikeCount: z.number().int().nonnegative(),
+    createdAt: z.string(),
+  })
+  .strict()
+
 export const adminApiKeyDetailSchema = adminApiKeySchema
   .extend({
-    recent_reports: z.array(z.unknown()),
+    recent_reports: z.array(adminApiKeyReportSchema),
   })
   .strict()
 

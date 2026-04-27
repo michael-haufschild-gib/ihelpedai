@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -16,9 +16,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 describe('admin pagination bounds', () => {
   let app: FastifyInstance
   let cookie: string
+  let tmpRoot: string
+  let previousSqlitePath: string | undefined
 
   beforeAll(async () => {
-    process.env.SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'ihelped-admin-pagination-')), 'test.db')
+    previousSqlitePath = process.env.SQLITE_PATH
+    tmpRoot = mkdtempSync(join(tmpdir(), 'ihelped-admin-pagination-'))
+    process.env.SQLITE_PATH = join(tmpRoot, 'test.db')
     const { buildApp } = await import('../index.js')
     app = await buildApp()
     const hash = await bcrypt.hash('testpassword12', 10)
@@ -30,12 +34,18 @@ describe('admin pagination bounds', () => {
     })
     expect(login.statusCode).toBe(200)
     const raw = login.headers['set-cookie']
-    cookie = typeof raw === 'string' ? raw : ((raw as string[])[0] ?? '')
+    cookie = typeof raw === 'string' ? raw : Array.isArray(raw) ? (raw[0] ?? '') : ''
     expect(cookie).not.toBe('')
   })
 
   afterAll(async () => {
-    await app.close()
+    try {
+      await app.close()
+    } finally {
+      if (previousSqlitePath === undefined) delete process.env.SQLITE_PATH
+      else process.env.SQLITE_PATH = previousSqlitePath
+      rmSync(tmpRoot, { recursive: true, force: true })
+    }
   })
 
   const listRoutes = [

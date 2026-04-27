@@ -22,7 +22,12 @@ async function setupTestApp(): Promise<TestCtx> {
   for (const path of [sqlitePath, `${sqlitePath}-wal`, `${sqlitePath}-shm`]) {
     rmSync(path, { force: true })
   }
+  // Pin every env var buildApp() consults so this suite cannot inherit
+  // non-test defaults from a previous spec sharing the worker process.
   process.env.SQLITE_PATH = sqlitePath
+  process.env.NODE_ENV = 'test'
+  process.env.IP_HASH_SALT = 'test-salt'
+  process.env.DEV_RATE_MULTIPLIER = '50'
   const { buildApp } = await import('../index.js')
   const app = await buildApp()
   const hash = await bcrypt.hash('testpassword12', 10)
@@ -34,7 +39,7 @@ async function setupTestApp(): Promise<TestCtx> {
   })
   expect(login.statusCode).toBe(200)
   const raw = login.headers['set-cookie']
-  const cookie = typeof raw === 'string' ? raw : ((raw as string[])[0] ?? '')
+  const cookie = typeof raw === 'string' ? raw : Array.isArray(raw) ? (raw[0] ?? '') : ''
   expect(cookie).not.toBe('')
   return { app, cookie }
 }

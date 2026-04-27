@@ -84,7 +84,7 @@ printf 'APP_VERSION=%s\n' "$app_version" >> "$env_file"
 REMOTE_SCRIPT
 
 echo "[deploy] applying MySQL schema upgrades when configured"
-ssh "${HOST}" sh -s -- "${REMOTE_ROOT}" "${ENV_FILE}" <<'REMOTE_SCRIPT'
+ssh "${HOST}" sudo sh -s -- "${REMOTE_ROOT}" "${ENV_FILE}" <<'REMOTE_SCRIPT'
 set -eu
 
 remote_root="$1"

@@ -218,6 +218,9 @@ describe('AdminApiKeys — revoke confirmation guard', () => {
     await waitFor(() => {
       expect(mockedToast).toHaveBeenCalledWith('Failed to revoke key.')
     })
+    // Modal must remain open after a revoke failure so the operator can
+    // retry or cancel — silently dismissing it would mask the failure.
+    expect(screen.getByTestId('admin-revoke-modal')).toBeInTheDocument()
   })
 
   it('cancel resets the typed confirmation + reason so a re-open starts fresh', async () => {
@@ -234,6 +237,9 @@ describe('AdminApiKeys — revoke confirmation guard', () => {
     const user = userEvent.setup()
     await user.click(screen.getByTestId('admin-apikey-revoke-aaaaaa1234'))
     await user.type(screen.getByTestId('admin-revoke-confirmation'), 'partial')
+    // Populate the reason too so the post-cancel empty-value assertion
+    // actually catches a regression where reason state survives a cancel.
+    await user.type(screen.getByTestId('admin-revoke-reason'), 'compromised')
     await user.click(screen.getByTestId('admin-revoke-cancel'))
 
     // Re-open on a different key. The confirmation and reason fields
